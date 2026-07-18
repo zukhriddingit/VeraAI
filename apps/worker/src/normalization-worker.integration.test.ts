@@ -81,6 +81,7 @@ function queueCapture(options: { maxAttempts?: number; text?: string } = {}): {
   const imported = repositories.rawListings.import({
     id: randomUUID(),
     source: "other",
+    acquisitionMode: "user_capture",
     sourceListingId: null,
     sourceUrl: "https://housing.example/listings/worker-fixture",
     captureMethod: "manual_text",

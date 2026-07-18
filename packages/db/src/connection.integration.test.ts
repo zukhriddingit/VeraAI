@@ -85,7 +85,9 @@ describe("SQLite connection initialization", () => {
       "listing_extractions_no_delete",
       "listing_extractions_no_update",
       "raw_listings_no_delete",
-      "raw_listings_no_update"
+      "raw_listings_no_update",
+      "source_job_attempts_no_delete",
+      "source_job_attempts_no_update"
     ]);
   });
 

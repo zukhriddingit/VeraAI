@@ -128,6 +128,7 @@ function rawEnvelope(
     connectorId: metadata.connectorId,
     capability: metadata.capability,
     source: raw.source,
+    acquisitionMode: raw.acquisitionMode,
     sourceListingId: raw.sourceListingId,
     sourceUrl: raw.sourceUrl,
     captureMethod: raw.captureMethod,
