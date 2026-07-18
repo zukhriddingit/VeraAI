@@ -1,4 +1,5 @@
 import {
+  AcquisitionModeSchema,
   SourceCapabilitySchema,
   SourceDomainSchema,
   SourceExecutionSchema,
@@ -22,6 +23,7 @@ export const SourcePolicyNetworkRequestSchema = z
 export const SourcePolicyRequestSchema = z
   .object({
     connectorId: z.string().trim().min(1).max(120),
+    acquisitionMode: AcquisitionModeSchema,
     capability: SourceCapabilitySchema,
     execution: SourceExecutionSchema,
     operation: z.string().trim().min(1).max(160),
@@ -34,6 +36,9 @@ export const SourcePolicyRequestSchema = z
 export const SourcePolicyDenialReasonSchema = z.enum([
   "policy_error",
   "unregistered_connector",
+  "acquisition_mode_mismatch",
+  "policy_state_disabled",
+  "policy_state_disallows_execution",
   "global_kill_switch_active",
   "connector_kill_switch_active",
   "connector_disabled",
@@ -196,6 +201,19 @@ export class SourcePolicyRegistry {
       const request = requestResult.data;
       const manifest = this.#manifestsByConnector.get(request.connectorId);
       if (!manifest) return this.#deny("unregistered_connector", request);
+
+      if (manifest.acquisitionMode !== request.acquisitionMode) {
+        return this.#deny("acquisition_mode_mismatch", request, manifest);
+      }
+      if (manifest.policyState === "disabled") {
+        return this.#deny("policy_state_disabled", request, manifest);
+      }
+      if (manifest.policyState === "user_triggered_only" && request.execution !== "manual") {
+        return this.#deny("policy_state_disallows_execution", request, manifest);
+      }
+      if (manifest.policyState === "experimental_personal" && !manifest.enabled) {
+        return this.#deny("connector_disabled", request, manifest);
+      }
 
       if (this.#activeKillSwitches.has(manifest.globalKillSwitchKey)) {
         return this.#deny("global_kill_switch_active", request, manifest);

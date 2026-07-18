@@ -24,11 +24,13 @@ const redactionRules = [
 
 const fixtureManifest = freezeManifest(
   SourcePolicyManifestSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     connectorId: "fixture.feed.v1",
     displayName: "Sanitized fixture feed",
     version: 1,
     source: "other",
+    acquisitionMode: "fixture",
+    policyState: "approved",
     enabled: true,
     execution: "manual",
     capabilities: ["fixture.read"],
@@ -55,11 +57,13 @@ const fixtureManifest = freezeManifest(
 
 const manualCaptureManifest = freezeManifest(
   SourcePolicyManifestSchema.parse({
-    schemaVersion: 1,
+    schemaVersion: 2,
     connectorId: "manual.capture.v1",
     displayName: "Manual listing capture",
     version: 1,
     source: "other",
+    acquisitionMode: "user_capture",
+    policyState: "user_triggered_only",
     enabled: true,
     execution: "manual",
     capabilities: ["manual.capture"],

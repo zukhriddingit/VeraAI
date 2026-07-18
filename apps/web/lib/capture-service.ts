@@ -506,6 +506,7 @@ export function captureListing(
     const connector = selectConnector(request, dependencies.connectors, correlationId);
     const policy = dependencies.policyRegistry.evaluate({
       connectorId: connector.connectorId,
+      acquisitionMode: connector.acquisitionMode,
       capability: connector.capability,
       execution: "manual",
       operation: operationFor(request),
@@ -553,6 +554,7 @@ export function captureListing(
     const capture = RawListingCaptureSchema.parse({
       id: rawListingId,
       source: envelope.source,
+      acquisitionMode: envelope.acquisitionMode,
       sourceListingId: envelope.sourceListingId,
       sourceUrl: envelope.sourceUrl,
       captureMethod: envelope.captureMethod,

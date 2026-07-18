@@ -147,6 +147,7 @@ function makeSourceFixture(options: SourceFixtureOptions): SourceFixture {
   const capture: RawListingCapture = {
     id: rawListingId,
     source: options.source,
+    acquisitionMode: "fixture",
     sourceListingId,
     sourceUrl,
     captureMethod: "fixture",
@@ -865,11 +866,13 @@ const redactionRules = [
 
 export const LOCAL_SOURCE_MANIFEST_FIXTURES = [
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     connectorId: "fixture.feed.v1",
     displayName: "Sanitized fixture feed",
     version: 1,
     source: "other",
+    acquisitionMode: "fixture",
+    policyState: "approved",
     enabled: true,
     execution: "manual",
     capabilities: ["fixture.read"],
@@ -894,11 +897,13 @@ export const LOCAL_SOURCE_MANIFEST_FIXTURES = [
     updatedAt: "2026-07-17T00:00:00.000Z"
   },
   {
-    schemaVersion: 1,
+    schemaVersion: 2,
     connectorId: "manual.capture.v1",
     displayName: "Manual listing capture",
     version: 1,
     source: "other",
+    acquisitionMode: "user_capture",
+    policyState: "user_triggered_only",
     enabled: true,
     execution: "manual",
     capabilities: ["manual.capture"],
@@ -930,11 +935,13 @@ export const DISABLED_SOURCE_MANIFEST_FIXTURES = [
   "craigslist",
   "apartments_com"
 ].map((source): SourcePolicyManifest => ({
-  schemaVersion: 1,
+  schemaVersion: 2,
   connectorId: `fixture-label-${source}`,
   displayName: "Sanitized source label",
   version: 1,
   source: source as ListingSourceLabel,
+  acquisitionMode: "fixture",
+  policyState: "disabled",
   enabled: false,
   execution: "manual",
   capabilities: [],

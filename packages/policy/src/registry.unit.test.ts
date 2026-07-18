@@ -9,6 +9,7 @@ import {
 
 const manualRequest = {
   connectorId: "manual.capture.v1",
+  acquisitionMode: "user_capture",
   capability: "manual.capture",
   execution: "manual",
   operation: "capture.user_supplied",
@@ -41,6 +42,7 @@ describe("SourcePolicyRegistry", () => {
     expect(
       registry.evaluate({
         connectorId: "fixture.feed.v1",
+        acquisitionMode: "fixture",
         capability: "fixture.read",
         execution: "manual",
         operation: "fixture.read_sanitized",
@@ -103,13 +105,50 @@ describe("SourcePolicyRegistry", () => {
     });
   });
 
+  it("enforces acquisition mode and policy state before capability checks", () => {
+    const registry = new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS);
+
+    expect(
+      registry.evaluate({
+        ...manualRequest,
+        acquisitionMode: "official_api",
+        capability: "fixture.read"
+      })
+    ).toMatchObject({
+      allowed: false,
+      reason: "acquisition_mode_mismatch"
+    });
+
+    const disabled = new SourcePolicyRegistry(
+      withManualManifest({ policyState: "disabled", enabled: false })
+    );
+    expect(disabled.evaluate({ ...manualRequest, capability: "fixture.read" })).toMatchObject({
+      allowed: false,
+      reason: "policy_state_disabled"
+    });
+
+    expect(registry.evaluate({ ...manualRequest, execution: "scheduled" })).toMatchObject({
+      allowed: false,
+      reason: "policy_state_disallows_execution"
+    });
+  });
+
   it("denies capability, execution, and operation mismatches", () => {
     const registry = new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS);
     expect(registry.evaluate({ ...manualRequest, capability: "fixture.read" })).toMatchObject({
       allowed: false,
       reason: "capability_not_allowed"
     });
-    expect(registry.evaluate({ ...manualRequest, execution: "scheduled" })).toMatchObject({
+    expect(
+      registry.evaluate({
+        ...manualRequest,
+        connectorId: "fixture.feed.v1",
+        acquisitionMode: "fixture",
+        capability: "fixture.read",
+        operation: "fixture.read_sanitized",
+        execution: "scheduled"
+      })
+    ).toMatchObject({
       allowed: false,
       reason: "execution_not_allowed"
     });
@@ -176,6 +215,10 @@ describe("SourcePolicyRegistry", () => {
 
     expect(
       registry.evaluate({ ...manualRequest, unexpected: true } as unknown as SourcePolicyRequest)
+    ).toMatchObject({ allowed: false, reason: "policy_error" });
+    const { acquisitionMode: _acquisitionMode, ...missingAcquisitionMode } = manualRequest;
+    expect(
+      registry.evaluate(missingAcquisitionMode as unknown as SourcePolicyRequest)
     ).toMatchObject({ allowed: false, reason: "policy_error" });
     expect(
       registry.evaluate({ ...manualRequest, connectorId: "   " } as SourcePolicyRequest)
@@ -254,6 +297,7 @@ describe("initial local manifests", () => {
     ]);
     for (const manifest of INITIAL_LOCAL_MANIFESTS) {
       expect(Object.isFrozen(manifest)).toBe(true);
+      expect(manifest.schemaVersion).toBe(2);
       expect(manifest.enabled).toBe(true);
       expect(manifest.execution).toBe("manual");
       expect(manifest.capabilities).toHaveLength(1);
@@ -265,5 +309,13 @@ describe("initial local manifests", () => {
       expect(manifest.requiresApproval).toBe(false);
       expect(manifest.maxConcurrency).toBe(1);
     }
+    expect(INITIAL_LOCAL_MANIFESTS[0]).toMatchObject({
+      acquisitionMode: "fixture",
+      policyState: "approved"
+    });
+    expect(INITIAL_LOCAL_MANIFESTS[1]).toMatchObject({
+      acquisitionMode: "user_capture",
+      policyState: "user_triggered_only"
+    });
   });
 });
