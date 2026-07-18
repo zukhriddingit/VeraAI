@@ -13,7 +13,8 @@
     "demo:seed": "node --import tsx scripts/demo-seed.ts",
     "demo": "node --import tsx scripts/demo-start.ts",
     "serve:e2e": "pnpm -r --parallel --stream --filter @vera/web --filter @vera/worker run serve:e2e",
-    "build": "pnpm -r --if-present run build",
+    "build": "pnpm -r --if-present run build && node scripts/build-railway-start.mjs",
+    "deploy:railway": "node dist/railway-start.mjs",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
     "format": "prettier --write .",
@@ -29,6 +30,9 @@
     "worker:noop": "pnpm --filter @vera/worker run noop",
     "worker:run-once": "pnpm --filter @vera/worker run run-once",
     "worker:start": "pnpm --filter @vera/worker run start"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",

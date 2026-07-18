@@ -1,6 +1,6 @@
 # Railway Offline Demo Deployment Design
 
-**Status:** Proposed for implementation review  
+**Status:** Approved for implementation on 2026-07-18  
 **Date:** 2026-07-18
 
 ## Goal

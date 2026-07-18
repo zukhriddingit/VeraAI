@@ -113,6 +113,17 @@ Safe wording:
 Do not say that Vera searched a live marketplace, logged into an account, contacted a landlord,
 verified a listing, detected fraud, sent a message, or scheduled a viewing.
 
+## Railway demo
+
+The public deployment is one fixture-only Railway service with one `/data` volume and one replica.
+Runtime startup validates the volume, forces `VERA_DEMO_MODE=1`, removes live-model configuration,
+migrates and idempotently seeds SQLite, then supervises the worker and web server. Missing or
+unexpected storage fails startup; there is no ephemeral database fallback.
+
+Build: `pnpm build`  
+Start: `pnpm deploy:railway`  
+Health: `/api/health`
+
 ## Known limitations and next steps
 
 - The profile is preconfigured and read-only for this deadline slice.

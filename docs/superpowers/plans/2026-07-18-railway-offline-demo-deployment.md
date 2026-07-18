@@ -553,6 +553,7 @@ git commit -m "feat: supervise Railway demo runtime"
 - Create: `railway.toml`
 - Create: `scripts/railway-config.unit.test.ts`
 - Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
 - Modify: `.gitignore`
 - Modify: `docs/DEMO_NOW.md`
 - Modify: `docs/superpowers/specs/2026-07-18-railway-offline-demo-deployment-design.md`
@@ -619,6 +620,10 @@ Change root scripts to:
 
 All existing scripts remain unchanged.
 
+Add root runtime dependency `"better-sqlite3": "12.11.1"`. The compiled bootstrap intentionally
+keeps the native addon external, so the root package must make it resolvable from
+`dist/railway-start.mjs`. Refresh `pnpm-lock.yaml` with `pnpm install --lockfile-only`.
+
 Add `.railway/` to `.gitignore` so account/project link metadata remains local and credentials can never be staged from that directory.
 
 - [ ] **Step 5: Document deployment and mark the approved spec**
@@ -654,7 +659,7 @@ Expected: exit 1 with only `{"event":"railway_start_failed","errorType":"Error"}
 - [ ] **Step 7: Commit deployment configuration**
 
 ```bash
-git add railway.toml package.json .gitignore scripts/railway-config.unit.test.ts docs/DEMO_NOW.md docs/superpowers/specs/2026-07-18-railway-offline-demo-deployment-design.md
+git add railway.toml package.json pnpm-lock.yaml .gitignore scripts/railway-config.unit.test.ts docs/DEMO_NOW.md docs/superpowers/specs/2026-07-18-railway-offline-demo-deployment-design.md docs/superpowers/plans/2026-07-18-railway-offline-demo-deployment.md
 git commit -m "feat: configure Railway offline demo"
 ```
 
