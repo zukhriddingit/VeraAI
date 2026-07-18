@@ -2,15 +2,17 @@ import { describe, expect, it } from "vitest";
 import { INITIAL_LOCAL_MANIFESTS, SourcePolicyRegistry } from "@vera/policy";
 
 import {
+  ConnectorOperationResultSchema,
   FixtureCaptureRequestSchema,
   ManualStructuredCaptureRequestSchema,
   ManualTextCaptureRequestSchema,
   RawListingEnvelopeSchema,
+  executeConnectorOperation,
   type CaptureRequest,
+  type CaptureSourceConnector,
   type ConnectorContext,
   type FixtureCaptureRequest,
-  type ManualCaptureRequest,
-  type SourceConnector
+  type ManualCaptureRequest
 } from "./contracts.ts";
 import {
   InvalidCaptureUrlError,
@@ -21,6 +23,8 @@ import { FixtureConnector } from "./fixture-connector.ts";
 import { ManualCaptureConnector } from "./manual-connector.ts";
 
 const NOW = new Date("2026-07-17T15:30:00.000Z");
+const PAYLOAD_HASH = "a".repeat(64);
+const IDEMPOTENCY_KEY = "b".repeat(64);
 
 function context(): ConnectorContext {
   let nextId = 0;
@@ -65,9 +69,10 @@ const manualStructuredRequest = ManualStructuredCaptureRequestSchema.parse({
 });
 
 function connectorContract<Request extends CaptureRequest>(input: {
-  connector: SourceConnector<Request>;
+  connector: CaptureSourceConnector<Request>;
   expectedId: string;
   expectedCapability: "fixture.read" | "manual.capture";
+  expectedAcquisitionMode: "fixture" | "user_capture";
   supported: Request;
   unsupported: CaptureRequest;
 }): void {
@@ -75,6 +80,15 @@ function connectorContract<Request extends CaptureRequest>(input: {
     it("has stable identity and supports only its own request kind", () => {
       expect(input.connector.connectorId).toBe(input.expectedId);
       expect(input.connector.capability).toBe(input.expectedCapability);
+      expect(input.connector.source).toBe("other");
+      expect(input.connector.acquisitionMode).toBe(input.expectedAcquisitionMode);
+      expect(input.connector.operations).toEqual(["capture"]);
+      expect(input.connector.cursorState).toBeNull();
+      expect(input.connector.policyRequirement).toMatchObject({
+        connectorId: input.expectedId,
+        acquisitionMode: input.expectedAcquisitionMode,
+        capability: input.expectedCapability
+      });
       expect(input.connector.supports(input.supported)).toBe(true);
       expect(input.connector.supports(input.unsupported)).toBe(false);
       expect(() =>
@@ -89,8 +103,36 @@ function connectorContract<Request extends CaptureRequest>(input: {
         networkAccess: false,
         untrustedContent: true
       });
+      expect(envelope.acquisitionMode).toBe(input.expectedAcquisitionMode);
       expect(envelope.observedAt).toBe(NOW.toISOString());
     });
+
+    it.each(["discover", "fetch_detail"] as const)(
+      "fails closed for unsupported %s without falling back to capture",
+      async (operation) => {
+        const result = await executeConnectorOperation(input.connector, {
+          operation,
+          correlationId: "correlation-1",
+          payloadHash: PAYLOAD_HASH,
+          idempotencyKey: IDEMPOTENCY_KEY,
+          completedAt: NOW.toISOString()
+        });
+
+        expect(ConnectorOperationResultSchema.parse(result)).toEqual(result);
+        expect(result).toMatchObject({
+          connectorId: input.expectedId,
+          source: "other",
+          acquisitionMode: input.expectedAcquisitionMode,
+          operation,
+          status: "unsupported_operation",
+          records: [],
+          recordCount: 0,
+          previousCursor: null,
+          cursorCandidate: null,
+          untrustedInput: true
+        });
+      }
+    );
 
     it("reports ready only when its exact no-network policy operation is authorized", () => {
       const health = input.connector.health(new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS));
@@ -108,6 +150,7 @@ connectorContract({
   connector: new FixtureConnector(),
   expectedId: "fixture.feed.v1",
   expectedCapability: "fixture.read",
+  expectedAcquisitionMode: "fixture",
   supported: fixtureRequest as FixtureCaptureRequest,
   unsupported: manualTextRequest
 });
@@ -116,11 +159,41 @@ connectorContract({
   connector: new ManualCaptureConnector(),
   expectedId: "manual.capture.v1",
   expectedCapability: "manual.capture",
+  expectedAcquisitionMode: "user_capture",
   supported: manualTextRequest as ManualCaptureRequest,
   unsupported: fixtureRequest
 });
 
 describe("FixtureConnector", () => {
+  it("returns the same strict idempotent result envelope for the same execution", async () => {
+    const connector = new FixtureConnector();
+    const execution = {
+      operation: "capture",
+      correlationId: "correlation-1",
+      payloadHash: PAYLOAD_HASH,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      completedAt: NOW.toISOString()
+    } as const;
+    const executionContext = {
+      connectorContext: context(),
+      captureRequest: fixtureRequest as FixtureCaptureRequest
+    };
+
+    const first = await executeConnectorOperation(connector, execution, executionContext);
+    const replay = await executeConnectorOperation(connector, execution, executionContext);
+
+    expect(first).toEqual(replay);
+    expect(first).toMatchObject({
+      status: "completed",
+      operation: "capture",
+      records: [{ acquisitionMode: "fixture" }],
+      recordCount: 1,
+      untrustedInput: true
+    });
+    expect(first.resultHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(() => ConnectorOperationResultSchema.parse({ ...first, recordCount: 0 })).toThrow();
+  });
+
   it("preserves sanitized structured evidence and its declared fixture source label", () => {
     const envelope = new FixtureConnector().capture(
       fixtureRequest as FixtureCaptureRequest,

@@ -4,12 +4,12 @@ import {
   ManualTextCaptureRequestSchema,
   RawListingEnvelopeSchema,
   type CaptureRequest,
+  type CaptureSourceConnector,
   type ConnectorContext,
   type ConnectorHealth,
   type ManualCaptureRequest,
   type ManualStructuredCaptureRequest,
-  type RawListingEnvelope,
-  type SourceConnector
+  type RawListingEnvelope
 } from "./contracts.ts";
 import type { SourcePolicyRegistry } from "@vera/policy";
 import {
@@ -95,10 +95,20 @@ function assertSourceMatchesUrl(
   }
 }
 
-export class ManualCaptureConnector implements SourceConnector<ManualCaptureRequest> {
+export class ManualCaptureConnector implements CaptureSourceConnector<ManualCaptureRequest> {
   readonly connectorId = MANUAL_CAPTURE_CONNECTOR_ID;
   readonly displayName = "Manual capture";
+  readonly source = "other" as const;
+  readonly acquisitionMode = "user_capture" as const;
   readonly capability = "manual.capture" as const;
+  readonly policyRequirement = {
+    connectorId: this.connectorId,
+    acquisitionMode: this.acquisitionMode,
+    capability: this.capability,
+    operation: "capture.user_supplied"
+  } as const;
+  readonly operations = ["capture"] as const;
+  readonly cursorState = null;
 
   supports(request: CaptureRequest): request is ManualCaptureRequest {
     return request.kind === "manual_text" || request.kind === "manual_structured";
@@ -111,6 +121,7 @@ export class ManualCaptureConnector implements SourceConnector<ManualCaptureRequ
       return RawListingEnvelopeSchema.parse({
         connectorId: this.connectorId,
         capability: this.capability,
+        acquisitionMode: this.acquisitionMode,
         source: classification.source,
         sourceListingId: null,
         sourceUrl: classification.canonicalUrl,
@@ -132,6 +143,7 @@ export class ManualCaptureConnector implements SourceConnector<ManualCaptureRequ
     return RawListingEnvelopeSchema.parse({
       connectorId: this.connectorId,
       capability: this.capability,
+      acquisitionMode: this.acquisitionMode,
       source: classification?.source ?? parsed.listing.source,
       sourceListingId: parsed.listing.sourceListingId ?? null,
       sourceUrl: classification?.canonicalUrl ?? null,
@@ -151,6 +163,7 @@ export class ManualCaptureConnector implements SourceConnector<ManualCaptureRequ
   health(registry: SourcePolicyRegistry): ConnectorHealth {
     const decision = registry.evaluate({
       connectorId: this.connectorId,
+      acquisitionMode: this.acquisitionMode,
       capability: this.capability,
       execution: "manual",
       operation: "capture.user_supplied",

@@ -75,6 +75,7 @@ function completeCapture(
     const envelope = RawListingEnvelopeSchema.parse({
       connectorId: metadata.connectorId,
       capability: metadata.capability,
+      acquisitionMode: raw.acquisitionMode,
       source: raw.source,
       sourceListingId: raw.sourceListingId,
       sourceUrl: raw.sourceUrl,

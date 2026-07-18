@@ -1,6 +1,10 @@
+import { createHash } from "node:crypto";
+
 import {
+  AcquisitionModeSchema,
   ConfidenceBasisPointsSchema,
   ContactChannelSchema,
+  ConnectorCursorSchema,
   ConnectorStatusSchema,
   EntityIdSchema,
   FieldExtractionMethodSchema,
@@ -14,9 +18,12 @@ import {
   ListingSourceRecordSchema,
   MoneyCentsSchema,
   NormalizationJobStateSchema,
+  Sha256Schema,
   SourceCapabilitySchema,
   UnknownFieldReasonSchema,
+  type AcquisitionMode,
   type ContactChannel,
+  type ConnectorCursor,
   type ConnectorStatus,
   type FieldExtractionMethod,
   type FieldProvenance,
@@ -142,6 +149,48 @@ export type ManualStructuredCaptureRequest = z.infer<typeof ManualStructuredCapt
 export type ManualCaptureRequest = ManualTextCaptureRequest | ManualStructuredCaptureRequest;
 export type CaptureRequest = z.infer<typeof CaptureRequestSchema>;
 
+export const ConnectorOperationSchema = z.enum(["discover", "capture", "fetch_detail"]);
+
+export const SourcePolicyRequirementSchema = z
+  .object({
+    connectorId: EntityIdSchema,
+    acquisitionMode: AcquisitionModeSchema,
+    capability: SourceCapabilitySchema,
+    operation: z.string().trim().min(1).max(160)
+  })
+  .strict();
+
+export const ConnectorDiscoveryRequestSchema = z
+  .object({
+    sourceConfigurationId: EntityIdSchema,
+    cursor: ConnectorCursorSchema.nullable()
+  })
+  .strict();
+
+export const ConnectorFetchDetailRequestSchema = z
+  .object({
+    sourceListingId: z.string().trim().min(1).max(200)
+  })
+  .strict();
+
+export const ConnectorOperationExecutionRequestSchema = z
+  .object({
+    operation: ConnectorOperationSchema,
+    correlationId: EntityIdSchema,
+    payloadHash: Sha256Schema,
+    idempotencyKey: Sha256Schema,
+    completedAt: IsoDateTimeSchema
+  })
+  .strict();
+
+export type ConnectorOperation = z.infer<typeof ConnectorOperationSchema>;
+export type SourcePolicyRequirement = z.infer<typeof SourcePolicyRequirementSchema>;
+export type ConnectorDiscoveryRequest = z.infer<typeof ConnectorDiscoveryRequestSchema>;
+export type ConnectorFetchDetailRequest = z.infer<typeof ConnectorFetchDetailRequestSchema>;
+export type ConnectorOperationExecutionRequest = z.infer<
+  typeof ConnectorOperationExecutionRequestSchema
+>;
+
 export const BrowserAccessDispositionSchema = z.enum([
   "policy_entry_present",
   "manual_policy_required",
@@ -161,6 +210,7 @@ export const CaptureMetadataSchema = z
 export interface RawListingEnvelope {
   readonly connectorId: string;
   readonly capability: "fixture.read" | "manual.capture";
+  readonly acquisitionMode: AcquisitionMode;
   readonly source: ListingSourceLabel;
   readonly sourceListingId: string | null;
   readonly sourceUrl: string | null;
@@ -180,6 +230,7 @@ export const RawListingEnvelopeSchema: z.ZodType<RawListingEnvelope> = z
   .object({
     connectorId: EntityIdSchema,
     capability: SourceCapabilitySchema.extract(["fixture.read", "manual.capture"]),
+    acquisitionMode: AcquisitionModeSchema,
     source: ListingSourceLabelSchema,
     sourceListingId: z.string().trim().min(1).max(200).nullable(),
     sourceUrl: z.string().url().max(2_048).nullable(),
@@ -199,7 +250,69 @@ export const RawListingEnvelopeSchema: z.ZodType<RawListingEnvelope> = z
         message: "A raw listing envelope requires text or structured evidence."
       });
     }
+    const expectedMode = envelope.captureMethod === "fixture" ? "fixture" : "user_capture";
+    if (envelope.acquisitionMode !== expectedMode) {
+      context.addIssue({
+        code: "custom",
+        path: ["acquisitionMode"],
+        message: "Raw envelope acquisition mode must match its capture method."
+      });
+    }
   });
+
+export const ConnectorOperationResultSchema = z
+  .object({
+    connectorId: EntityIdSchema,
+    source: ListingSourceLabelSchema,
+    acquisitionMode: AcquisitionModeSchema,
+    operation: ConnectorOperationSchema,
+    status: z.enum(["completed", "unsupported_operation", "failed"]),
+    correlationId: EntityIdSchema,
+    payloadHash: Sha256Schema,
+    idempotencyKey: Sha256Schema,
+    resultHash: Sha256Schema,
+    records: z.array(RawListingEnvelopeSchema).max(200),
+    recordCount: z.number().int().nonnegative().max(200),
+    previousCursor: ConnectorCursorSchema.nullable(),
+    cursorCandidate: ConnectorCursorSchema.nullable(),
+    completedAt: IsoDateTimeSchema,
+    untrustedInput: z.literal(true)
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.recordCount !== result.records.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["recordCount"],
+        message: "Connector result count must match its records."
+      });
+    }
+    if (
+      result.records.some(
+        (record) =>
+          record.connectorId !== result.connectorId ||
+          record.acquisitionMode !== result.acquisitionMode
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["records"],
+        message: "Connector result records must retain connector and acquisition-mode identity."
+      });
+    }
+    if (
+      result.status !== "completed" &&
+      (result.records.length > 0 || result.cursorCandidate !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["records"],
+        message: "Non-success connector results cannot contain records or a cursor candidate."
+      });
+    }
+  });
+
+export type ConnectorOperationResult = z.infer<typeof ConnectorOperationResultSchema>;
 
 export const NormalizationStateSchema = NormalizationJobStateSchema;
 
@@ -246,13 +359,162 @@ export interface ConnectorContext {
   createId(): string;
 }
 
-export interface SourceConnector<Request extends CaptureRequest = CaptureRequest> {
+export interface ConnectorOperationExecutionContext {
+  readonly connectorContext: ConnectorContext;
+  readonly discoveryRequest?: ConnectorDiscoveryRequest;
+  readonly captureRequest?: CaptureRequest;
+  readonly fetchDetailRequest?: ConnectorFetchDetailRequest;
+}
+
+export interface SourceConnector {
   readonly connectorId: string;
   readonly displayName: string;
-  readonly capability: "fixture.read" | "manual.capture";
+  readonly source: ListingSourceLabel;
+  readonly acquisitionMode: AcquisitionMode;
+  readonly capability: SourceCapability;
+  readonly policyRequirement: SourcePolicyRequirement;
+  readonly operations: readonly ConnectorOperation[];
+  readonly cursorState: ConnectorCursor | null;
+  discover?(
+    request: ConnectorDiscoveryRequest,
+    context: ConnectorContext
+  ): Promise<readonly RawListingEnvelope[]>;
+  capture?(
+    request: CaptureRequest,
+    context: ConnectorContext
+  ): RawListingEnvelope | Promise<RawListingEnvelope>;
+  fetchDetail?(
+    request: ConnectorFetchDetailRequest,
+    context: ConnectorContext
+  ): Promise<RawListingEnvelope>;
+  health(registry: SourcePolicyRegistry): ConnectorHealth;
+}
+
+export interface CaptureSourceConnector<
+  Request extends CaptureRequest = CaptureRequest
+> extends SourceConnector {
   supports(request: CaptureRequest): request is Request;
   capture(request: Request, context: ConnectorContext): RawListingEnvelope;
-  health(registry: SourcePolicyRegistry): ConnectorHealth;
+}
+
+function canonicalize(value: unknown): unknown {
+  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (Array.isArray(value)) return value.map((entry) => canonicalize(entry));
+  if (typeof value === "object") {
+    const source = value as Readonly<Record<string, unknown>>;
+    const result: Record<string, unknown> = {};
+    for (const key of Object.keys(source).sort()) {
+      const entry = source[key];
+      if (entry !== undefined) result[key] = canonicalize(entry);
+    }
+    return result;
+  }
+  throw new TypeError("Connector result hashing accepts only JSON-compatible values.");
+}
+
+function resultHash(body: Readonly<Record<string, unknown>>): string {
+  return createHash("sha256")
+    .update(`connector-operation-result:v1:${JSON.stringify(canonicalize(body))}`, "utf8")
+    .digest("hex");
+}
+
+function operationImplemented(connector: SourceConnector, operation: ConnectorOperation): boolean {
+  switch (operation) {
+    case "discover":
+      return connector.discover !== undefined;
+    case "capture":
+      return connector.capture !== undefined;
+    case "fetch_detail":
+      return connector.fetchDetail !== undefined;
+  }
+}
+
+function operationResult(
+  connector: SourceConnector,
+  request: ConnectorOperationExecutionRequest,
+  status: ConnectorOperationResult["status"],
+  records: readonly RawListingEnvelope[],
+  previousCursor: ConnectorCursor | null,
+  cursorCandidate: ConnectorCursor | null
+): ConnectorOperationResult {
+  const body = {
+    connectorId: connector.connectorId,
+    source: connector.source,
+    acquisitionMode: connector.acquisitionMode,
+    operation: request.operation,
+    status,
+    correlationId: request.correlationId,
+    payloadHash: request.payloadHash,
+    idempotencyKey: request.idempotencyKey,
+    records: records.map((record) => RawListingEnvelopeSchema.parse(record)),
+    recordCount: records.length,
+    previousCursor,
+    cursorCandidate,
+    completedAt: request.completedAt,
+    untrustedInput: true as const
+  };
+  return ConnectorOperationResultSchema.parse({ ...body, resultHash: resultHash(body) });
+}
+
+export async function executeConnectorOperation(
+  connector: SourceConnector,
+  requestInput: ConnectorOperationExecutionRequest,
+  context?: ConnectorOperationExecutionContext
+): Promise<ConnectorOperationResult> {
+  const request = ConnectorOperationExecutionRequestSchema.parse(requestInput);
+  const previousCursor =
+    connector.cursorState === null ? null : ConnectorCursorSchema.parse(connector.cursorState);
+  if (
+    !connector.operations.includes(request.operation) ||
+    !operationImplemented(connector, request.operation)
+  ) {
+    return operationResult(connector, request, "unsupported_operation", [], previousCursor, null);
+  }
+
+  try {
+    if (context === undefined) throw new TypeError("Connector execution context is required.");
+
+    let records: readonly RawListingEnvelope[];
+    switch (request.operation) {
+      case "discover": {
+        if (context.discoveryRequest === undefined || connector.discover === undefined) {
+          throw new TypeError("Connector discovery input is required.");
+        }
+        const discovery = ConnectorDiscoveryRequestSchema.parse(context.discoveryRequest);
+        records = await connector.discover(discovery, context.connectorContext);
+        break;
+      }
+      case "capture": {
+        if (context.captureRequest === undefined || connector.capture === undefined) {
+          throw new TypeError("Connector capture input is required.");
+        }
+        const capture = CaptureRequestSchema.parse(context.captureRequest);
+        records = [await connector.capture(capture, context.connectorContext)];
+        break;
+      }
+      case "fetch_detail": {
+        if (context.fetchDetailRequest === undefined || connector.fetchDetail === undefined) {
+          throw new TypeError("Connector detail input is required.");
+        }
+        const detail = ConnectorFetchDetailRequestSchema.parse(context.fetchDetailRequest);
+        records = [await connector.fetchDetail(detail, context.connectorContext)];
+        break;
+      }
+    }
+
+    const cursorCandidate = connector.cursorState;
+    return operationResult(
+      connector,
+      request,
+      "completed",
+      records,
+      previousCursor,
+      cursorCandidate === null ? null : ConnectorCursorSchema.parse(cursorCandidate)
+    );
+  } catch {
+    return operationResult(connector, request, "failed", [], previousCursor, null);
+  }
 }
 
 export interface KnownNormalizedField<T> {

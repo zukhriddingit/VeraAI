@@ -8,6 +8,7 @@ import { buildListingEvidence } from "./listing-evidence.ts";
 const baseEnvelope = {
   connectorId: "manual.capture.v1",
   capability: "manual.capture",
+  acquisitionMode: "user_capture",
   source: "other",
   sourceListingId: null,
   sourceUrl: null,

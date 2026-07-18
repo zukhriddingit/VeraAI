@@ -3,11 +3,11 @@ import {
   FixtureCaptureRequestSchema,
   RawListingEnvelopeSchema,
   type CaptureRequest,
+  type CaptureSourceConnector,
   type ConnectorContext,
   type ConnectorHealth,
   type FixtureCaptureRequest,
-  type RawListingEnvelope,
-  type SourceConnector
+  type RawListingEnvelope
 } from "./contracts.ts";
 import type { SourcePolicyRegistry } from "@vera/policy";
 import {
@@ -55,10 +55,20 @@ function observedAt(context: ConnectorContext): string {
   return now.toISOString();
 }
 
-export class FixtureConnector implements SourceConnector<FixtureCaptureRequest> {
+export class FixtureConnector implements CaptureSourceConnector<FixtureCaptureRequest> {
   readonly connectorId = FIXTURE_CONNECTOR_ID;
   readonly displayName = "Sanitized fixture feed";
+  readonly source = "other" as const;
+  readonly acquisitionMode = "fixture" as const;
   readonly capability = "fixture.read" as const;
+  readonly policyRequirement = {
+    connectorId: this.connectorId,
+    acquisitionMode: this.acquisitionMode,
+    capability: this.capability,
+    operation: "fixture.read_sanitized"
+  } as const;
+  readonly operations = ["capture"] as const;
+  readonly cursorState = null;
 
   supports(request: CaptureRequest): request is FixtureCaptureRequest {
     return request.kind === "fixture";
@@ -83,6 +93,7 @@ export class FixtureConnector implements SourceConnector<FixtureCaptureRequest> 
     return RawListingEnvelopeSchema.parse({
       connectorId: this.connectorId,
       capability: this.capability,
+      acquisitionMode: this.acquisitionMode,
       source: parsed.listing.source,
       sourceListingId: parsed.listing.sourceListingId ?? null,
       sourceUrl,
@@ -102,6 +113,7 @@ export class FixtureConnector implements SourceConnector<FixtureCaptureRequest> 
   health(registry: SourcePolicyRegistry): ConnectorHealth {
     const decision = registry.evaluate({
       connectorId: this.connectorId,
+      acquisitionMode: this.acquisitionMode,
       capability: this.capability,
       execution: "manual",
       operation: "fixture.read_sanitized",

@@ -1,11 +1,15 @@
-import { FixtureConnector, ManualCaptureConnector, type SourceConnector } from "@vera/connectors";
+import {
+  FixtureConnector,
+  ManualCaptureConnector,
+  type CaptureSourceConnector
+} from "@vera/connectors";
 import type { VeraRepositories } from "@vera/db/runtime";
 import { SourcePolicyRegistry } from "@vera/policy";
 
 const connectors = Object.freeze([
   new FixtureConnector(),
   new ManualCaptureConnector()
-]) satisfies readonly SourceConnector[];
+]) satisfies readonly CaptureSourceConnector[];
 
 function activeKillSwitches(environment: NodeJS.ProcessEnv): ReadonlySet<string> {
   return new Set(
@@ -16,7 +20,7 @@ function activeKillSwitches(environment: NodeJS.ProcessEnv): ReadonlySet<string>
   );
 }
 
-export function listSourceConnectors(): readonly SourceConnector[] {
+export function listSourceConnectors(): readonly CaptureSourceConnector[] {
   return connectors;
 }
 

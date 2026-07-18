@@ -8,8 +8,8 @@ import {
   UnsupportedSourceError,
   isConnectorError,
   type CaptureRequest,
-  type ConnectorContext,
-  type SourceConnector
+  type CaptureSourceConnector,
+  type ConnectorContext
 } from "@vera/connectors";
 import { canonicalJson, sha256Text, type VeraRepositories } from "@vera/db/runtime";
 import {
@@ -35,7 +35,7 @@ import type { SourcePolicyRegistry } from "@vera/policy";
 
 export interface CaptureServiceDependencies {
   readonly repositories: VeraRepositories;
-  readonly connectors: readonly SourceConnector[];
+  readonly connectors: readonly CaptureSourceConnector[];
   readonly policyRegistry: SourcePolicyRegistry;
   now(): Date;
   createId(): string;
@@ -350,9 +350,9 @@ function parseCaptureRequest(input: unknown, correlationId: string): CaptureRequ
 
 function selectConnector(
   request: CaptureRequest,
-  connectors: readonly SourceConnector[],
+  connectors: readonly CaptureSourceConnector[],
   correlationId: string
-): SourceConnector {
+): CaptureSourceConnector {
   const connector = connectors.find((candidate) => candidate.supports(request));
 
   if (!connector) {
