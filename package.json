@@ -1,0 +1,47 @@
+{
+  "name": "vera",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.14.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm -r --parallel --stream --filter @vera/web --filter @vera/worker run dev",
+    "demo:reset": "node --import tsx scripts/demo-reset.ts",
+    "demo:seed": "node --import tsx scripts/demo-seed.ts",
+    "demo": "node --import tsx scripts/demo-start.ts",
+    "serve:e2e": "pnpm -r --parallel --stream --filter @vera/web --filter @vera/worker run serve:e2e",
+    "build": "pnpm -r --if-present run build",
+    "lint": "eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "pnpm run test:unit && pnpm run test:integration && pnpm run test:e2e",
+    "test:unit": "vitest run --project unit",
+    "test:integration": "vitest run --project integration",
+    "test:e2e": "playwright test",
+    "db:generate": "pnpm --filter @vera/db run db:generate",
+    "db:migrate": "pnpm --filter @vera/db run db:migrate",
+    "db:seed": "pnpm --filter @vera/db run db:seed",
+    "worker:health": "pnpm --filter @vera/worker run health",
+    "worker:noop": "pnpm --filter @vera/worker run noop",
+    "worker:run-once": "pnpm --filter @vera/worker run run-once",
+    "worker:start": "pnpm --filter @vera/worker run start"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.61.1",
+    "@types/node": "24.13.3",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitest/coverage-v8": "4.1.10",
+    "esbuild": "0.28.1",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.2.10",
+    "prettier": "3.9.5",
+    "tsx": "4.23.1",
+    "typescript": "6.0.3",
+    "vitest": "4.1.10"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "@vera/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./fixtures": "./src/fixtures.ts",
+    "./runtime": "./src/runtime.ts"
+  },
+  "scripts": {
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "db:migrate": "node --import tsx src/migrate-cli.ts",
+    "db:seed": "node --import tsx src/seed-cli.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@vera/domain": "workspace:*",
+    "better-sqlite3": "12.11.1",
+    "drizzle-orm": "0.45.2"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "7.6.13",
+    "drizzle-kit": "0.31.10"
+  }
+}

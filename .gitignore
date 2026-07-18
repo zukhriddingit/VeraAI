@@ -1,0 +1,40 @@
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local databases and application data
+.data/
+data/
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+
+# OAuth, browser, and downloaded content
+.auth/
+oauth-tokens/
+browser-profiles/
+cookies/
+downloads/
+
+# Test and browser artifacts
+blob-report/
+playwright-report/
+test-results/
+
+# Logs and operating-system files
+*.log
+.DS_Store
