@@ -1,3 +1,4 @@
+export * from "./browser-execution.ts";
 export * from "./contracts.ts";
 export * from "./deterministic-extraction.ts";
 export * from "./errors.ts";
