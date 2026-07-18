@@ -13,6 +13,7 @@ import {
   PercentageBasisPointsSchema,
   Sha256Schema
 } from "./primitives.ts";
+import { AcquisitionModeSchema } from "./source-policy.ts";
 
 export const ListingLifecycleStateSchema = z.enum([
   "new",
@@ -75,6 +76,7 @@ export const RawListingCaptureSchema = z
   .object({
     id: EntityIdSchema,
     source: ListingSourceLabelSchema,
+    acquisitionMode: AcquisitionModeSchema,
     sourceListingId: z.string().trim().min(1).max(200).nullable(),
     sourceUrl: z.string().url().max(2_048).nullable(),
     captureMethod: ListingCaptureMethodSchema,
@@ -91,6 +93,15 @@ export const RawListingCaptureSchema = z
         code: "custom",
         path: ["rawText"],
         message: "A raw listing requires raw text or raw JSON evidence."
+      });
+    }
+
+    const expectedMode = capture.captureMethod === "fixture" ? "fixture" : "user_capture";
+    if (capture.acquisitionMode !== expectedMode) {
+      context.addIssue({
+        code: "custom",
+        path: ["acquisitionMode"],
+        message: "Raw-listing acquisition mode must match its capture method."
       });
     }
   });

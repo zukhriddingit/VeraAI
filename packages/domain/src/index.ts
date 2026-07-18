@@ -12,4 +12,5 @@ export * from "./listing.ts";
 export * from "./primitives.ts";
 export * from "./search-profile.ts";
 export * from "./source-policy.ts";
+export * from "./source-orchestration.ts";
 export * from "./workflows.ts";

@@ -15,6 +15,22 @@ export const SourceCapabilitySchema = z.enum([
 ]);
 
 export const SourceExecutionSchema = z.enum(["manual", "scheduled"]);
+export const ProductionAcquisitionModeSchema = z.enum([
+  "official_api",
+  "email_alert",
+  "local_browser",
+  "user_capture"
+]);
+export const AcquisitionModeSchema = z.enum([
+  ...ProductionAcquisitionModeSchema.options,
+  "fixture"
+]);
+export const SourcePolicyStateSchema = z.enum([
+  "approved",
+  "user_triggered_only",
+  "experimental_personal",
+  "disabled"
+]);
 export const SourceHttpMethodSchema = z.enum(["GET", "POST", "PUT", "PATCH", "DELETE"]);
 export const SourceDataClassificationSchema = z.enum(["synthetic", "user_supplied", "third_party"]);
 export const SourceRedactionRuleSchema = z.enum([
@@ -60,11 +76,13 @@ const UniqueOperationsSchema = z
 
 export const SourcePolicyManifestSchema = z
   .object({
-    schemaVersion: z.literal(1),
+    schemaVersion: z.literal(2),
     connectorId: z.string().trim().min(1).max(120),
     displayName: z.string().trim().min(1).max(160),
     version: z.number().int().positive(),
     source: ListingSourceLabelSchema,
+    acquisitionMode: AcquisitionModeSchema,
+    policyState: SourcePolicyStateSchema,
     enabled: z.boolean(),
     execution: SourceExecutionSchema,
     capabilities: UniqueCapabilitiesSchema,
@@ -120,10 +138,48 @@ export const SourcePolicyManifestSchema = z
         message: "Scheduled manifests require a minimum interval."
       });
     }
+
+    if (manifest.acquisitionMode === "fixture" && manifest.dataClassification !== "synthetic") {
+      context.addIssue({
+        code: "custom",
+        path: ["dataClassification"],
+        message: "Fixture acquisition requires synthetic data classification."
+      });
+    }
+
+    if (manifest.policyState === "disabled" && manifest.enabled) {
+      context.addIssue({
+        code: "custom",
+        path: ["enabled"],
+        message: "Disabled policy manifests cannot be runtime-enabled."
+      });
+    }
+
+    if (manifest.policyState === "user_triggered_only" && manifest.execution !== "manual") {
+      context.addIssue({
+        code: "custom",
+        path: ["execution"],
+        message: "User-triggered-only manifests require manual execution."
+      });
+    }
+
+    if (
+      manifest.policyState === "experimental_personal" &&
+      manifest.acquisitionMode !== "local_browser"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["acquisitionMode"],
+        message: "Experimental personal policy is reserved for local-browser acquisition."
+      });
+    }
   });
 
 export type SourceCapability = z.infer<typeof SourceCapabilitySchema>;
 export type SourceExecution = z.infer<typeof SourceExecutionSchema>;
+export type ProductionAcquisitionMode = z.infer<typeof ProductionAcquisitionModeSchema>;
+export type AcquisitionMode = z.infer<typeof AcquisitionModeSchema>;
+export type SourcePolicyState = z.infer<typeof SourcePolicyStateSchema>;
 export type SourceHttpMethod = z.infer<typeof SourceHttpMethodSchema>;
 export type SourceDataClassification = z.infer<typeof SourceDataClassificationSchema>;
 export type SourceRedactionRule = z.infer<typeof SourceRedactionRuleSchema>;

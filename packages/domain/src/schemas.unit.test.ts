@@ -43,6 +43,7 @@ const petPolicy = {
 const validRawListing = {
   id: "raw-zillow-juniper",
   source: "zillow",
+  acquisitionMode: "fixture",
   sourceListingId: "fixture-z-001",
   sourceUrl: "https://example.invalid/fixtures/zillow/juniper",
   captureMethod: "fixture",
@@ -279,11 +280,13 @@ describe("strict Vera domain schemas", () => {
 
     expect(
       SourcePolicyManifestSchema.parse({
-        schemaVersion: 1,
+        schemaVersion: 2,
         connectorId: "zillow.disabled.v1",
         displayName: "Disabled Zillow connector",
         version: 1,
         source: "zillow",
+        acquisitionMode: "local_browser",
+        policyState: "disabled",
         enabled: false,
         execution: "manual",
         capabilities: [],
@@ -331,6 +334,9 @@ describe("strict Vera domain schemas", () => {
     ).toThrow();
     expect(() =>
       RawListingSchema.parse({ ...validRawListing, rawText: null, rawJson: null })
+    ).toThrow();
+    expect(() =>
+      RawListingSchema.parse({ ...validRawListing, acquisitionMode: "official_api" })
     ).toThrow();
   });
 
@@ -404,11 +410,13 @@ describe("strict Vera domain schemas", () => {
 
   it("keeps source manifests strict, closed, and schedulable only with a rate limit", () => {
     const manifest = {
-      schemaVersion: 1,
+      schemaVersion: 2,
       connectorId: "structured-feed.v1",
       displayName: "Structured feed",
       version: 1,
       source: "other",
+      acquisitionMode: "official_api",
+      policyState: "disabled",
       enabled: false,
       execution: "scheduled",
       capabilities: ["structured_feed.read"],
@@ -433,7 +441,7 @@ describe("strict Vera domain schemas", () => {
       updatedAt: now
     } as const;
 
-    expect(SourcePolicyManifestSchema.parse(manifest).schemaVersion).toBe(1);
+    expect(SourcePolicyManifestSchema.parse(manifest).schemaVersion).toBe(2);
     expect(() =>
       SourcePolicyManifestSchema.parse({ ...manifest, capabilities: ["arbitrary.fetch"] })
     ).toThrow();
@@ -450,6 +458,67 @@ describe("strict Vera domain schemas", () => {
       })
     ).toThrow();
     expect(() => SourcePolicyManifestSchema.parse({ ...manifest, unexpected: true })).toThrow();
+  });
+
+  it("keeps policy state independent while enforcing its fail-closed ceiling", () => {
+    const base = {
+      schemaVersion: 2,
+      connectorId: "policy-test.v1",
+      displayName: "Policy test",
+      version: 1,
+      source: "other",
+      acquisitionMode: "official_api",
+      policyState: "approved",
+      enabled: true,
+      execution: "manual",
+      capabilities: ["structured_feed.read"],
+      allowedOperations: ["feed.read"],
+      allowedDomains: [],
+      allowedOrigins: [],
+      allowedHttpMethods: [],
+      requiresUserSession: false,
+      requiresApproval: false,
+      minimumIntervalSeconds: null,
+      maxConcurrency: 1,
+      globalKillSwitchKey: "integrations.disabled",
+      connectorKillSwitchKey: "connectors.policy-test.disabled",
+      dataClassification: "third_party",
+      redactionRules: ["raw_content_from_logs"],
+      manualBlockerBehavior: "stop_and_request_user_action",
+      owner: "Vera maintainers",
+      reviewedAt: "2026-07-18",
+      decisionRecord: "docs/DECISIONS/0007-maritime-openclaw-contract-boundaries.md",
+      notes: "Strict synthetic policy test only.",
+      createdAt: now,
+      updatedAt: now
+    } as const;
+
+    expect(SourcePolicyManifestSchema.parse(base).policyState).toBe("approved");
+    expect(() =>
+      SourcePolicyManifestSchema.parse({ ...base, policyState: "disabled", enabled: true })
+    ).toThrow();
+    expect(() =>
+      SourcePolicyManifestSchema.parse({
+        ...base,
+        policyState: "user_triggered_only",
+        execution: "scheduled",
+        minimumIntervalSeconds: 900
+      })
+    ).toThrow();
+    expect(() =>
+      SourcePolicyManifestSchema.parse({
+        ...base,
+        policyState: "experimental_personal",
+        acquisitionMode: "official_api"
+      })
+    ).toThrow();
+    expect(() =>
+      SourcePolicyManifestSchema.parse({
+        ...base,
+        acquisitionMode: "fixture",
+        dataClassification: "third_party"
+      })
+    ).toThrow();
   });
 
   it("exports the complete extraction boundary with explicit unknown values", () => {
