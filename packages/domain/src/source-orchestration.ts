@@ -66,8 +66,49 @@ export const BrowserCaptureLimitsSchema = z
 
 const SafeBrowserUrlPattern =
   /^https?:\/\/((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63})(?:[/?][^\s#]*)?$/iu;
-const SensitiveUrlQueryPattern =
-  /[?&](?:password|passwd|token|access_token|authorization|cookie|session|secret|api_key)=/iu;
+const SensitiveUrlQueryKeys = new Set([
+  "password",
+  "passwd",
+  "pass",
+  "pwd",
+  "token",
+  "access_token",
+  "refresh_token",
+  "authorization",
+  "auth",
+  "secret",
+  "api_key",
+  "apikey",
+  "cookie",
+  "session",
+  "sessionid"
+]);
+
+function validateBrowserUrlQuery(value: string): "invalid_encoding" | "sensitive_key" | null {
+  const queryStart = value.indexOf("?");
+  if (queryStart === -1) {
+    return null;
+  }
+
+  const query = value.slice(queryStart + 1);
+  try {
+    // Some URL parsers replace malformed escapes instead of rejecting them, so validate first.
+    decodeURIComponent(query.replace(/\+/gu, "%20"));
+  } catch {
+    return "invalid_encoding";
+  }
+
+  for (const parameter of query.split("&")) {
+    const separatorIndex = parameter.indexOf("=");
+    const encodedKey = separatorIndex === -1 ? parameter : parameter.slice(0, separatorIndex);
+    const key = decodeURIComponent(encodedKey.replace(/\+/gu, "%20")).trim().toLowerCase();
+    if (SensitiveUrlQueryKeys.has(key)) {
+      return "sensitive_key";
+    }
+  }
+
+  return null;
+}
 
 export const SafeBrowserUrlSchema = z
   .string()
@@ -82,7 +123,14 @@ export const SafeBrowserUrlSchema = z
           "Browser URLs require HTTP(S), an exact public DNS hostname, and no credentials, ports, or fragments."
       });
     }
-    if (SensitiveUrlQueryPattern.test(value)) {
+    const queryValidation = validateBrowserUrlQuery(value);
+    if (queryValidation === "invalid_encoding") {
+      context.addIssue({
+        code: "custom",
+        message: "Browser URL query strings must use valid percent encoding."
+      });
+    }
+    if (queryValidation === "sensitive_key") {
       context.addIssue({
         code: "custom",
         message: "Browser URLs cannot carry credential-like query parameters."

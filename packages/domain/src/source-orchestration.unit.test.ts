@@ -171,12 +171,30 @@ describe("source job payload schemas", () => {
       "http://localhost/saved-search",
       "http://127.0.0.1/saved-search",
       "file:///tmp/browser-profile",
-      "https://www.zillow.com/homes/for_rent/?access_token=must-reject"
+      "https://www.zillow.com/homes/for_rent/?access_token=must-reject",
+      "https://www.zillow.com/homes/for_rent/?PaSsWoRd=must-reject",
+      "https://www.zillow.com/homes/for_rent/?%61uth=must-reject",
+      "https://www.zillow.com/homes/for_rent/?refresh%5Ftoken=must-reject",
+      "https://www.zillow.com/homes/for_rent/?API%5FKEY=must-reject",
+      "https://www.zillow.com/homes/for_rent/?SESSIONID=must-reject",
+      "https://www.zillow.com/homes/for_rent/?searchQueryState=%E0%A4%A"
     ]) {
       expect(() =>
         SourceJobPayloadSchema.parse({ ...browserPayload, savedSearchUrl: unsafeUrl })
       ).toThrow();
     }
+
+    const safeSavedSearchUrl =
+      "https://www.zillow.com/homes/for_rent/?searchQueryState=cambridge&beds=2&authentic=true&sessionType=map";
+    expect(
+      SourceJobPayloadSchema.parse({
+        ...browserPayload,
+        savedSearchUrl: safeSavedSearchUrl
+      })
+    ).toMatchObject({
+      acquisitionMode: "local_browser",
+      savedSearchUrl: safeSavedSearchUrl
+    });
   });
 });
 

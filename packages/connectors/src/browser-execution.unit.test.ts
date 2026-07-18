@@ -104,6 +104,46 @@ describe("browser execution request schemas", () => {
     }
   });
 
+  it("rejects decoded credential-like query keys in navigation and capture requests", () => {
+    for (const targetUrl of [
+      "https://www.zillow.com/homes/for_rent/?PASSWORD=must-reject",
+      "https://www.zillow.com/homes/for_rent/?%70asswd=must-reject",
+      "https://www.zillow.com/homes/for_rent/?access%5Ftoken=must-reject",
+      "https://www.zillow.com/homes/for_rent/?Refresh_Token=must-reject",
+      "https://www.zillow.com/homes/for_rent/?api%5Fkey=must-reject",
+      "https://www.zillow.com/homes/for_rent/?Cookie=must-reject",
+      "https://www.zillow.com/homes/for_rent/?session%69d=must-reject",
+      "https://www.zillow.com/homes/for_rent/?%20SeCrEt%20=must-reject",
+      "https://www.zillow.com/homes/for_rent/?beds=%E0%A4%A"
+    ]) {
+      const request = {
+        ...validNavigation,
+        targetUrl,
+        allowedUrls: [targetUrl]
+      };
+
+      expect(() => BrowserNavigationRequestSchema.parse(request)).toThrow();
+      expect(() =>
+        BrowserCaptureRequestSchema.parse({ ...request, committedCursor: null })
+      ).toThrow();
+    }
+  });
+
+  it("allows legitimate saved-search query keys without substring overmatching", () => {
+    const targetUrl =
+      "https://www.zillow.com/homes/for_rent/?searchQueryState=cambridge&beds=2&authentic=true&sessionType=map";
+    const request = {
+      ...validNavigation,
+      targetUrl,
+      allowedUrls: [targetUrl]
+    };
+
+    expect(BrowserNavigationRequestSchema.parse(request)).toEqual(request);
+    expect(BrowserCaptureRequestSchema.parse({ ...request, committedCursor: null }).targetUrl).toBe(
+      targetUrl
+    );
+  });
+
   it("requires a correlation ID on strict heartbeat requests", () => {
     expect(
       BrowserHeartbeatRequestSchema.parse({
