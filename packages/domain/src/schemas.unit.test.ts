@@ -357,6 +357,44 @@ describe("strict Vera domain schemas", () => {
     expect(ListingSourceLabelSchema.parse("other")).toBe("other");
     expect(ListingCaptureMethodSchema.parse("manual_text")).toBe("manual_text");
     expect(ListingCaptureMethodSchema.parse("manual_structured")).toBe("manual_structured");
+    expect(ListingCaptureMethodSchema.parse("official_api")).toBe("official_api");
+    expect(ListingCaptureMethodSchema.parse("email_alert")).toBe("email_alert");
+    expect(ListingCaptureMethodSchema.parse("local_browser")).toBe("local_browser");
+  });
+
+  it.each([
+    ["fixture", "fixture"],
+    ["manual_text", "user_capture"],
+    ["manual_structured", "user_capture"],
+    ["official_api", "official_api"],
+    ["email_alert", "email_alert"],
+    ["local_browser", "local_browser"]
+  ] as const)("requires %s captures to use %s acquisition", (captureMethod, acquisitionMode) => {
+    expect(
+      RawListingSchema.parse({
+        ...validRawListing,
+        captureMethod,
+        acquisitionMode
+      })
+    ).toMatchObject({ captureMethod, acquisitionMode });
+
+    expect(() =>
+      RawListingSchema.parse({
+        ...validRawListing,
+        captureMethod,
+        acquisitionMode: acquisitionMode === "fixture" ? "official_api" : "fixture"
+      })
+    ).toThrow();
+  });
+
+  it("bounds serialized raw JSON evidence before persistence", () => {
+    expect(() =>
+      RawListingSchema.parse({
+        ...validRawListing,
+        rawText: null,
+        rawJson: { oversized: "é".repeat(125_001) }
+      })
+    ).toThrow(/serialized bytes/iu);
   });
 
   it("enforces known and unknown field provenance", () => {

@@ -10,7 +10,7 @@ The current implementation is a pnpm TypeScript workspace with a Next.js App Rou
 
 The normative Ship Season topology uses Maritime as Vera's primary orchestration and deployment environment for monitoring jobs, scheduled triggers, durable job state, retries, agent health, notifications, and hosted integration secrets. Browser-only work is dispatched to a registered local browser node. That node uses OpenClaw as the default adapter behind a replaceable browser-executor interface and exclusively owns the user's browser profile and authenticated consumer-site sessions.
 
-Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI. The current alignment adds strict source-job, job-attempt, browser-node, browser-execution, and Maritime control-plane contracts; deterministic no-network mocks; and migration `0003_romantic_fantastic_four.sql`.
+Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI. The current alignment adds strict source-job, job-attempt, browser-node, browser-execution, and Maritime control-plane contracts; deterministic no-network mocks; and forward-only migrations `0003_romantic_fantastic_four.sql` and `0004_groovy_zaladane.sql`.
 
 Node 26 is a Current release, so the project should target Node 24 LTS for repeatable development and CI. The installed Node 26 is sufficient for inspection but should not define the project runtime.
 
@@ -71,6 +71,7 @@ A browser job dispatch contains only:
 
 - opaque job and correlation IDs;
 - connector ID and policy-manifest version;
+- the exact requested capability and an optional opaque approval ID; current session availability and approval validity are rechecked at dispatch and retry time;
 - the exact configured saved-search URL identifier and URL;
 - the last committed source cursor or last-seen listing ID;
 - bounded page, record, byte, duration, and concurrency limits;
@@ -195,7 +196,7 @@ The minimum persistent concepts are:
 - ContactWorkflow and Viewing with explicit state transitions.
 - Approval with operation, target, payload hash, expiry, use time, and actor.
 - ActivityEvent with correlation ID, causation ID, actor, action, target, policy decision, payload hash, outcome, error class, and timestamp.
-- SourceJob with strict minimum-data payload, hashes, idempotency key, attempts, state, and safe outcome metadata.
+- SourceJob with strict minimum-data payload, immutable capability and optional opaque approval ID, hashes, idempotency key, attempts, state, and safe outcome metadata.
 - JobAttempt as append-only source-orchestration attempt history.
 - BrowserNodeStatus as the latest safe heartbeat and capability snapshot.
 - NormalizationJob as the separate local leased queue from accepted raw evidence to a source record.

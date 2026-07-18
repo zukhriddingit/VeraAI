@@ -67,6 +67,8 @@ const queuedJob = {
   acquisitionMode: "local_browser",
   manifestVersion: 1,
   trigger: "scheduled",
+  capability: "browser.capture",
+  approvalId: "approval-source-job-1",
   operation: "discover",
   payload: browserPayload,
   payloadHash: HASH_A,
@@ -200,7 +202,11 @@ describe("source job payload schemas", () => {
 
 describe("source job schemas", () => {
   it("validates internally consistent queued and completed jobs", () => {
-    expect(SourceJobSchema.parse(queuedJob).status).toBe("queued");
+    expect(SourceJobSchema.parse(queuedJob)).toMatchObject({
+      status: "queued",
+      capability: "browser.capture",
+      approvalId: "approval-source-job-1"
+    });
     expect(
       SourceJobSchema.parse({
         ...queuedJob,

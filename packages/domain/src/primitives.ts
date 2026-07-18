@@ -23,7 +23,29 @@ export const ListingSourceLabelSchema = z.enum([
   "other"
 ]);
 
-export const ListingCaptureMethodSchema = z.enum(["fixture", "manual_text", "manual_structured"]);
+export const ListingCaptureMethodSchema = z.enum([
+  "fixture",
+  "manual_text",
+  "manual_structured",
+  "official_api",
+  "email_alert",
+  "local_browser"
+]);
+
+export const ListingCaptureAcquisitionMode = {
+  fixture: "fixture",
+  manual_text: "user_capture",
+  manual_structured: "user_capture",
+  official_api: "official_api",
+  email_alert: "email_alert",
+  local_browser: "local_browser"
+} as const satisfies Record<z.infer<typeof ListingCaptureMethodSchema>, string>;
+
+export function acquisitionModeForListingCaptureMethod(
+  captureMethod: z.infer<typeof ListingCaptureMethodSchema>
+) {
+  return ListingCaptureAcquisitionMode[captureMethod];
+}
 
 export type EntityId = z.infer<typeof EntityIdSchema>;
 export type JsonValue = z.infer<typeof JsonValueSchema>;

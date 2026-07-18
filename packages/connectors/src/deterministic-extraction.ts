@@ -14,6 +14,7 @@ import {
 
 import {
   RawListingEnvelopeSchema,
+  StructuredListingInputSchema,
   type RawListingEnvelope,
   type StructuredListingInput
 } from "./contracts.ts";
@@ -500,16 +501,16 @@ export function extractDeterministicListing(
   inputEnvelope: RawListingEnvelope
 ): DeterministicListingExtraction {
   const envelope = RawListingEnvelopeSchema.parse(inputEnvelope);
+  const structuredEvidence = StructuredListingInputSchema.safeParse(envelope.rawJson);
   const method: DeterministicMethod =
     envelope.captureMethod === "fixture"
       ? "fixture_structured"
       : envelope.captureMethod === "manual_structured"
         ? "manual"
         : "rule";
-  const extraction =
-    envelope.rawJson !== null
-      ? structuredExtraction(envelope.rawJson)
-      : textExtraction(envelope.rawText ?? "");
+  const extraction = structuredEvidence.success
+    ? structuredExtraction(structuredEvidence.data)
+    : textExtraction(envelope.rawText ?? "");
   const extractionMethods = Object.fromEntries(
     ListingExtractionFieldNameSchema.options.map((field) => [field, method])
   ) as Record<ListingExtractionFieldName, DeterministicMethod>;

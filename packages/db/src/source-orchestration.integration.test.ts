@@ -31,6 +31,8 @@ function sourceJob(overrides: Partial<SourceJob> = {}): SourceJob {
     acquisitionMode: "fixture",
     manifestVersion: 1,
     trigger: "manual",
+    capability: "fixture.read",
+    approvalId: null,
     operation: "capture",
     payload: { acquisitionMode: "fixture", fixtureSetId: "fixture-set-demo" },
     payloadHash: "1".repeat(64),
@@ -94,6 +96,39 @@ afterEach(() => {
 });
 
 describe("source orchestration repositories", () => {
+  it("reconstructs the complete immutable policy request after reopening SQLite", () => {
+    const expectedPolicyContext = {
+      capability: "browser.capture",
+      approvalId: "approval-source-job-1"
+    } as const;
+    const job = repositories.sourceJobs.enqueue(
+      sourceJob({
+        acquisitionMode: "local_browser",
+        ...expectedPolicyContext,
+        payload: {
+          acquisitionMode: "local_browser",
+          nodeId: "browser-node-local-1",
+          savedSearchId: "saved-search-1",
+          savedSearchUrl: "https://www.zillow.com/homes/for_rent/",
+          committedCursor: null,
+          limits: {
+            maxPages: 1,
+            maxRecords: 10,
+            maxBytes: 100_000,
+            maxDurationMilliseconds: 30_000,
+            maxConcurrency: 1
+          }
+        }
+      })
+    ).record;
+
+    connection.close();
+    connection = openDatabase({ filePath: join(temporaryDirectory, "vera.sqlite") });
+    repositories = createSqliteRepositories(connection);
+
+    expect(repositories.sourceJobs.getById(job.id)).toMatchObject(expectedPolicyContext);
+  });
+
   it("enqueues idempotently and transitions only through the domain lifecycle", () => {
     const first = repositories.sourceJobs.enqueue(sourceJob());
     const replay = repositories.sourceJobs.enqueue(sourceJob({ id: "source-job-replay-alias" }));

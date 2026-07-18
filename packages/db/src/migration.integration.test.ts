@@ -147,12 +147,135 @@ function downgradePopulatedDatabaseTo0002Shape(): void {
     DROP TABLE source_jobs;
     DROP TABLE browser_nodes;
     DELETE FROM __drizzle_migrations
-      WHERE created_at = (SELECT max(created_at) FROM __drizzle_migrations);
+      WHERE created_at IN (
+        SELECT created_at FROM __drizzle_migrations ORDER BY created_at DESC LIMIT 2
+      );
   `);
   connection.sqlite.pragma("foreign_keys = ON");
 
   if ((connection.sqlite.pragma("foreign_key_check") as readonly unknown[]).length > 0) {
     throw new Error("0002 migration fixture has foreign-key integrity violations.");
+  }
+}
+
+function downgradePopulatedDatabaseTo0003Shape(): void {
+  if (!connection) {
+    throw new Error("Migration test database is not open.");
+  }
+
+  connection.sqlite.pragma("foreign_keys = OFF");
+  connection.sqlite.exec(`
+    DROP TRIGGER raw_listings_no_update;
+    DROP TRIGGER raw_listings_no_delete;
+    CREATE TABLE __legacy_raw_listings_0003 (
+      id text PRIMARY KEY NOT NULL,
+      source text NOT NULL,
+      source_listing_id text,
+      source_url text,
+      acquisition_mode text NOT NULL,
+      capture_method text NOT NULL,
+      observed_at text NOT NULL,
+      source_posted_at text,
+      raw_text text,
+      raw_json text,
+      capture_metadata text NOT NULL,
+      content_hash text NOT NULL,
+      idempotency_key text NOT NULL,
+      created_at text NOT NULL,
+      CONSTRAINT raw_listings_evidence_required
+        CHECK(raw_text IS NOT NULL OR raw_json IS NOT NULL),
+      CONSTRAINT raw_listings_capture_method_allowed
+        CHECK(capture_method IN ('fixture', 'manual_text', 'manual_structured')),
+      CONSTRAINT raw_listings_acquisition_mode_allowed
+        CHECK(acquisition_mode IN ('official_api', 'email_alert', 'local_browser', 'user_capture', 'fixture')),
+      CONSTRAINT raw_listings_capture_mode_consistency
+        CHECK((capture_method = 'fixture' AND acquisition_mode = 'fixture')
+          OR (capture_method IN ('manual_text', 'manual_structured')
+            AND acquisition_mode = 'user_capture'))
+    );
+    INSERT INTO __legacy_raw_listings_0003
+    SELECT id, source, source_listing_id, source_url, acquisition_mode, capture_method,
+           observed_at, source_posted_at, raw_text, raw_json, capture_metadata,
+           content_hash, idempotency_key, created_at
+    FROM raw_listings;
+    DROP TABLE raw_listings;
+    ALTER TABLE __legacy_raw_listings_0003 RENAME TO raw_listings;
+    CREATE UNIQUE INDEX raw_listings_idempotency_key_unique
+      ON raw_listings (idempotency_key);
+    CREATE INDEX raw_listings_source_identity_idx
+      ON raw_listings (source, source_listing_id);
+    CREATE TRIGGER raw_listings_no_update
+    BEFORE UPDATE ON raw_listings
+    BEGIN
+      SELECT RAISE(ABORT, 'raw_listings are append-only');
+    END;
+    CREATE TRIGGER raw_listings_no_delete
+    BEFORE DELETE ON raw_listings
+    BEGIN
+      SELECT RAISE(ABORT, 'raw_listings are append-only');
+    END;
+
+    CREATE TABLE __legacy_source_jobs_0003 (
+      id text PRIMARY KEY NOT NULL,
+      correlation_id text NOT NULL,
+      connector_id text NOT NULL,
+      source text NOT NULL,
+      acquisition_mode text NOT NULL,
+      manifest_version integer NOT NULL,
+      trigger text NOT NULL,
+      operation text NOT NULL,
+      payload text NOT NULL,
+      payload_hash text NOT NULL,
+      idempotency_key text NOT NULL,
+      status text NOT NULL,
+      attempts integer NOT NULL,
+      max_attempts integer NOT NULL,
+      manual_action text,
+      deferred_reason text,
+      result text,
+      created_at text NOT NULL,
+      updated_at text NOT NULL,
+      completed_at text,
+      CONSTRAINT source_jobs_acquisition_mode_allowed
+        CHECK(acquisition_mode IN ('official_api', 'email_alert', 'local_browser', 'user_capture', 'fixture')),
+      CONSTRAINT source_jobs_manifest_version_positive CHECK(manifest_version > 0),
+      CONSTRAINT source_jobs_trigger_allowed CHECK(trigger IN ('manual', 'scheduled')),
+      CONSTRAINT source_jobs_status_allowed
+        CHECK(status IN ('queued', 'dispatched', 'running', 'completed', 'retryable_failed',
+          'permanently_failed', 'deferred_node_offline', 'manual_action_required',
+          'cancelled_by_policy')),
+      CONSTRAINT source_jobs_attempts_valid
+        CHECK(attempts >= 0 AND max_attempts > 0 AND attempts <= max_attempts),
+      CONSTRAINT source_jobs_terminal_consistency
+        CHECK((status IN ('completed', 'permanently_failed', 'cancelled_by_policy'))
+          = (completed_at IS NOT NULL)),
+      CONSTRAINT source_jobs_manual_action_consistency
+        CHECK((status = 'manual_action_required') = (manual_action IS NOT NULL)),
+      CONSTRAINT source_jobs_deferred_reason_consistency
+        CHECK((status = 'deferred_node_offline') = (deferred_reason IS NOT NULL)),
+      CONSTRAINT source_jobs_deferred_reason_allowed
+        CHECK(deferred_reason IS NULL OR deferred_reason IN
+          ('node_unregistered', 'node_offline', 'stale_heartbeat', 'node_revoked'))
+    );
+    INSERT INTO __legacy_source_jobs_0003
+    SELECT id, correlation_id, connector_id, source, acquisition_mode, manifest_version,
+           trigger, operation, payload, payload_hash, idempotency_key, status, attempts,
+           max_attempts, manual_action, deferred_reason, result, created_at, updated_at,
+           completed_at
+    FROM source_jobs;
+    DROP TABLE source_jobs;
+    ALTER TABLE __legacy_source_jobs_0003 RENAME TO source_jobs;
+    CREATE UNIQUE INDEX source_jobs_idempotency_key_unique ON source_jobs (idempotency_key);
+    CREATE INDEX source_jobs_status_updated_idx ON source_jobs (status, updated_at);
+    CREATE INDEX source_jobs_connector_idx ON source_jobs (connector_id, created_at);
+
+    DELETE FROM __drizzle_migrations
+      WHERE created_at = (SELECT max(created_at) FROM __drizzle_migrations);
+  `);
+  connection.sqlite.pragma("foreign_keys = ON");
+
+  if ((connection.sqlite.pragma("foreign_key_check") as readonly unknown[]).length > 0) {
+    throw new Error("0003 migration fixture has foreign-key integrity violations.");
   }
 }
 
@@ -423,5 +546,125 @@ describe("forward persistence migrations", () => {
       "source_job_attempts_no_delete",
       "source_job_attempts_no_update"
     ]);
+  });
+
+  it("migrates populated 0003 jobs and evidence without resetting identities", () => {
+    temporaryDirectory = mkdtempSync(join(tmpdir(), "vera-migration-0003-"));
+    connection = openDatabase({ filePath: join(temporaryDirectory, "vera.sqlite") });
+    migrateDatabase(connection);
+    const repositories = createSqliteRepositories(connection);
+    seedDatabase(repositories);
+    const sourceJob = repositories.sourceJobs.enqueue({
+      id: "source-job-migration-0003",
+      correlationId: "correlation-source-job-migration-0003",
+      connectorId: "zillow.browser.saved-search.v1",
+      source: "zillow",
+      acquisitionMode: "local_browser",
+      manifestVersion: 1,
+      trigger: "scheduled",
+      capability: "browser.capture",
+      approvalId: null,
+      operation: "browser.capture_saved_search",
+      payload: {
+        acquisitionMode: "local_browser",
+        nodeId: "browser-node-local-1",
+        savedSearchId: "saved-search-migration-0003",
+        savedSearchUrl: "https://www.zillow.com/homes/for_rent/",
+        committedCursor: null,
+        limits: {
+          maxPages: 1,
+          maxRecords: 10,
+          maxBytes: 100_000,
+          maxDurationMilliseconds: 30_000,
+          maxConcurrency: 1
+        }
+      },
+      payloadHash: "c".repeat(64),
+      idempotencyKey: "d".repeat(64),
+      status: "queued",
+      attempts: 1,
+      maxAttempts: 3,
+      manualAction: null,
+      deferredReason: null,
+      result: null,
+      createdAt: "2026-07-18T12:00:00.000Z",
+      updatedAt: "2026-07-18T12:00:00.000Z",
+      completedAt: null
+    }).record;
+    const sourceJobAttempt = repositories.sourceJobAttempts.append({
+      id: "source-job-attempt-migration-0003",
+      sourceJobId: sourceJob.id,
+      attemptNumber: 1,
+      startedAt: "2026-07-18T12:00:00.000Z",
+      completedAt: "2026-07-18T12:01:00.000Z",
+      outcomeStatus: "deferred_node_offline",
+      error: null,
+      deferredReason: "node_offline",
+      correlationId: sourceJob.correlationId,
+      payloadHash: sourceJob.payloadHash
+    });
+    const rawIdentityBefore = connection.sqlite
+      .prepare(
+        `SELECT id, content_hash AS contentHash, idempotency_key AS idempotencyKey
+         FROM raw_listings ORDER BY id`
+      )
+      .all();
+
+    downgradePopulatedDatabaseTo0003Shape();
+    migrateDatabase(connection);
+
+    const migratedRepositories = createSqliteRepositories(connection);
+    expect(migratedRepositories.sourceJobs.getById(sourceJob.id)).toEqual(sourceJob);
+    expect(migratedRepositories.sourceJobAttempts.listByJobId(sourceJob.id)).toEqual([
+      sourceJobAttempt
+    ]);
+    expect(
+      connection.sqlite
+        .prepare(
+          `SELECT id, content_hash AS contentHash, idempotency_key AS idempotencyKey
+           FROM raw_listings ORDER BY id`
+        )
+        .all()
+    ).toEqual(rawIdentityBefore);
+
+    const insertRaw = connection.sqlite.prepare(
+      `INSERT INTO raw_listings (
+        id, source, source_listing_id, source_url, acquisition_mode, capture_method,
+        observed_at, source_posted_at, raw_text, raw_json, capture_metadata,
+        content_hash, idempotency_key, created_at
+      ) VALUES (?, 'other', ?, NULL, ?, ?, '2026-07-18T12:05:00.000Z', NULL,
+        'Sanitized production-mode migration probe.', NULL, '{"sanitized":true}', ?, ?,
+        '2026-07-18T12:05:00.000Z')`
+    );
+    for (const [mode, captureMethod, suffix, contentHash, idempotencyKey] of [
+      ["official_api", "official_api", "api", "a".repeat(64), "1".repeat(64)],
+      ["email_alert", "email_alert", "email", "b".repeat(64), "2".repeat(64)],
+      ["local_browser", "local_browser", "browser", "c".repeat(64), "3".repeat(64)]
+    ] as const) {
+      insertRaw.run(
+        `raw-migration-${suffix}`,
+        `source-migration-${suffix}`,
+        mode,
+        captureMethod,
+        contentHash,
+        idempotencyKey
+      );
+    }
+    expect(() =>
+      insertRaw.run(
+        "raw-migration-mismatch",
+        "source-migration-mismatch",
+        "official_api",
+        "email_alert",
+        "f".repeat(64),
+        "9".repeat(64)
+      )
+    ).toThrow(/raw_listings_capture_mode_consistency/u);
+    expect(connection.sqlite.pragma("foreign_key_check")).toEqual([]);
+    expect(() =>
+      connection?.sqlite
+        .prepare("UPDATE raw_listings SET raw_text = ? WHERE id = ?")
+        .run("changed", "raw-migration-api")
+    ).toThrow(/append-only/u);
   });
 });

@@ -39,7 +39,7 @@ Source-job payloads are strict discriminated Zod schemas with unknown keys rejec
 - a reviewed source-configuration reference and optional committed cursor for `official_api` or `email_alert`;
 - an opaque node ID, saved-search ID, exact validated HTTP(S) URL, optional committed cursor, and bounded page, record, byte, duration, and concurrency limits for `local_browser`.
 
-Every source job binds the payload to a SHA-256 payload hash, stable idempotency key, and correlation ID. Result envelopes add a deterministic result hash and remain marked as untrusted input. Job attempts retain safe status and error metadata only; they do not retain raw results.
+Every source job binds the payload to a SHA-256 payload hash, stable idempotency key, and correlation ID. The exact capability and optional opaque approval ID are immutable persisted job fields; session availability and approval validity are resolved again at dispatch and retry time rather than stored as authorization truth. Result envelopes add a deterministic result hash and remain marked as untrusted input. Job attempts retain safe status and error metadata only; they do not retain raw results.
 
 The schema has no password, cookie, authorization-header, token, session-export, browser-storage, profile-path, password-manager, arbitrary metadata, or pasted-evidence field. Strict parsing rejects attempts to smuggle those fields into serialized payloads. This protects the application boundary; a future Maritime transport must additionally authenticate, encrypt, size-limit, replay-protect, and revoke messages.
 
@@ -223,6 +223,8 @@ Activity events are immutable and append-only. Record:
 - timestamp.
 
 For local-browser dispatch, record the policy state and manifest version, acquisition mode, opaque job/node/connector IDs, trigger, saved-search identifier rather than a credential-bearing URL, last committed cursor hash or opaque checkpoint, bounded limits, typed outcome, retry time, and correlation/causation IDs. Do not record dispatch nonces, transport credentials, full URLs with query values, session state, or returned unrelated page content.
+
+Source jobs may persist an opaque approval ID but never persist `hasApproval` or `hasUserSession` truth flags. Dispatch and retry query current session availability and resolve the current approval through a fail-closed runtime provider. The approval must remain pending, unused, unexpired, and exactly bound to the source job. The local mock re-requires this state on each attempt; a live side-effect composition must atomically consume the approval before execution.
 
 Record lifecycle events separately instead of updating a pending row. Raw provider payloads belong in their protected evidence tables, not the activity log.
 

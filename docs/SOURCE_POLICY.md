@@ -124,6 +124,8 @@ For every request, the current registry evaluates in this exact fail-closed orde
 
 Every exception path denies. The source-policy state comes from the selected manifest, not caller input. Existing capture execution appends request, policy-decision, and outcome events.
 
+Source jobs persist the exact capability, execution mode, operation, and optional opaque approval ID, but never persist session or approval truth booleans. At every dispatch and retry, `SourceJobRuntimeAuthorizationProvider` checks current session availability and resolves the current approval. The approval must still be pending, unused, unexpired, and bound to the job's connector, operation, payload hash, target type, and target ID. A missing provider or error fails closed. The mock re-requires a current pending approval on every attempt; a live composition must atomically consume it before the authorized side effect so one approval cannot authorize multiple executions.
+
 ### Future live connector and orchestration gates
 
 The following checks are required before live acquisition but are not current `SourcePolicyRegistry` behavior:

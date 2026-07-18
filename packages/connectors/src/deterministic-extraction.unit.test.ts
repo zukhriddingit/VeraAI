@@ -1,7 +1,7 @@
 import { ListingExtractionFieldNameSchema } from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
-import type { ConnectorContext } from "./contracts.ts";
+import { RawListingEnvelopeSchema, type ConnectorContext } from "./contracts.ts";
 import { extractDeterministicListing } from "./deterministic-extraction.ts";
 import { FixtureConnector } from "./fixture-connector.ts";
 import { ManualCaptureConnector } from "./manual-connector.ts";
@@ -48,6 +48,34 @@ const fullText = [
 ].join("\n");
 
 describe("extractDeterministicListing", () => {
+  it("keeps generic connector JSON untrusted until a later projection validates it", () => {
+    const result = extractDeterministicListing(
+      RawListingEnvelopeSchema.parse({
+        connectorId: "official.api.v1",
+        capability: "structured_feed.read",
+        acquisitionMode: "official_api",
+        source: "other",
+        sourceListingId: "source-1",
+        sourceUrl: "https://housing.example/listing/1",
+        captureMethod: "official_api",
+        observedAt: context.now().toISOString(),
+        sourcePostedAt: null,
+        rawText: null,
+        rawJson: { providerPayload: { guessedTitle: "Do not trust this shape" } },
+        captureMetadata: {
+          networkAccess: true,
+          untrustedContent: true,
+          browserAccess: "not_applicable"
+        }
+      })
+    );
+
+    expect(Object.values(result.extraction).every((field) => field.status === "unknown")).toBe(
+      true
+    );
+    expect(Object.values(result.extractionMethods).every((method) => method === "rule")).toBe(true);
+  });
+
   it("extracts the exact 20-field golden vocabulary with no undefined field", () => {
     const result = fromText(fullText);
     expect(Object.keys(result.extraction)).toEqual(ListingExtractionFieldNameSchema.options);

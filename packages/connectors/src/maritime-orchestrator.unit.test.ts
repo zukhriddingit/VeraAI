@@ -1,9 +1,11 @@
 import {
   SourceJobPayloadSchema,
   SourceJobSchema,
+  type Approval,
   type BrowserNodeStatus,
   type DeferredJobReason,
   type ManualActionBlocker,
+  type SourceJob,
   type SourcePolicyManifest
 } from "@vera/domain";
 import { SourcePolicyRegistry } from "@vera/policy";
@@ -13,6 +15,7 @@ import { MockBrowserExecutionProvider, type MockBrowserOutcome } from "./browser
 import {
   LocalMockMaritimeOrchestrator,
   ScheduleSourceJobInputSchema,
+  type SourceJobRuntimeAuthorizationProvider,
   type ScheduleSourceJobInput
 } from "./maritime-orchestrator.ts";
 
@@ -100,9 +103,21 @@ const validBrowserJobInput = {
     }
   },
   maxAttempts: 3,
-  hasUserSession: false,
-  hasApproval: false
+  approvalId: null
 } as const satisfies ScheduleSourceJobInput;
+
+class MutableRuntimeAuthorizationProvider implements SourceJobRuntimeAuthorizationProvider {
+  sessionAvailable = false;
+  approval: Approval | null = null;
+
+  async isUserSessionAvailable(): Promise<boolean> {
+    return this.sessionAvailable;
+  }
+
+  async getApprovalById(approvalId: string): Promise<Approval | null> {
+    return this.approval?.id === approvalId ? this.approval : null;
+  }
+}
 
 function providerFor(
   outcomes: readonly MockBrowserOutcome[],
@@ -119,12 +134,14 @@ function orchestratorFor(
   options: {
     readonly manifest?: SourcePolicyManifest;
     readonly providerNodes?: readonly BrowserNodeStatus[];
+    readonly authorization?: SourceJobRuntimeAuthorizationProvider;
   } = {}
 ): LocalMockMaritimeOrchestrator {
   return new LocalMockMaritimeOrchestrator(
     new SourcePolicyRegistry([options.manifest ?? browserManifest]),
     providerFor(outcomes, options.providerNodes),
-    () => new Date(NOW)
+    () => new Date(NOW),
+    options.authorization
   );
 }
 
@@ -153,6 +170,23 @@ async function registerOnlineNode(orchestrator: LocalMockMaritimeOrchestrator): 
   await orchestrator.receiveBrowserNodeHeartbeat(onlineNode);
 }
 
+function validApproval(job: SourceJob, overrides: Partial<Approval> = {}): Approval {
+  return {
+    id: job.approvalId ?? "approval-source-job-1",
+    actor: "user",
+    connectorId: job.connectorId,
+    operation: job.operation,
+    targetType: "source_job",
+    targetId: job.id,
+    payloadHash: job.payloadHash,
+    state: "pending",
+    createdAt: "2026-07-18T11:55:00.000Z",
+    expiresAt: LATER,
+    usedAt: null,
+    ...overrides
+  };
+}
+
 describe("Maritime orchestration scheduling contract", () => {
   it("schedules and queries a strict queued job with deterministic hashes", async () => {
     const orchestrator = orchestratorFor([completedOutcome()]);
@@ -162,6 +196,8 @@ describe("Maritime orchestration scheduling contract", () => {
     expect(job).toMatchObject({
       id: validBrowserJobInput.id,
       correlationId: validBrowserJobInput.correlationId,
+      capability: validBrowserJobInput.capability,
+      approvalId: null,
       status: "queued",
       attempts: 0,
       result: null
@@ -173,6 +209,14 @@ describe("Maritime orchestration scheduling contract", () => {
   });
 
   it("rejects secret-bearing or unknown schedule payloads before they can be serialized", async () => {
+    expect(() =>
+      ScheduleSourceJobInputSchema.parse({
+        ...validBrowserJobInput,
+        hasUserSession: true,
+        hasApproval: true
+      })
+    ).toThrow();
+
     for (const forbidden of [
       { password: "must-reject" },
       { cookie: "must-reject" },
@@ -191,10 +235,12 @@ describe("Maritime orchestration scheduling contract", () => {
 
     const job = await orchestratorFor([]).scheduleConnectorJob(validBrowserJobInput);
     const serializedPayload = JSON.stringify(job.payload);
+    const serializedJob = JSON.stringify(job);
     expect(serializedPayload).not.toMatch(
       /password|cookie|authorization|sessionExport|profilePath|rawPageContent/iu
     );
     expect(SourceJobPayloadSchema.parse(job.payload)).toEqual(job.payload);
+    expect(serializedJob).not.toMatch(/hasUserSession|hasApproval/u);
   });
 
   it("returns the original job when the same idempotent schedule is replayed", async () => {
@@ -207,6 +253,19 @@ describe("Maritime orchestration scheduling contract", () => {
     });
 
     expect(replay).toEqual(first);
+  });
+
+  it("keeps the complete policy request on the immutable job contract", async () => {
+    const job = await orchestratorFor([]).scheduleConnectorJob(validBrowserJobInput);
+
+    expect(job).toMatchObject({
+      connectorId: validBrowserJobInput.connectorId,
+      acquisitionMode: validBrowserJobInput.acquisitionMode,
+      trigger: validBrowserJobInput.trigger,
+      capability: validBrowserJobInput.capability,
+      operation: validBrowserJobInput.operation,
+      approvalId: null
+    });
   });
 });
 
@@ -227,6 +286,83 @@ describe("LocalMockMaritimeOrchestrator policy and node handling", () => {
       status: "cancelled_by_policy",
       result: null,
       completedAt: NOW
+    });
+  });
+
+  it("fails closed when a required user session goes offline after scheduling", async () => {
+    const authorization = new MutableRuntimeAuthorizationProvider();
+    authorization.sessionAvailable = true;
+    const orchestrator = orchestratorFor([completedOutcome()], {
+      manifest: { ...browserManifest, requiresUserSession: true },
+      authorization
+    });
+    await registerOnlineNode(orchestrator);
+    const job = await orchestrator.scheduleConnectorJob(validBrowserJobInput);
+
+    authorization.sessionAvailable = false;
+
+    await expect(orchestrator.dispatchJob(job.id)).resolves.toMatchObject({
+      status: "cancelled_by_policy",
+      result: null
+    });
+  });
+
+  it("fails closed when no runtime authorization provider is configured", async () => {
+    const orchestrator = orchestratorFor([completedOutcome()], {
+      manifest: { ...browserManifest, requiresUserSession: true, requiresApproval: true }
+    });
+    await registerOnlineNode(orchestrator);
+    const job = await orchestrator.scheduleConnectorJob({
+      ...validBrowserJobInput,
+      approvalId: "approval-source-job-1"
+    });
+
+    await expect(orchestrator.dispatchJob(job.id)).resolves.toMatchObject({
+      status: "cancelled_by_policy",
+      result: null
+    });
+  });
+
+  it.each([
+    ["not active yet", { createdAt: "2026-07-18T12:00:01.000Z" }],
+    ["expired", { expiresAt: "2026-07-18T11:59:59.000Z" }],
+    ["revoked", { state: "revoked" }],
+    ["used", { state: "used", usedAt: "2026-07-18T11:59:00.000Z" }],
+    ["payload mismatch", { payloadHash: "e".repeat(64) }]
+  ] as const)("rejects a %s runtime approval", async (_label, approvalPatch) => {
+    const authorization = new MutableRuntimeAuthorizationProvider();
+    const orchestrator = orchestratorFor([completedOutcome()], {
+      manifest: { ...browserManifest, requiresApproval: true },
+      authorization
+    });
+    await registerOnlineNode(orchestrator);
+    const job = await orchestrator.scheduleConnectorJob({
+      ...validBrowserJobInput,
+      approvalId: "approval-source-job-1"
+    });
+    authorization.approval = validApproval(job, approvalPatch);
+
+    await expect(orchestrator.dispatchJob(job.id)).resolves.toMatchObject({
+      status: "cancelled_by_policy",
+      result: null
+    });
+  });
+
+  it("accepts a current approval bound to the exact source job", async () => {
+    const authorization = new MutableRuntimeAuthorizationProvider();
+    const orchestrator = orchestratorFor([completedOutcome()], {
+      manifest: { ...browserManifest, requiresApproval: true },
+      authorization
+    });
+    await registerOnlineNode(orchestrator);
+    const job = await orchestrator.scheduleConnectorJob({
+      ...validBrowserJobInput,
+      approvalId: "approval-source-job-1"
+    });
+    authorization.approval = validApproval(job);
+
+    await expect(orchestrator.dispatchJob(job.id)).resolves.toMatchObject({
+      status: "completed"
     });
   });
 
@@ -397,6 +533,35 @@ describe("LocalMockMaritimeOrchestrator execution outcomes", () => {
     });
   });
 
+  it("revalidates current runtime authorization before a safe retry", async () => {
+    const authorization = new MutableRuntimeAuthorizationProvider();
+    authorization.sessionAvailable = true;
+    const orchestrator = orchestratorFor(
+      [
+        {
+          operation: "capture",
+          status: "retryable_failed",
+          error: { code: "provider_temporarily_unavailable", category: "transient_provider" },
+          completedAt: NOW
+        }
+      ],
+      {
+        manifest: { ...browserManifest, requiresUserSession: true },
+        authorization
+      }
+    );
+    await registerOnlineNode(orchestrator);
+    const scheduled = await orchestrator.scheduleConnectorJob(validBrowserJobInput);
+    const failed = await orchestrator.dispatchJob(scheduled.id);
+    expect(failed.status).toBe("retryable_failed");
+
+    authorization.sessionAvailable = false;
+
+    await expect(orchestrator.retryJob(failed.id)).resolves.toMatchObject({
+      status: "cancelled_by_policy"
+    });
+  });
+
   it("does not make permanent failures retryable", async () => {
     const orchestrator = orchestratorFor([
       {
@@ -444,8 +609,7 @@ describe("LocalMockMaritimeOrchestrator execution outcomes", () => {
       operation: "fixture.read_sanitized",
       payload: { acquisitionMode: "fixture", fixtureSetId: "ship-season-demo" },
       maxAttempts: 1,
-      hasUserSession: false,
-      hasApproval: false
+      approvalId: null
     });
 
     await expect(orchestrator.dispatchJob(fixtureJob.id)).resolves.toMatchObject({
@@ -486,10 +650,16 @@ describe("deterministic source-job payload hashing", () => {
       correlationId: "correlation-reordered-payload",
       payload: reorderedPayload
     });
+    const differentApproval = await orchestratorFor([]).scheduleConnectorJob({
+      ...validBrowserJobInput,
+      approvalId: "approval-source-job-1"
+    });
 
     expect(first.payloadHash).toHaveLength(64);
     expect(second.payloadHash).toBe(first.payloadHash);
     expect(second.idempotencyKey).toBe(first.idempotencyKey);
+    expect(differentApproval.payloadHash).toBe(first.payloadHash);
+    expect(differentApproval.idempotencyKey).not.toBe(first.idempotencyKey);
   });
 
   it("retains precise deferred reason vocabulary", async () => {

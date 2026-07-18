@@ -9,6 +9,7 @@ import {
 } from "./primitives.ts";
 import {
   AcquisitionModeSchema,
+  SourceCapabilitySchema,
   SourceDomainSchema,
   SourceExecutionSchema
 } from "./source-policy.ts";
@@ -286,6 +287,8 @@ export const SourceJobSchema = z
     acquisitionMode: AcquisitionModeSchema,
     manifestVersion: z.number().int().positive(),
     trigger: SourceExecutionSchema,
+    capability: SourceCapabilitySchema,
+    approvalId: EntityIdSchema.nullable(),
     operation: z.string().trim().min(1).max(160),
     payload: SourceJobPayloadSchema,
     payloadHash: Sha256Schema,

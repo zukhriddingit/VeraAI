@@ -98,7 +98,7 @@ export const rawListings = sqliteTable(
     ),
     check(
       "raw_listings_capture_method_allowed",
-      sql`${table.captureMethod} IN ('fixture', 'manual_text', 'manual_structured')`
+      sql`${table.captureMethod} IN ('fixture', 'manual_text', 'manual_structured', 'official_api', 'email_alert', 'local_browser')`
     ),
     check(
       "raw_listings_acquisition_mode_allowed",
@@ -107,7 +107,10 @@ export const rawListings = sqliteTable(
     check(
       "raw_listings_capture_mode_consistency",
       sql`(${table.captureMethod} = 'fixture' AND ${table.acquisitionMode} = 'fixture')
-        OR (${table.captureMethod} IN ('manual_text', 'manual_structured') AND ${table.acquisitionMode} = 'user_capture')`
+        OR (${table.captureMethod} IN ('manual_text', 'manual_structured') AND ${table.acquisitionMode} = 'user_capture')
+        OR (${table.captureMethod} = 'official_api' AND ${table.acquisitionMode} = 'official_api')
+        OR (${table.captureMethod} = 'email_alert' AND ${table.acquisitionMode} = 'email_alert')
+        OR (${table.captureMethod} = 'local_browser' AND ${table.acquisitionMode} = 'local_browser')`
     )
   ]
 );
@@ -353,6 +356,8 @@ export const sourceJobs = sqliteTable(
     acquisitionMode: text("acquisition_mode").notNull(),
     manifestVersion: integer("manifest_version").notNull(),
     trigger: text("trigger").notNull(),
+    capability: text("capability").notNull(),
+    approvalId: text("approval_id"),
     operation: text("operation").notNull(),
     payload: text("payload", { mode: "json" }).$type<SourceJob["payload"]>().notNull(),
     payloadHash: text("payload_hash").notNull(),
@@ -377,6 +382,10 @@ export const sourceJobs = sqliteTable(
     ),
     check("source_jobs_manifest_version_positive", sql`${table.manifestVersion} > 0`),
     check("source_jobs_trigger_allowed", sql`${table.trigger} IN ('manual', 'scheduled')`),
+    check(
+      "source_jobs_capability_allowed",
+      sql`${table.capability} IN ('fixture.read', 'manual.capture', 'gmail.alert.read', 'structured_feed.read', 'browser.capture', 'gmail.draft.create', 'calendar.hold.create', 'notification.local')`
+    ),
     check(
       "source_jobs_status_allowed",
       sql`${table.status} IN ('queued', 'dispatched', 'running', 'completed', 'retryable_failed', 'permanently_failed', 'deferred_node_offline', 'manual_action_required', 'cancelled_by_policy')`

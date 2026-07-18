@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import {
   ConfidenceBasisPointsSchema,
+  acquisitionModeForListingCaptureMethod,
   EntityIdSchema,
   IsoDateSchema,
   IsoDateTimeSchema,
@@ -14,6 +15,22 @@ import {
   Sha256Schema
 } from "./primitives.ts";
 import { AcquisitionModeSchema } from "./source-policy.ts";
+
+export const RAW_LISTING_JSON_MAX_BYTES = 250_000;
+
+function utf8ByteLength(value: string): number {
+  let bytes = 0;
+  for (const character of value) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    bytes += codePoint <= 0x7f ? 1 : codePoint <= 0x7ff ? 2 : codePoint <= 0xffff ? 3 : 4;
+  }
+  return bytes;
+}
+
+export const RawListingJsonEvidenceSchema = JsonValueSchema.refine(
+  (value) => utf8ByteLength(JSON.stringify(value)) <= RAW_LISTING_JSON_MAX_BYTES,
+  `Raw listing JSON cannot exceed ${RAW_LISTING_JSON_MAX_BYTES} serialized bytes.`
+);
 
 export const ListingLifecycleStateSchema = z.enum([
   "new",
@@ -83,7 +100,7 @@ export const RawListingCaptureSchema = z
     observedAt: IsoDateTimeSchema,
     sourcePostedAt: IsoDateTimeSchema.nullable(),
     rawText: z.string().min(1).max(250_000).nullable(),
-    rawJson: JsonValueSchema.nullable(),
+    rawJson: RawListingJsonEvidenceSchema.nullable(),
     captureMetadata: JsonObjectSchema
   })
   .strict()
@@ -96,7 +113,7 @@ export const RawListingCaptureSchema = z
       });
     }
 
-    const expectedMode = capture.captureMethod === "fixture" ? "fixture" : "user_capture";
+    const expectedMode = acquisitionModeForListingCaptureMethod(capture.captureMethod);
     if (capture.acquisitionMode !== expectedMode) {
       context.addIssue({
         code: "custom",

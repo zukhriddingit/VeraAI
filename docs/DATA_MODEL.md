@@ -175,7 +175,7 @@ The source-orchestration relationships are logical control-plane links. `source_
 | `viewings`                  | Proposed and confirmed viewing data                                              | State check; no attendees or notification fields                                                                             |
 | `activity_events`           | Immutable material-action audit trail                                            | Correlation index; update/delete triggers                                                                                    |
 | `source_policy_manifests`   | Versioned fail-closed connector policy                                           | Composite connector/version PK; exact capability/operation/network fields; disabled manifests grant no capabilities          |
-| `source_jobs`               | Acquisition orchestration state before immutable raw acceptance                  | Strict payload/result JSON; unique idempotency key; checked states, attempts, hashes, and terminal metadata                  |
+| `source_jobs`               | Acquisition orchestration state before immutable raw acceptance                  | Strict payload/result JSON; persisted capability and optional opaque approval ID; unique idempotency key; checked lifecycle |
 | `source_job_attempts`       | Immutable source-job attempt history                                             | Source-job FK; unique job/attempt number; update/delete triggers                                                             |
 | `browser_nodes`             | Latest safe local browser-node heartbeat snapshot                               | One row per opaque node ID; closed health state; heartbeat expiry and safe capability JSON                                   |
 
@@ -314,6 +314,17 @@ The triggers abort direct SQL mutations, protecting the invariant if later code 
 6. creates `source_jobs`, append-only `source_job_attempts`, and `browser_nodes`.
 
 The migration does not reset raw listings, source records, canonical listings, duplicate clusters, extraction runs, scores, risks, activity events, or normalization jobs. Existing raw content hashes and import idempotency keys remain unchanged because acquisition mode was not added to the version-1 raw content-hash input. Migration execution restores foreign keys and runs SQLite's foreign-key check after applying the migration set. Downgrading to code that understands only manifest schema version 1 is unsupported.
+
+## Migration 0004
+
+`packages/db/drizzle/0004_groovy_zaladane.sql` is additive and preserves the rows created by migration 0003. It:
+
+1. persists each source job's requested capability and optional opaque approval ID without persisting authorization-truth booleans;
+2. conservatively backfills existing source jobs with the capability implied by their acquisition mode and a null approval ID;
+3. extends immutable raw evidence to accept exact `official_api`, `email_alert`, and `local_browser` capture-method/mode pairs in addition to fixture and user-capture pairs;
+4. preserves raw IDs, content hashes, and idempotency keys while recreating indexes and append-only triggers.
+
+The migration does not infer that a legacy job had a session or approval. Runtime session availability and the referenced approval's current state and binding are revalidated for every dispatch and retry. A missing provider, missing approval, invalid approval, or provider error fails closed.
 
 ## Listing lifecycle
 

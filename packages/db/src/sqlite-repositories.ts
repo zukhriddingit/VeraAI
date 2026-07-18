@@ -585,6 +585,8 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
         persisted.connectorId !== job.connectorId ||
         persisted.source !== job.source ||
         persisted.acquisitionMode !== job.acquisitionMode ||
+        persisted.capability !== job.capability ||
+        persisted.approvalId !== job.approvalId ||
         persisted.operation !== job.operation
       ) {
         throw new Error("Source job idempotency key resolved to a different job identity.");

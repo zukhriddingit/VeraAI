@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   AcquisitionModeSchema,
+  ApprovalSchema,
   BrowserNodeStatusSchema,
   EntityIdSchema,
   ListingSourceLabelSchema,
@@ -17,7 +18,7 @@ import {
   type BrowserNodeStatus,
   type DeferredJobReason,
   type ManualActionRequired,
-  type SourceCapability,
+  type Approval,
   type SourceJob,
   type SourceJobResult,
   type SourceJobSafeError,
@@ -45,8 +46,7 @@ export const ScheduleSourceJobInputSchema = z
     operation: z.string().trim().min(1).max(160),
     payload: SourceJobPayloadSchema,
     maxAttempts: z.number().int().positive().max(100),
-    hasUserSession: z.boolean(),
-    hasApproval: z.boolean()
+    approvalId: EntityIdSchema.nullable()
   })
   .strict()
   .superRefine((input, context) => {
@@ -70,10 +70,9 @@ export interface MaritimeOrchestrator {
   receiveBrowserNodeHeartbeat(status: BrowserNodeStatus): Promise<BrowserNodeStatus>;
 }
 
-interface ScheduledPolicyContext {
-  readonly capability: SourceCapability;
-  readonly hasUserSession: boolean;
-  readonly hasApproval: boolean;
+export interface SourceJobRuntimeAuthorizationProvider {
+  isUserSessionAvailable(job: SourceJob): Promise<boolean>;
+  getApprovalById(approvalId: string): Promise<Approval | null>;
 }
 
 interface SourceJobTransitionMetadata {
@@ -88,6 +87,14 @@ const SafeRetryCategories = new Set<SourceJobSafeError["category"]>([
   "rate_limit",
   "transient_provider"
 ]);
+const FailClosedRuntimeAuthorizationProvider: SourceJobRuntimeAuthorizationProvider = {
+  async isUserSessionAvailable() {
+    return false;
+  },
+  async getApprovalById() {
+    return null;
+  }
+};
 
 function canonicalize(value: unknown): unknown {
   if (value === null || typeof value === "string" || typeof value === "boolean") return value;
@@ -167,25 +174,26 @@ export class SourceJobRetryError extends Error {
 export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
   readonly #jobs = new Map<string, SourceJob>();
   readonly #jobIdByIdempotencyKey = new Map<string, string>();
-  readonly #policyContextByJobId = new Map<string, ScheduledPolicyContext>();
   readonly #nodes = new Map<string, BrowserNodeStatus>();
   readonly #resultsByIdempotencyKey = new Map<string, SourceJobResult>();
 
   constructor(
     private readonly policy: SourcePolicyRegistry,
     private readonly browser: BrowserExecutionProvider,
-    private readonly now: () => Date
+    private readonly now: () => Date,
+    private readonly authorization: SourceJobRuntimeAuthorizationProvider = FailClosedRuntimeAuthorizationProvider
   ) {}
 
   async scheduleConnectorJob(inputValue: ScheduleSourceJobInput): Promise<SourceJob> {
     const input = ScheduleSourceJobInputSchema.parse(inputValue);
     const payloadHash = deterministicHash("vera-source-job-payload:v1", input.payload);
-    const idempotencyKey = deterministicHash("vera-source-job-idempotency:v1", {
+    const idempotencyKey = deterministicHash("vera-source-job-idempotency:v2", {
       connectorId: input.connectorId,
       acquisitionMode: input.acquisitionMode,
       manifestVersion: input.manifestVersion,
       trigger: input.trigger,
       capability: input.capability,
+      approvalId: input.approvalId,
       operation: input.operation,
       payloadHash
     });
@@ -209,6 +217,8 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
       acquisitionMode: input.acquisitionMode,
       manifestVersion: input.manifestVersion,
       trigger: input.trigger,
+      capability: input.capability,
+      approvalId: input.approvalId,
       operation: input.operation,
       payload: input.payload,
       payloadHash,
@@ -226,11 +236,6 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
 
     this.#jobs.set(job.id, job);
     this.#jobIdByIdempotencyKey.set(job.idempotencyKey, job.id);
-    this.#policyContextByJobId.set(job.id, {
-      capability: input.capability,
-      hasUserSession: input.hasUserSession,
-      hasApproval: input.hasApproval
-    });
     return this.copyJob(job);
   }
 
@@ -240,7 +245,7 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     if (queued.status === "completed") return this.replayedJob(queued);
     if (queued.status !== "queued") throw new SourceJobDispatchError(queued.id, queued.status);
 
-    if (!this.policyAllows(queued)) {
+    if (!(await this.policyAllows(queued))) {
       return this.copyJob(this.transition(queued, "cancelled_by_policy"));
     }
 
@@ -292,7 +297,7 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     ) {
       throw new SourceJobRetryError(job.id, "the failure is not a safe transient class");
     }
-    if (!this.policyAllows(job)) {
+    if (!(await this.policyAllows(job))) {
       return this.copyJob(this.transition(job, "cancelled_by_policy"));
     }
 
@@ -489,9 +494,7 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     );
   }
 
-  private policyAllows(job: SourceJob): boolean {
-    const context = this.#policyContextByJobId.get(job.id);
-    if (context === undefined) return false;
+  private async policyAllows(job: SourceJob): Promise<boolean> {
     const manifest = this.policy.getManifest(job.connectorId);
     if (
       manifest === null ||
@@ -501,6 +504,7 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     ) {
       return false;
     }
+    const runtimeAuthorization = await this.runtimeAuthorizationFor(job);
     const network =
       job.payload.acquisitionMode === "local_browser"
         ? {
@@ -512,15 +516,49 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     const request: SourcePolicyRequest = {
       connectorId: job.connectorId,
       acquisitionMode: job.acquisitionMode,
-      capability: context.capability,
+      capability: job.capability,
       execution: job.trigger,
       operation: job.operation,
-      hasUserSession: context.hasUserSession,
-      hasApproval: context.hasApproval,
+      hasUserSession: runtimeAuthorization.hasUserSession,
+      hasApproval: runtimeAuthorization.hasApproval,
       network
     };
     const decision = this.policy.evaluate(request);
     return decision.allowed && decision.manifestVersion === job.manifestVersion;
+  }
+
+  private async runtimeAuthorizationFor(job: SourceJob): Promise<{
+    readonly hasUserSession: boolean;
+    readonly hasApproval: boolean;
+  }> {
+    try {
+      const [hasUserSession, approvalInput] = await Promise.all([
+        this.authorization.isUserSessionAvailable(job),
+        job.approvalId === null
+          ? Promise.resolve(null)
+          : this.authorization.getApprovalById(job.approvalId)
+      ]);
+      const approvalResult = ApprovalSchema.safeParse(approvalInput);
+      const approval = approvalResult.success ? approvalResult.data : null;
+      const authorizationTime = this.safeNow().getTime();
+      const hasApproval =
+        approval !== null &&
+        job.approvalId !== null &&
+        approval.id === job.approvalId &&
+        approval.state === "pending" &&
+        approval.usedAt === null &&
+        Date.parse(approval.createdAt) <= authorizationTime &&
+        Date.parse(approval.expiresAt) > authorizationTime &&
+        approval.connectorId === job.connectorId &&
+        approval.operation === job.operation &&
+        approval.payloadHash === job.payloadHash &&
+        approval.targetType === "source_job" &&
+        approval.targetId === job.id;
+
+      return { hasUserSession: hasUserSession === true, hasApproval };
+    } catch {
+      return { hasUserSession: false, hasApproval: false };
+    }
   }
 
   private transition(

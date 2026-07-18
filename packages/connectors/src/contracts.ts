@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import {
   AcquisitionModeSchema,
+  acquisitionModeForListingCaptureMethod,
   ConfidenceBasisPointsSchema,
   ContactChannelSchema,
   ConnectorCursorSchema,
@@ -18,6 +19,7 @@ import {
   ListingSourceRecordSchema,
   MoneyCentsSchema,
   NormalizationJobStateSchema,
+  RawListingJsonEvidenceSchema,
   Sha256Schema,
   SourceCapabilitySchema,
   UnknownFieldReasonSchema,
@@ -28,6 +30,7 @@ import {
   type FieldExtractionMethod,
   type FieldProvenance,
   type ListingCaptureMethod,
+  type JsonValue,
   type ListingExtraction,
   type ListingExtractionFieldName,
   type ListingSourceLabel,
@@ -39,8 +42,11 @@ import {
 import type { SourcePolicyRegistry } from "@vera/policy";
 import { z } from "zod";
 
+import { isConnectorError } from "./errors.ts";
+
 export const STRUCTURED_LISTING_MAX_TITLE_LENGTH = 300;
 export const CAPTURE_TEXT_MAX_LENGTH = 250_000;
+export { RAW_LISTING_JSON_MAX_BYTES } from "@vera/domain";
 
 export const StructuredMoneyObservationSchema = z
   .object({
@@ -201,7 +207,7 @@ export type BrowserAccessDisposition = z.infer<typeof BrowserAccessDispositionSc
 
 export const CaptureMetadataSchema = z
   .object({
-    networkAccess: z.literal(false),
+    networkAccess: z.boolean(),
     untrustedContent: z.literal(true),
     browserAccess: BrowserAccessDispositionSchema
   })
@@ -209,7 +215,7 @@ export const CaptureMetadataSchema = z
 
 export interface RawListingEnvelope {
   readonly connectorId: string;
-  readonly capability: "fixture.read" | "manual.capture";
+  readonly capability: SourceCapability;
   readonly acquisitionMode: AcquisitionMode;
   readonly source: ListingSourceLabel;
   readonly sourceListingId: string | null;
@@ -218,9 +224,9 @@ export interface RawListingEnvelope {
   readonly observedAt: string;
   readonly sourcePostedAt: string | null;
   readonly rawText: string | null;
-  readonly rawJson: StructuredListingInput | null;
+  readonly rawJson: JsonValue | null;
   readonly captureMetadata: {
-    readonly networkAccess: false;
+    readonly networkAccess: boolean;
     readonly untrustedContent: true;
     readonly browserAccess: BrowserAccessDisposition;
   };
@@ -229,7 +235,7 @@ export interface RawListingEnvelope {
 export const RawListingEnvelopeSchema: z.ZodType<RawListingEnvelope> = z
   .object({
     connectorId: EntityIdSchema,
-    capability: SourceCapabilitySchema.extract(["fixture.read", "manual.capture"]),
+    capability: SourceCapabilitySchema,
     acquisitionMode: AcquisitionModeSchema,
     source: ListingSourceLabelSchema,
     sourceListingId: z.string().trim().min(1).max(200).nullable(),
@@ -238,7 +244,7 @@ export const RawListingEnvelopeSchema: z.ZodType<RawListingEnvelope> = z
     observedAt: IsoDateTimeSchema,
     sourcePostedAt: IsoDateTimeSchema.nullable(),
     rawText: z.string().min(1).max(CAPTURE_TEXT_MAX_LENGTH).nullable(),
-    rawJson: StructuredListingInputSchema.nullable(),
+    rawJson: RawListingJsonEvidenceSchema.nullable(),
     captureMetadata: CaptureMetadataSchema
   })
   .strict()
@@ -250,7 +256,7 @@ export const RawListingEnvelopeSchema: z.ZodType<RawListingEnvelope> = z
         message: "A raw listing envelope requires text or structured evidence."
       });
     }
-    const expectedMode = envelope.captureMethod === "fixture" ? "fixture" : "user_capture";
+    const expectedMode = acquisitionModeForListingCaptureMethod(envelope.captureMethod);
     if (envelope.acquisitionMode !== expectedMode) {
       context.addIssue({
         code: "custom",
@@ -258,7 +264,71 @@ export const RawListingEnvelopeSchema: z.ZodType<RawListingEnvelope> = z
         message: "Raw envelope acquisition mode must match its capture method."
       });
     }
+
+    const expectedCapability = {
+      fixture: "fixture.read",
+      user_capture: "manual.capture",
+      official_api: "structured_feed.read",
+      email_alert: "gmail.alert.read",
+      local_browser: "browser.capture"
+    } as const;
+    if (envelope.capability !== expectedCapability[envelope.acquisitionMode]) {
+      context.addIssue({
+        code: "custom",
+        path: ["capability"],
+        message: "Raw envelope capability must match its acquisition mode."
+      });
+    }
+
+    const expectedNetworkAccess = !["fixture", "user_capture"].includes(envelope.acquisitionMode);
+    if (envelope.captureMetadata.networkAccess !== expectedNetworkAccess) {
+      context.addIssue({
+        code: "custom",
+        path: ["captureMetadata", "networkAccess"],
+        message: "Raw envelope network metadata must match its acquisition mode."
+      });
+    }
+
+    if (
+      envelope.acquisitionMode === "local_browser" &&
+      envelope.captureMetadata.browserAccess !== "policy_entry_present"
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["captureMetadata", "browserAccess"],
+        message: "Local-browser evidence requires an explicit browser policy entry."
+      });
+    }
   });
+
+export const ConnectorOperationFailureCodeSchema = z.enum([
+  "malformed_payload",
+  "unsupported_connector",
+  "unsupported_source",
+  "invalid_url",
+  "policy_denied",
+  "capture_failed",
+  "invalid_execution_context",
+  "invalid_connector_output",
+  "unexpected_connector_failure"
+]);
+
+export const ConnectorOperationFailureSchema = z
+  .object({
+    code: ConnectorOperationFailureCodeSchema,
+    category: z.enum(["request_validation", "configuration", "policy", "connector", "internal"]),
+    retryable: z.boolean(),
+    recoveryAction: z.enum([
+      "correct_request",
+      "select_supported_connector",
+      "review_source_policy",
+      "inspect_connector"
+    ]),
+    reasonCode: EntityIdSchema.nullable()
+  })
+  .strict();
+
+export type ConnectorOperationFailure = z.infer<typeof ConnectorOperationFailureSchema>;
 
 export const ConnectorOperationResultSchema = z
   .object({
@@ -276,7 +346,8 @@ export const ConnectorOperationResultSchema = z
     previousCursor: ConnectorCursorSchema.nullable(),
     cursorCandidate: ConnectorCursorSchema.nullable(),
     completedAt: IsoDateTimeSchema,
-    untrustedInput: z.literal(true)
+    untrustedInput: z.literal(true),
+    failure: ConnectorOperationFailureSchema.nullable()
   })
   .strict()
   .superRefine((result, context) => {
@@ -308,6 +379,20 @@ export const ConnectorOperationResultSchema = z
         code: "custom",
         path: ["records"],
         message: "Non-success connector results cannot contain records or a cursor candidate."
+      });
+    }
+    if (result.status === "failed" && result.failure === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["failure"],
+        message: "Failed connector results require typed failure and recovery metadata."
+      });
+    }
+    if (result.status !== "failed" && result.failure !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["failure"],
+        message: "Only failed connector results may carry failure metadata."
       });
     }
   });
@@ -436,7 +521,8 @@ function operationResult(
   status: ConnectorOperationResult["status"],
   records: readonly RawListingEnvelope[],
   previousCursor: ConnectorCursor | null,
-  cursorCandidate: ConnectorCursor | null
+  cursorCandidate: ConnectorCursor | null,
+  failure: ConnectorOperationFailure | null = null
 ): ConnectorOperationResult {
   const body = {
     connectorId: connector.connectorId,
@@ -452,9 +538,94 @@ function operationResult(
     previousCursor,
     cursorCandidate,
     completedAt: request.completedAt,
-    untrustedInput: true as const
+    untrustedInput: true as const,
+    failure
   };
   return ConnectorOperationResultSchema.parse({ ...body, resultHash: resultHash(body) });
+}
+
+class InvalidConnectorExecutionContextError extends Error {}
+
+function invalidExecutionContext(): ConnectorOperationFailure {
+  return ConnectorOperationFailureSchema.parse({
+    code: "invalid_execution_context",
+    category: "request_validation",
+    retryable: false,
+    recoveryAction: "correct_request",
+    reasonCode: null
+  });
+}
+
+function invalidConnectorOutput(): ConnectorOperationFailure {
+  return ConnectorOperationFailureSchema.parse({
+    code: "invalid_connector_output",
+    category: "connector",
+    retryable: false,
+    recoveryAction: "inspect_connector",
+    reasonCode: "schema_validation_failed"
+  });
+}
+
+function typedConnectorFailure(error: unknown): ConnectorOperationFailure {
+  if (error instanceof InvalidConnectorExecutionContextError) return invalidExecutionContext();
+
+  if (isConnectorError(error)) {
+    const reasonCode = EntityIdSchema.safeParse(error.safeDetails.reason);
+    switch (error.code) {
+      case "malformed_payload":
+      case "unsupported_source":
+      case "invalid_url":
+        return ConnectorOperationFailureSchema.parse({
+          code: error.code,
+          category: "request_validation",
+          retryable: false,
+          recoveryAction: "correct_request",
+          reasonCode: reasonCode.success ? reasonCode.data : null
+        });
+      case "unsupported_connector":
+        return ConnectorOperationFailureSchema.parse({
+          code: error.code,
+          category: "configuration",
+          retryable: false,
+          recoveryAction: "select_supported_connector",
+          reasonCode: reasonCode.success ? reasonCode.data : null
+        });
+      case "policy_denied":
+        return ConnectorOperationFailureSchema.parse({
+          code: error.code,
+          category: "policy",
+          retryable: false,
+          recoveryAction: "review_source_policy",
+          reasonCode: reasonCode.success ? reasonCode.data : null
+        });
+      case "capture_failed":
+        return ConnectorOperationFailureSchema.parse({
+          code: error.code,
+          category: "connector",
+          retryable: false,
+          recoveryAction: "inspect_connector",
+          reasonCode: reasonCode.success ? reasonCode.data : null
+        });
+    }
+  }
+
+  if (error instanceof z.ZodError) {
+    return invalidConnectorOutput();
+  }
+
+  return ConnectorOperationFailureSchema.parse({
+    code: "unexpected_connector_failure",
+    category: "internal",
+    retryable: false,
+    recoveryAction: "inspect_connector",
+    reasonCode: null
+  });
+}
+
+function requireExecutionContext<T>(input: T | undefined, schema: z.ZodType<T>): T {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) throw new InvalidConnectorExecutionContextError();
+  return parsed.data;
 }
 
 export async function executeConnectorOperation(
@@ -463,8 +634,11 @@ export async function executeConnectorOperation(
   context?: ConnectorOperationExecutionContext
 ): Promise<ConnectorOperationResult> {
   const request = ConnectorOperationExecutionRequestSchema.parse(requestInput);
-  const previousCursor =
-    connector.cursorState === null ? null : ConnectorCursorSchema.parse(connector.cursorState);
+  const parsedPreviousCursor = ConnectorCursorSchema.nullable().safeParse(connector.cursorState);
+  if (!parsedPreviousCursor.success) {
+    return operationResult(connector, request, "failed", [], null, null, invalidConnectorOutput());
+  }
+  const previousCursor = parsedPreviousCursor.data;
   if (
     !connector.operations.includes(request.operation) ||
     !operationImplemented(connector, request.operation)
@@ -473,31 +647,39 @@ export async function executeConnectorOperation(
   }
 
   try {
-    if (context === undefined) throw new TypeError("Connector execution context is required.");
+    if (
+      context === undefined ||
+      context.connectorContext === undefined ||
+      context.connectorContext.correlationId !== request.correlationId ||
+      typeof context.connectorContext.now !== "function" ||
+      typeof context.connectorContext.createId !== "function"
+    ) {
+      throw new InvalidConnectorExecutionContextError();
+    }
 
     let records: readonly RawListingEnvelope[];
     switch (request.operation) {
       case "discover": {
-        if (context.discoveryRequest === undefined || connector.discover === undefined) {
-          throw new TypeError("Connector discovery input is required.");
-        }
-        const discovery = ConnectorDiscoveryRequestSchema.parse(context.discoveryRequest);
+        if (connector.discover === undefined) throw new InvalidConnectorExecutionContextError();
+        const discovery = requireExecutionContext(
+          context.discoveryRequest,
+          ConnectorDiscoveryRequestSchema
+        );
         records = await connector.discover(discovery, context.connectorContext);
         break;
       }
       case "capture": {
-        if (context.captureRequest === undefined || connector.capture === undefined) {
-          throw new TypeError("Connector capture input is required.");
-        }
-        const capture = CaptureRequestSchema.parse(context.captureRequest);
+        if (connector.capture === undefined) throw new InvalidConnectorExecutionContextError();
+        const capture = requireExecutionContext(context.captureRequest, CaptureRequestSchema);
         records = [await connector.capture(capture, context.connectorContext)];
         break;
       }
       case "fetch_detail": {
-        if (context.fetchDetailRequest === undefined || connector.fetchDetail === undefined) {
-          throw new TypeError("Connector detail input is required.");
-        }
-        const detail = ConnectorFetchDetailRequestSchema.parse(context.fetchDetailRequest);
+        if (connector.fetchDetail === undefined) throw new InvalidConnectorExecutionContextError();
+        const detail = requireExecutionContext(
+          context.fetchDetailRequest,
+          ConnectorFetchDetailRequestSchema
+        );
         records = [await connector.fetchDetail(detail, context.connectorContext)];
         break;
       }
@@ -512,8 +694,16 @@ export async function executeConnectorOperation(
       previousCursor,
       cursorCandidate === null ? null : ConnectorCursorSchema.parse(cursorCandidate)
     );
-  } catch {
-    return operationResult(connector, request, "failed", [], previousCursor, null);
+  } catch (error) {
+    return operationResult(
+      connector,
+      request,
+      "failed",
+      [],
+      previousCursor,
+      null,
+      typedConnectorFailure(error)
+    );
   }
 }
 

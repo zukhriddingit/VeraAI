@@ -52,7 +52,7 @@ Neither older ADR is superseded as a whole.
 - Real OpenClaw installation, profile creation, browser launch, session handling, and source-specific page automation are not implemented or authorized by this record.
 - No live `official_api`, `email_alert`, or `local_browser` source connector is enabled. Fixture and manual capture preserve the current no-network deterministic demo.
 - Zillow and Facebook Marketplace browser work remains disabled-by-default `experimental_personal`; Craigslist browser searching remains `disabled`.
-- Migration `0003_romantic_fantastic_four.sql` adds source jobs, append-only attempts, browser-node health, acquisition mode, and manifest policy state without resetting existing listing data.
+- Migration `0003_romantic_fantastic_four.sql` adds source jobs, append-only attempts, browser-node health, acquisition mode, and manifest policy state without resetting existing listing data. Additive migration `0004_groovy_zaladane.sql` persists each job's capability and optional opaque approval ID, admits exact production capture-method/mode pairs, and preserves existing identities and append-only evidence. Session availability and approval validity remain runtime checks rather than persisted authorization truth.
 - Future live adapters must preserve strict schemas, policy checks, kill switches, idempotency, cursor commit-after-ingestion, manual blockers, and the local credential boundary.
 
 ## Alternatives rejected

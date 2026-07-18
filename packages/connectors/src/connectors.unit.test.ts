@@ -12,7 +12,8 @@ import {
   type CaptureSourceConnector,
   type ConnectorContext,
   type FixtureCaptureRequest,
-  type ManualCaptureRequest
+  type ManualCaptureRequest,
+  type SourceConnector
 } from "./contracts.ts";
 import {
   InvalidCaptureUrlError,
@@ -240,6 +241,171 @@ describe("FixtureConnector", () => {
     expect(() => new FixtureConnector().capture(unsupported, context())).toThrow(
       UnsupportedSourceError
     );
+  });
+});
+
+describe("generic connector result envelopes", () => {
+  it.each([
+    ["official_api", "official_api", "structured_feed.read"],
+    ["email_alert", "email_alert", "gmail.alert.read"],
+    ["local_browser", "local_browser", "browser.capture"]
+  ] as const)(
+    "accepts untrusted %s evidence without treating it as a normalized listing",
+    (acquisitionMode, captureMethod, capability) => {
+      const envelope = RawListingEnvelopeSchema.parse({
+        connectorId: `${acquisitionMode}.connector.v1`,
+        capability,
+        acquisitionMode,
+        source: "other",
+        sourceListingId: "source-1",
+        sourceUrl: "https://housing.example/listing/1",
+        captureMethod,
+        observedAt: NOW.toISOString(),
+        sourcePostedAt: null,
+        rawText: null,
+        rawJson: {
+          providerPayload: {
+            opaqueFields: ["untrusted", 7, null]
+          }
+        },
+        captureMetadata: {
+          networkAccess: true,
+          untrustedContent: true,
+          browserAccess:
+            acquisitionMode === "local_browser" ? "policy_entry_present" : "not_applicable"
+        }
+      });
+
+      expect(envelope).toMatchObject({ acquisitionMode, captureMethod, capability });
+      expect(() =>
+        RawListingEnvelopeSchema.parse({ ...envelope, acquisitionMode: "fixture" })
+      ).toThrow();
+      expect(() =>
+        RawListingEnvelopeSchema.parse({
+          ...envelope,
+          capability: "manual.capture",
+          captureMetadata: { ...envelope.captureMetadata, networkAccess: false }
+        })
+      ).toThrow();
+    }
+  );
+
+  it("requires local-browser evidence to retain its explicit browser policy boundary", () => {
+    const envelope = RawListingEnvelopeSchema.parse({
+      connectorId: "local.browser.connector.v1",
+      capability: "browser.capture",
+      acquisitionMode: "local_browser",
+      source: "other",
+      sourceListingId: "source-1",
+      sourceUrl: "https://housing.example/listing/1",
+      captureMethod: "local_browser",
+      observedAt: NOW.toISOString(),
+      sourcePostedAt: null,
+      rawText: "Untrusted browser evidence.",
+      rawJson: null,
+      captureMetadata: {
+        networkAccess: true,
+        untrustedContent: true,
+        browserAccess: "policy_entry_present"
+      }
+    });
+
+    expect(() =>
+      RawListingEnvelopeSchema.parse({
+        ...envelope,
+        captureMetadata: { ...envelope.captureMetadata, browserAccess: "not_applicable" }
+      })
+    ).toThrow();
+  });
+
+  it("returns schema-validated recovery metadata for a typed connector failure", async () => {
+    const connector: SourceConnector = {
+      connectorId: "failing.connector.v1",
+      displayName: "Failing connector",
+      source: "other",
+      acquisitionMode: "user_capture",
+      capability: "manual.capture",
+      policyRequirement: {
+        connectorId: "failing.connector.v1",
+        acquisitionMode: "user_capture",
+        capability: "manual.capture",
+        operation: "capture.user_supplied"
+      },
+      operations: ["capture"],
+      cursorState: null,
+      capture: () => {
+        throw new MalformedCapturePayloadError({
+          connectorId: "failing.connector.v1",
+          requestKind: "manual_text",
+          reason: "schema_validation_failed"
+        });
+      },
+      health: () => {
+        throw new Error("not used");
+      }
+    };
+
+    const result = await executeConnectorOperation(
+      connector,
+      {
+        operation: "capture",
+        correlationId: "correlation-1",
+        payloadHash: PAYLOAD_HASH,
+        idempotencyKey: IDEMPOTENCY_KEY,
+        completedAt: NOW.toISOString()
+      },
+      {
+        connectorContext: context(),
+        captureRequest: manualTextRequest
+      }
+    );
+
+    expect(ConnectorOperationResultSchema.parse(result)).toEqual(result);
+    expect(result).toMatchObject({
+      status: "failed",
+      records: [],
+      failure: {
+        code: "malformed_payload",
+        category: "request_validation",
+        retryable: false,
+        recoveryAction: "correct_request",
+        reasonCode: "schema_validation_failed"
+      }
+    });
+  });
+
+  it("distinguishes an invalid execution context from invalid connector output", async () => {
+    const connector = new FixtureConnector();
+    const request = {
+      operation: "capture",
+      correlationId: "correlation-1",
+      payloadHash: PAYLOAD_HASH,
+      idempotencyKey: IDEMPOTENCY_KEY,
+      completedAt: NOW.toISOString()
+    } as const;
+
+    const missingContext = await executeConnectorOperation(connector, request);
+    expect(missingContext.failure).toMatchObject({
+      code: "invalid_execution_context",
+      recoveryAction: "correct_request"
+    });
+
+    const invalidOutputConnector: SourceConnector = {
+      ...connector,
+      capture: () => ({
+        ...connector.capture(fixtureRequest as FixtureCaptureRequest, context()),
+        acquisitionMode: "official_api"
+      }),
+      health: (registry) => connector.health(registry)
+    };
+    const invalidOutput = await executeConnectorOperation(invalidOutputConnector, request, {
+      connectorContext: context(),
+      captureRequest: fixtureRequest
+    });
+    expect(invalidOutput.failure).toMatchObject({
+      code: "invalid_connector_output",
+      recoveryAction: "inspect_connector"
+    });
   });
 });
 
