@@ -1,19 +1,20 @@
 # Vera architecture and implementation-readiness review
 
-Status: implemented locally through provider-neutral Milestone 3 extraction; corrected MVP deployment topology approved  
+Status: deterministic local demo plus Maritime/OpenClaw contract alignment implemented
+
 Reviewed: 2026-07-18
 
 ## Readiness verdict
 
 The current implementation is a pnpm TypeScript workspace with a Next.js App Router application, a separate Node worker, and a shared local SQLite database accessed through Drizzle and better-sqlite3. It runs fixture and user-capture ingestion and normalization locally.
 
-The normative Ship Season topology is not yet implemented. It uses Maritime as Vera's primary orchestration and deployment environment for monitoring jobs, scheduled triggers, durable job state, retries, agent health, notifications, and hosted integration secrets. Browser-only work is dispatched to a registered local browser node. That node uses OpenClaw as the default adapter behind a replaceable browser-executor interface and exclusively owns the user's browser profile and authenticated consumer-site sessions.
+The normative Ship Season topology uses Maritime as Vera's primary orchestration and deployment environment for monitoring jobs, scheduled triggers, durable job state, retries, agent health, notifications, and hosted integration secrets. Browser-only work is dispatched to a registered local browser node. That node uses OpenClaw as the default adapter behind a replaceable browser-executor interface and exclusively owns the user's browser profile and authenticated consumer-site sessions.
 
-Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI.
+Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI. The current alignment adds strict source-job, job-attempt, browser-node, browser-execution, and Maritime control-plane contracts; deterministic no-network mocks; and migration `0003_romantic_fantastic_four.sql`.
 
 Node 26 is a Current release, so the project should target Node 24 LTS for repeatable development and CI. The installed Node 26 is sufficient for inspection but should not define the project runtime.
 
-No question blocks the already implemented local deterministic ingestion core. Maritime orchestration, remote node dispatch, email-alert ingestion, the four-mode `SourceConnector` contract, and the OpenClaw bridge remain required MVP implementation work. Google OAuth configuration blocks only future live acceptance checks for Gmail and Calendar.
+No question blocks the already implemented local deterministic ingestion core or the contract-only orchestration slice. Real Maritime transport and deployment, a real OpenClaw bridge, authenticated remote-node dispatch, email-alert ingestion, official API integrations, and source-specific browser connectors remain required MVP implementation work. Google OAuth configuration blocks only future live acceptance checks for Gmail and Calendar.
 
 ## Resolved plan issues
 
@@ -30,7 +31,7 @@ No question blocks the already implemented local deterministic ingestion core. M
 | Raw evidence immutability conflicts with user-controlled deletion    | Privacy ambiguity          | Evidence is immutable while a store exists. A separate, confirmed full local reset may delete the database and credential-store entries.                 |
 | Maritime was previously grouped with unrelated infrastructure        | Architecture contradiction | Use Maritime as the primary monitoring control plane. Keep Redis, Turborepo, broad crawling, hosted browser profiles, and unrelated infrastructure out.  |
 | Browser sessions could be mistaken for hosted secrets                | Security gap               | Keep passwords, cookies, browser storage, and OpenClaw profile contents local; users sign in manually and Vera never transports third-party passwords.   |
-| A local browser node may be unavailable when a Maritime job runs     | Missing state              | Record `deferred_local_node_offline`, keep it visible, preserve the cursor, and retry without manufacturing a success or RawListing.                     |
+| A local browser node may be unavailable when a Maritime job runs     | Missing state              | Record `deferred_node_offline`, keep it visible, preserve the cursor, and retry without manufacturing a success or RawListing.                           |
 | Perceptual photo hashing may require fetching remote images          | Hidden network scope       | Hash only bytes already present in sanitized fixtures or explicitly supplied captures. Do not download remote images merely to compute a hash.           |
 
 ## System shape
@@ -38,12 +39,12 @@ No question blocks the already implemented local deterministic ingestion core. M
 ```mermaid
 flowchart LR
     User["User / Vera dashboard"]
-    Maritime["Maritime control plane<br/>schedules, jobs, retries, health,<br/>notifications, hosted secrets"]
+    Maritime["MaritimeOrchestrator contract<br/>local mock implemented"]
     API["Official API / email connectors"]
     Node["Registered local browser node"]
-    OpenClaw["OpenClaw adapter<br/>user-controlled profile"]
+    OpenClaw["BrowserExecutionProvider<br/>mock boundary; OpenClaw later"]
     Pipeline["Deterministic Vera pipeline"]
-    Deferred["deferred_local_node_offline"]
+    Deferred["deferred_node_offline"]
     Actions["Human-approved external action"]
 
     User --> Maritime
@@ -58,7 +59,9 @@ flowchart LR
     Maritime --> Actions
 ```
 
-Maritime owns orchestration job identity and lifecycle, trigger definitions, bounded retry/backoff, health, notification dispatch, and secrets for approved hosted API and email integrations. It does not own consumer-site credentials or browser session material. The registered local node exclusively owns its dedicated user-controlled OpenClaw profile, cookies, local storage, and sessions created through manual user login. Vera never asks for, records, types, uploads, or transmits a third-party password.
+In the target topology, Maritime owns orchestration job identity and lifecycle, trigger definitions, bounded retry/backoff, health, notification dispatch, and secrets for approved hosted API and email integrations. It does not own consumer-site credentials or browser session material. The registered local node exclusively owns its dedicated user-controlled OpenClaw profile, cookies, local storage, and sessions created through manual user login. Vera never asks for, records, types, uploads, or transmits a third-party password.
+
+The repository now owns the `MaritimeOrchestrator` interface and a deterministic in-memory `LocalMockMaritimeOrchestrator`. The mock supports scheduling, policy-checked dispatch, status queries, safe retry, policy cancellation, and browser-node heartbeat receipt. It exercises `local_browser` work only through the browser mock; no connector catalog or other acquisition-mode executor is wired into it. It is a contract test double, not Maritime durability, authentication, transport, scheduling, encryption, or deployment.
 
 The existing web process still owns the currently implemented local user interaction and API boundaries. The local worker owns the implemented deterministic-first normalization and provider-assisted extraction when configured. As the target topology is built, Maritime assumes durable orchestration for monitoring and dispatch while local fixture and user-capture execution remains available for development and outage fallback. All processes use the same package contracts; application packages do not import one another.
 
@@ -75,34 +78,62 @@ A browser job dispatch contains only:
 
 When implemented, dispatch and result transport must be mutually authenticated, encrypted, replay-protected, bounded, and revocable. Maritime sends no credentials. The node returns only schema-bounded listing evidence, discovered source listing IDs, cursor candidates, typed blocker or failure codes, and safe operational counts. It never returns passwords, cookies, authorization headers, browser storage, local profile paths, password-manager values, or session exports.
 
-The target lifecycle is:
+The implemented source-job lifecycle is:
 
 ```text
-scheduled -> dispatching
-  -> running_local_browser -> succeeded | retryable | failed
-  -> deferred_local_node_offline -> dispatching | cancelled
+queued -> dispatched -> running -> completed
+                    \-> retryable_failed | permanently_failed
+                    \-> deferred_node_offline | manual_action_required
+                    \-> cancelled_by_policy
 ```
 
-If the assigned node cannot be reached, the stable job moves to visible `deferred_local_node_offline`. The dashboard and agent-health view show the connector, node, safe reason, deferred time, and next eligible retry. Deferral creates no RawListing or success event and does not advance the source cursor. Maritime retries with the same job identity and last committed cursor; it never treats an offline node as a successful empty search.
+If the assigned node is unregistered, offline, stale, or revoked, the stable job moves to `deferred_node_offline` with a typed reason. Deferral creates no RawListing or success result and does not advance the source cursor. Explicit retry requeues the same job identity and last committed cursor after policy still permits it; an offline node is never treated as a successful empty search. The current contracts and SQLite rows make this state queryable, but the dashboard does not yet render source-job or node-health views.
 
 For a successful acquisition, a cursor candidate is committed only after every corresponding immutable raw record is durably accepted through the idempotent ingestion boundary. An empty success therefore means the configured saved search had no new IDs after the committed cursor, which is distinct from deferral, a manual blocker, a layout change, policy denial, or transient failure.
 
-## Target SourceConnector boundary
+## Implemented SourceConnector boundary
 
-The normative connector contract supports exactly four acquisition modes:
+The production connector portfolio has exactly four acquisition modes:
 
 ```ts
-type AcquisitionMode = "official_api" | "email_alert" | "local_browser" | "user_capture";
+type ProductionAcquisitionMode =
+  | "official_api"
+  | "email_alert"
+  | "local_browser"
+  | "user_capture";
+
+type AcquisitionMode = ProductionAcquisitionMode | "fixture";
 
 interface SourceConnector {
   readonly connectorId: string;
+  readonly displayName: string;
+  readonly source: ListingSourceLabel;
   readonly acquisitionMode: AcquisitionMode;
-  discover(input: ConnectorDiscoveryInput): Promise<ConnectorDiscoveryResult>;
-  acquire(input: ConnectorAcquireInput): Promise<RawListingEnvelope[]>;
+  readonly capability: SourceCapability;
+  readonly policyRequirement: SourcePolicyRequirement;
+  readonly operations: readonly ("discover" | "capture" | "fetch_detail")[];
+  readonly cursorState: ConnectorCursor | null;
+  discover?(
+    request: ConnectorDiscoveryRequest,
+    context: ConnectorContext
+  ): Promise<readonly RawListingEnvelope[]>;
+  capture?(
+    request: CaptureRequest,
+    context: ConnectorContext
+  ): Promise<RawListingEnvelope> | RawListingEnvelope;
+  fetchDetail?(
+    request: ConnectorFetchDetailRequest,
+    context: ConnectorContext
+  ): Promise<RawListingEnvelope>;
+  health(registry: SourcePolicyRegistry): ConnectorHealth;
 }
 ```
 
-This is target architecture, not an assertion that the interface exists in the current code. Every mode produces the same validated raw-listing envelope and must pass policy, provenance, idempotency, and audit boundaries. OpenClaw implements a separate replaceable browser-executor interface used by `local_browser` connectors; source connectors do not depend directly on OpenClaw.
+`fixture` is a fifth code-level, test-only mode for sanitized local evidence. It cannot represent a live provider and never masquerades as `official_api`. Connector operations are optional because a source need not support discovery, capture, and detail fetching. A checked dispatcher returns `unsupported_operation` when an operation is undeclared or missing; it never falls back to another operation or acquisition mode.
+
+Operation results are strict, hash-bound, idempotent envelopes with connector/source/mode identity, correlation ID, payload hash, idempotency key, result hash, untrusted records, safe counts, previous cursor, and optional cursor candidate. A cursor candidate is not committed by the connector. Future ingestion may commit it only after corresponding immutable raw records have been durably and idempotently accepted.
+
+The implemented fixture and manual connectors remain capture-only and no-network. No `official_api`, `email_alert`, or `local_browser` source connector exists yet. OpenClaw will implement the separate `BrowserExecutionProvider` boundary; the current provider is a deterministic no-network mock.
 
 Each source/mode entry has one permission-ceiling state: `approved`, `user_triggered_only`, `experimental_personal`, or `disabled`. Missing or malformed policy denies. Runtime enablement, manifest and capability checks, trigger compatibility, exact saved-search allowlisting, node assignment, limits, kill switches, session availability, and required approvals remain additional fail-closed conditions.
 
@@ -115,7 +146,7 @@ Initial source decisions are explicit:
 - Craigslist uses `email_alert` through its official search-alert channel first; Craigslist `local_browser` searching is `disabled`.
 - Zillow and Facebook Marketplace monitoring use `local_browser`, are `experimental_personal`, and are disabled by default. Exact reviewed saved-search configuration and explicit enablement are required.
 - Zillow, Facebook Marketplace, and Craigslist `user_capture` remain `user_triggered_only` and available; a supplied URL is inert unless a separate allowed browser operation is requested.
-- Sanitized fixture adapters are local no-network test doubles for the `official_api` contract shape and are `approved` in development and tests.
+- Sanitized fixture adapters use the distinct test-only `fixture` mode and are `approved` in development and tests.
 
 Next.js route handlers must opt into the Node runtime. Edge runtime and serverless deployment are out of scope because the application depends on a local native SQLite driver and an OS credential store.
 
@@ -128,7 +159,7 @@ apps/
 packages/
   domain/       Zod schemas, entities, state transitions, typed errors
   db/           schema, migrations, repositories, transactions
-  connectors/   fixture/manual adapters, URL policy, deterministic extraction and merge
+  connectors/   source/browser/orchestration contracts and no-network mocks; fixture/manual adapters
   ai/           LLMProvider, strict evidence validation, mock and OpenAI providers
   policy/       manifests, evaluation, approvals, kill switches
   scoring/      normalization, dedupe, scoring, risk indicators
@@ -164,7 +195,10 @@ The minimum persistent concepts are:
 - ContactWorkflow and Viewing with explicit state transitions.
 - Approval with operation, target, payload hash, expiry, use time, and actor.
 - ActivityEvent with correlation ID, causation ID, actor, action, target, policy decision, payload hash, outcome, error class, and timestamp.
-- Job with type, payload, idempotency key, run time, attempts, lease, and terminal state.
+- SourceJob with strict minimum-data payload, hashes, idempotency key, attempts, state, and safe outcome metadata.
+- JobAttempt as append-only source-orchestration attempt history.
+- BrowserNodeStatus as the latest safe heartbeat and capability snapshot.
+- NormalizationJob as the separate local leased queue from accepted raw evidence to a source record.
 
 RawListing, ListingExtraction, and ActivityEvent receive SQLite triggers that reject updates and deletes. Normalized or canonical views can be superseded by new versions; they do not overwrite raw evidence.
 
@@ -194,6 +228,15 @@ Each job type defines a stable idempotency key. Connector effects also use provi
 
 SQLite writes must stay short. Network calls and LLM calls never run inside a database transaction.
 
+### Source jobs are not normalization jobs
+
+The persistence model has two deliberately separate job planes:
+
+- `source_jobs` represents acquisition orchestration before evidence is accepted. Its domain states are `queued`, `dispatched`, `running`, `completed`, `retryable_failed`, `permanently_failed`, `deferred_node_offline`, `manual_action_required`, and `cancelled_by_policy`.
+- `normalization_jobs` is the existing local leased queue that begins only after one immutable `raw_listings` row has been accepted. Its states remain `queued`, `leased`, `completed`, `retryable`, and `dead_letter`.
+
+A source job may eventually produce a strict connector result envelope for the immutable ingestion gateway. It cannot directly create a source record, canonical listing, score, risk signal, notification, approval, message, or calendar event. The source-job repository validates domain transitions transactionally; `source_job_attempts` is append-only; and `browser_nodes` stores only the latest safe health snapshot. The current local Maritime mock keeps its own in-memory control state, while SQLite establishes the durable application-owned contract a live adapter must use later.
+
 ## Ingestion and canonicalization
 
 All paths enter one ingestion gateway. Steps 1-5 are implemented for fixture and manual capture; steps 6-8 remain later milestone work:
@@ -219,7 +262,7 @@ source record
   -> human-approved external action
 ```
 
-No `official_api`, `email_alert`, `local_browser`, or `user_capture` output may bypass a stage. Browser output cannot directly create a notification, ranking result, canonical fact, message, calendar event, or approval. Each stage has its own deterministic, idempotent boundary, and unknown values remain unknown.
+No `official_api`, `email_alert`, `local_browser`, `user_capture`, or test-only `fixture` output may bypass a stage. Browser output cannot directly create a notification, ranking result, canonical fact, message, calendar event, or approval. Each stage has its own deterministic, idempotent boundary, and unknown values remain unknown.
 
 Manual capture currently accepts pasted text plus an optional provenance URL, or strict structured JSON plus an optional provenance URL. HTML uploads are not implemented. The connector validates a URL's syntax and source label without DNS or HTTP access; the URL is inert provenance. Unknown public domains are labeled `other` and classified as requiring a future manual browser-policy entry. Gmail ingestion is not implemented. Sanitized fixtures remain the deterministic first path.
 
@@ -389,9 +432,9 @@ Vitest uses named unit and integration projects. Integration tests create a uniq
 2. Add domain schemas, migrations, repositories, append-only triggers, fixture seed, and SQLite job leases.
 3. Implement fixture and manual capture with no network fetch, deterministic-first structured extraction, an optional provider gap-fill boundary, and capture evidence detail.
 4. Add new-record duplicate clustering/canonicalization, deterministic scoring/risk refresh, decision UI, and golden-path tests.
-5. Add Maritime as the primary monitoring control plane: durable job identity, schedules, bounded retries, health, notifications, hosted secrets, and authenticated registered-node dispatch. Retain local fixture/manual execution as development and outage fallback.
-6. Add the provider-neutral `SourceConnector` four-mode contract and Craigslist official `email_alert` ingestion before automated browser sources.
-7. Add the registered local browser node and replaceable browser-executor interface, with OpenClaw as the default adapter, manual-login profile, exact saved-search limits, cursor commits, manual blockers, and `deferred_local_node_offline` visibility.
+5. Replace the local Maritime mock with a live adapter behind `MaritimeOrchestrator`: durable schedules, authenticated dispatch, bounded retries, health, notifications, and hosted secrets. Retain local fixture/manual execution for deterministic development.
+6. Implement Craigslist official `email_alert` ingestion behind the existing provider-neutral connector contract before automated browser sources.
+7. Replace the no-network browser mock with a registered local node and real OpenClaw adapter behind `BrowserExecutionProvider`, preserving manual login, exact saved-search limits, cursor commits, manual blockers, and `deferred_node_offline` visibility.
 8. Add source-specific Zillow and Facebook Marketplace `local_browser` connectors only as disabled-by-default `experimental_personal` entries after explicit review; preserve `user_triggered_only` direct capture.
 9. Add Google OAuth, Gmail draft creation behind disabled manifests, approved Calendar holds, and notifications without any autonomous send path.
 
@@ -404,8 +447,8 @@ There are no blockers to the already implemented local deterministic core. The n
 Before Maritime dispatch acceptance:
 
 - deployment ownership, environment, and authenticated node-registration mechanism must be implemented;
-- dispatch/result schemas, replay protection, revocation, stable job identity, health reporting, and secret ownership must pass contract tests;
-- an unavailable node must visibly enter `deferred_local_node_offline` without a RawListing, success event, or cursor advance.
+- live transport authentication, encryption, replay protection, revocation, node registration, health reporting, and secret ownership must pass acceptance tests;
+- an unavailable node must preserve the implemented `deferred_node_offline` semantics without a RawListing, success result, or cursor advance.
 
 Before live Google acceptance:
 

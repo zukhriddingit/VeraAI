@@ -9,13 +9,13 @@ Vera should reduce rental-search risk without becoming a new source of credentia
 
 ## Current implementation and target boundary
 
-The current clean clone runs fixture and user-capture jobs through the local SQLite worker. It does not yet implement Maritime orchestration, remote dispatch, email-alert acquisition, an OpenClaw bridge, or source-specific browser monitoring. The controls below define the normative Ship Season MVP boundary those components must satisfy; they do not claim the target infrastructure already exists.
+The current clean clone runs fixture and user-capture ingestion through the local SQLite worker. It also defines strict source-job, browser-node, browser-execution, and Maritime control-plane contracts, persists the safe orchestration state, and supplies deterministic no-network browser and Maritime mocks. It does not implement real Maritime transport or deployment, remote node dispatch, email-alert acquisition, an OpenClaw bridge, or source-specific browser monitoring. The controls below distinguish the implemented contract boundary from the additional controls required before live infrastructure exists.
 
 ## Trust boundaries
 
-Maritime is Vera's primary orchestration and deployment environment. It is trusted to manage monitoring jobs, scheduled triggers, stable job metadata, bounded retries, agent and connector health, policy-checked notifications, and secrets for approved hosted API and email integrations. It does not own authenticated consumer-site browser sessions.
+Maritime is Vera's primary target orchestration and deployment environment. A future live adapter will be trusted to manage monitoring jobs, scheduled triggers, stable job metadata, bounded retries, agent and connector health, policy-checked notifications, and secrets for approved hosted API and email integrations. It must not own authenticated consumer-site browser sessions. The current `LocalMockMaritimeOrchestrator` is only an in-memory contract test double and provides no Maritime authentication, encryption, durable scheduling, or deployment guarantees.
 
-The registered local browser node is a separate trust boundary. It owns the dedicated user-controlled OpenClaw profile, cookies, local storage, and browser session created by manual user login. OpenClaw is the default, replaceable browser execution adapter. Browser page content, redirects, and every result returned by the local node remain untrusted until schema, provenance, policy, and evidence validation succeed.
+The registered local browser node is a separate target trust boundary. When implemented, it owns the dedicated user-controlled OpenClaw profile, cookies, local storage, and browser session created by manual user login. OpenClaw is the default, replaceable browser execution adapter. The current `MockBrowserExecutionProvider` performs no browser or network action. Browser page content, redirects, and every result returned by any future local node remain untrusted until schema, provenance, policy, and evidence validation succeed.
 
 The Maritime-to-node channel must be mutually authenticated, encrypted, replay-protected, schema-bounded, and revocable when implemented. Node identity and authorization are scoped to the assigned user, connector, exact configured saved-search URL, and manifest version. A registered node is not trusted to broaden policy or authorize external effects.
 
@@ -28,7 +28,20 @@ Untrusted inputs include:
 - LLM output;
 - all local HTTP requests until origin and anti-CSRF checks pass.
 
-Trusted policy inputs are limited to version-controlled schemas, connector manifests, deterministic domain code, explicit local user approvals, Maritime-managed orchestration state, and secrets retrieved through an approved secret-store abstraction. A transport-authenticated local node result is still untrusted content.
+Trusted policy inputs are limited to version-controlled schemas, connector manifests, deterministic domain code, explicit local user approvals, application-owned orchestration state validated at the Maritime boundary, and secrets retrieved through an approved secret-store abstraction. A transport-authenticated local node result is still untrusted content.
+
+## Minimum-data orchestration payloads
+
+Source-job payloads are strict discriminated Zod schemas with unknown keys rejected. They contain only opaque identifiers and minimum control data:
+
+- a sanitized fixture-set reference for `fixture`;
+- an opaque protected capture reference for `user_capture`, never pasted listing content;
+- a reviewed source-configuration reference and optional committed cursor for `official_api` or `email_alert`;
+- an opaque node ID, saved-search ID, exact validated HTTP(S) URL, optional committed cursor, and bounded page, record, byte, duration, and concurrency limits for `local_browser`.
+
+Every source job binds the payload to a SHA-256 payload hash, stable idempotency key, and correlation ID. Result envelopes add a deterministic result hash and remain marked as untrusted input. Job attempts retain safe status and error metadata only; they do not retain raw results.
+
+The schema has no password, cookie, authorization-header, token, session-export, browser-storage, profile-path, password-manager, arbitrary metadata, or pasted-evidence field. Strict parsing rejects attempts to smuggle those fields into serialized payloads. This protects the application boundary; a future Maritime transport must additionally authenticate, encrypt, size-limit, replay-protect, and revoke messages.
 
 ## Primary threats
 
@@ -107,7 +120,7 @@ The Gmail compose scope can authorize both draft creation and sending. Provider 
 
 Manual capture performs no URL retrieval. A URL is inert provenance text.
 
-The current manual URL validator is a pure parser. It permits only trimmed HTTP(S) values and rejects credentials, fragments, explicit ports, localhost, private or IP-literal hosts, malformed hostnames, and oversized values. Known-source classification requires an exact domain or subdomain boundary, so suffix spoofs remain `other`. Unknown public domains may be stored as inert provenance but are explicitly marked as requiring a future manual browser-policy decision.
+The current manual URL validator is a pure parser. It permits only trimmed HTTP(S) values and rejects credentials, fragments, explicit ports, localhost, IP-literal hosts, malformed hostnames, and oversized values. It performs no DNS lookup; a future network adapter must reject hostnames that resolve to private, loopback, or link-local addresses. Known-source classification requires an exact domain or subdomain boundary, so suffix spoofs remain `other`. Unknown public domains may be stored as inert provenance but are explicitly marked as requiring a future manual browser-policy decision.
 
 External connectors call only exact HTTPS API origins declared in an enabled manifest. Redirects are rejected unless the final origin is independently allowed. Network clients enforce response-size and time limits and never access file URLs, Unix sockets, localhost, link-local addresses, or private address space unless a future local-only capability explicitly requires and documents it.
 
@@ -115,7 +128,7 @@ Remote image downloads are not part of the MVP. Photo hashes are computed only f
 
 ## Browser safety
 
-Local browser acquisition is a first-class but narrow MVP capability. The target `SourceConnector` vocabulary is exactly `official_api`, `email_alert`, `local_browser`, and `user_capture`; OpenClaw is the default replaceable adapter for `local_browser`. The source-policy states are exactly `approved`, `user_triggered_only`, `experimental_personal`, and `disabled`. Missing or malformed policy always denies.
+Local browser acquisition is a first-class but narrow MVP capability. The production connector portfolio is exactly `official_api`, `email_alert`, `local_browser`, and `user_capture`; the code-level union additionally contains test-only `fixture`, which cannot represent a live provider. OpenClaw is the default replaceable adapter for `local_browser`. The source-policy states are exactly `approved`, `user_triggered_only`, `experimental_personal`, and `disabled`. Policy state is separate from `manual` or `scheduled` execution; neither grants an operation by itself. Missing, malformed, mismatched, disabled, or killed policy always denies.
 
 Every `local_browser` operation must:
 
@@ -129,22 +142,29 @@ Every `local_browser` operation must:
 - provide immediate source and local-node kill switches;
 - never click message, contact, apply, submit, payment, or account-setting controls.
 
+Browser navigation requests contain one target URL and an explicit list of allowed URLs. The target must exactly match an allowed entry. Syntactic URL validation rejects credentials, fragments, explicit ports, localhost, IP-literal hosts, non-HTTP(S) schemes, and credential-like query keys. It performs no DNS resolution, so a future network adapter must separately reject public-looking hostnames that resolve to private, loopback, or link-local addresses. The interface intentionally has no arbitrary JavaScript, generic click, password entry, CAPTCHA handling, messaging, application, upload, or payment operation.
+
+Health is an explicit heartbeat contract, not an inference from an empty result. The node record carries both `lastHeartbeatAt` and `heartbeatExpiresAt`; an online record whose expiry has passed is treated as stale. Missing, offline, stale, and revoked nodes map to distinct deferred reasons under the single `deferred_node_offline` job state.
+
+Login, reauthentication, two-factor authentication, CAPTCHA, consent, camera permission, and microphone permission are a closed `manual_action_required` blocker vocabulary. A blocker returns only a safe instruction and opaque job/node/source identity. It cannot contain credentials, form values, cookies, or page content, cannot be retried automatically as success, and cannot advance a cursor.
+
+Connector methods are optional by operation. Calling undeclared discovery, capture, or detail behavior returns `unsupported_operation` with no records or cursor candidate. It does not fall back to a broader method, another acquisition mode, or generic browsing.
+
 Craigslist uses official search-alert `email_alert` ingestion initially; Craigslist `local_browser` monitoring is `disabled`. Zillow and Facebook Marketplace `local_browser` monitoring are `experimental_personal` and disabled by default. Their direct `user_capture` paths remain available, and supplied URLs remain inert unless a separate authorized operation occurs.
 
 No browser password, cookie, authorization header, local-storage value, session export, password-manager value, or profile content may appear in a Maritime dispatch, node result, log, audit event, support bundle, or cloud backup.
 
 ## Local-node dispatch and offline safety
 
-Maritime sends only an opaque job and correlation ID, connector and manifest identifiers, the exact configured saved-search URL and identifier, the last committed cursor, trigger and attempt metadata, and bounded page, record, byte, duration, and concurrency limits. It never sends a consumer-site credential or session artifact. The node returns only schema-bounded listing evidence, discovered source IDs, cursor candidates, typed blocker or failure codes, and safe operational counts.
+A future Maritime adapter sends only an opaque job and correlation ID, connector and manifest identifiers, the exact configured saved-search URL and identifier, the last committed cursor, trigger and attempt metadata, and bounded page, record, byte, duration, and concurrency limits. It never sends a consumer-site credential or session artifact. The node returns only schema-bounded listing evidence, discovered source IDs, cursor candidates, typed blocker or failure codes, and safe operational counts.
 
-Dispatch and result envelopes require a stable idempotency key, nonce or equivalent anti-replay binding, short validity window, authenticated node and orchestrator identity, integrity protection, and strict size limits. Registration and transport credentials must be independently revocable and rotated without exporting the browser profile. Results from a stale, revoked, wrong-user, wrong-connector, wrong-manifest, wrong-saved-search, or replayed dispatch deny and do not affect a cursor.
+The implemented application envelopes require a stable idempotency key, payload and result hashes, and correlation ID. A future live transport envelope must add a nonce or equivalent anti-replay binding, short validity window, authenticated node and orchestrator identity, integrity protection, and strict size limits. Registration and transport credentials must be independently revocable and rotated without exporting the browser profile. Results from a stale, revoked, wrong-user, wrong-connector, wrong-manifest, wrong-saved-search, or replayed dispatch deny and do not affect a cursor.
 
-If the assigned local node is offline or unreachable after policy authorization, the job enters visible `deferred_local_node_offline`. This state:
+If the assigned local node is unregistered, offline, stale, or revoked after policy authorization, the job enters queryable `deferred_node_offline` with a typed reason. This state:
 
-- is shown in the dashboard and Maritime health view with connector, opaque node ID, reason code, deferred time, and next eligible retry;
+- is persisted by the source-job repository and returned by the local mock; a future dashboard and Maritime health view must render it before live use;
 - preserves the same stable job identity and last committed cursor;
 - creates no RawListing, success event, or successful-empty result;
-- appends only a redacted deferral event;
 - permits bounded retry or explicit user cancellation after the node returns.
 
 A successful empty result is valid only when the authenticated node actually inspected the configured saved search and found no IDs newer than the committed cursor. Manual blockers, layout changes, cursor inconsistencies, schema failures, policy denials, and transport failures are distinct typed outcomes and never advance the cursor.
@@ -180,7 +200,7 @@ Provider data-retention settings, contractual handling, and regional processing 
 - Store the SQLite database in the operating system's per-user application-data directory with owner-only permissions.
 - Enable foreign keys, WAL, and a bounded busy timeout.
 - Do not use a network filesystem.
-- Keep raw listing evidence, structured extraction runs, and activity events immutable through database triggers.
+- Keep raw listing evidence, structured extraction runs, activity events, and source-job attempts immutable through database triggers.
 - Keep message bodies, tokens, email addresses, phone numbers, and unnecessary contact data out of audit payloads.
 - Hash exact approved payloads with a domain-separated cryptographic hash; a hash proves binding but is not a substitute for redaction.
 - Make backups opt-in and document that they may contain personal rental-search data.
@@ -212,7 +232,7 @@ For capture ingestion, the persisted event chain is requested, policy authorized
 
 - Every import, job, draft, calendar event, and notification has a stable idempotency key.
 - Browser dispatch retries retain the same logical job identity; a discovered source ID imports once.
-- A cursor advances only after its corresponding raw evidence is durably accepted and never on policy denial, manual blocker, transport failure, layout/schema failure, or `deferred_local_node_offline`.
+- A cursor advances only after its corresponding raw evidence is durably accepted and never on policy denial, unsupported operation, manual blocker, transport failure, layout/schema failure, or `deferred_node_offline`.
 - Approval is single-use, expires after 15 minutes, and is invalid after any payload change.
 - Provider calls occur only after policy authorization is persisted.
 - Retries distinguish unknown outcome from confirmed failure.
@@ -236,7 +256,7 @@ The SQLite job queue supports one worker. Starting a second worker must fail vis
 
 ## Security acceptance checks
 
-Before a milestone is accepted:
+Before the applicable implementation or live-integration milestone is accepted:
 
 - no secret, token, cookie, browser profile, or real personal fixture appears in the diff or Git history;
 - default configuration starts with all external connectors disabled;
@@ -244,8 +264,8 @@ Before a milestone is accepted:
 - unknown acquisition modes or policy states deny, and scheduled execution cannot bypass `user_triggered_only` or disabled `experimental_personal` entries;
 - manual capture makes no network request;
 - dispatch and result schemas reject passwords, cookies, authorization headers, local storage, session exports, password-manager values, and OpenClaw profile content;
-- the Maritime/local-node channel is mutually authenticated, encrypted, replay-protected, bounded, and revocable;
-- an offline node produces visible `deferred_local_node_offline`, creates no RawListing or success event, and preserves the stable job identity and committed cursor;
+- before a live Maritime adapter is enabled, the Maritime/local-node channel is mutually authenticated, encrypted, replay-protected, bounded, and revocable;
+- an unregistered, offline, stale, or revoked node produces `deferred_node_offline`, creates no RawListing or success result, and preserves the stable job identity and committed cursor;
 - browser navigation cannot escape the exact configured saved-search and newly discovered same-source detail scope;
 - cursor rollback, replay, premature advance, and duplicate import tests fail closed;
 - Craigslist `local_browser` monitoring denies; Zillow and Facebook Marketplace remain disabled `experimental_personal` browser entries until explicit enablement, while `user_capture` remains available;
@@ -272,4 +292,4 @@ Before a milestone is accepted:
 - Risk indicators can be wrong; the UI must preserve evidence and uncertainty.
 - Local SQLite is not a multi-host or multi-user database.
 
-These risks are acceptable only within the single-user, Maritime-orchestrated MVP with a user-controlled local browser node. They must be revisited before multi-user expansion, hosted browser profiles, or broader source coverage.
+These risks are acceptable only within the single-user target topology with Maritime orchestration and a user-controlled local browser node. They must be revisited before live enablement, multi-user expansion, hosted browser profiles, or broader source coverage.

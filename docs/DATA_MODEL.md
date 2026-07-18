@@ -1,13 +1,14 @@
 # Vera data model
 
-Status: implemented through provider-neutral Milestone 3 extraction  
-Reviewed: 2026-07-17
+Status: implemented through source-orchestration contract persistence
+
+Reviewed: 2026-07-18
 
 ## Purpose
 
 Vera's SQLite store preserves source evidence, field provenance, canonical listing decisions, workflow state, and audit events for one local user. The model is designed around five rules:
 
-1. Raw evidence and activity events are append-only.
+1. Raw evidence, activity events, and source-job attempts are append-only.
 2. Canonicalization retains every source record.
 3. Every normalized fact and every selected canonical fact has provenance.
 4. Unknown is stored as `NULL`, not as a guessed value.
@@ -20,6 +21,10 @@ The sanitized fixture seed uses Zillow, Facebook Marketplace, Craigslist, and Ap
 ```mermaid
 erDiagram
     SEARCH_PROFILE ||--o{ LISTING_SCORE : evaluates
+    SOURCE_POLICY_MANIFEST ||--o{ SOURCE_JOB : authorizes
+    SOURCE_JOB ||--o{ SOURCE_JOB_ATTEMPT : records
+    BROWSER_NODE ||--o{ SOURCE_JOB : executes
+    SOURCE_JOB ||--o{ RAW_LISTING : may_produce
     RAW_LISTING ||--o| LISTING_SOURCE_RECORD : interpreted_as
     RAW_LISTING ||--o| NORMALIZATION_JOB : queues
     RAW_LISTING ||--o| LISTING_EXTRACTION : produces
@@ -48,6 +53,7 @@ erDiagram
     RAW_LISTING {
         text id PK
         text source
+        text acquisition_mode
         text content_hash
         text idempotency_key UK
         text observed_at
@@ -102,6 +108,35 @@ erDiagram
         text lease_owner
         text lease_expires_at
     }
+    SOURCE_POLICY_MANIFEST {
+        text connector_id PK
+        integer version PK
+        text acquisition_mode
+        text policy_state
+        text execution
+    }
+    SOURCE_JOB {
+        text id PK
+        text connector_id
+        text acquisition_mode
+        text status
+        text payload_hash
+        text idempotency_key UK
+    }
+    SOURCE_JOB_ATTEMPT {
+        text id PK
+        text source_job_id FK
+        integer attempt_number
+        text outcome_status
+        text payload_hash
+    }
+    BROWSER_NODE {
+        text node_id PK
+        text provider_id
+        text status
+        text last_heartbeat_at
+        text heartbeat_expires_at
+    }
     LISTING_EXTRACTION {
         text id PK
         text raw_listing_id FK, UK
@@ -114,6 +149,8 @@ erDiagram
     }
 ```
 
+The source-orchestration relationships are logical control-plane links. `source_job_attempts.source_job_id` is a database foreign key; manifest authorization is identified by connector and manifest version, and a local-browser node ID is carried only in the job's strict payload. A source job can produce raw evidence only through the existing immutable ingestion gateway, so there is intentionally no direct source-job-to-raw-listing foreign key yet.
+
 `SOURCE_POLICY_MANIFEST` is deliberately independent of listing evidence. The seed enables only the local sanitized-fixture and manual-capture manifests. Label-only platform manifests are present but disabled; no platform connector is enabled.
 
 ## Tables
@@ -121,7 +158,7 @@ erDiagram
 | Table                       | Responsibility                                                                   | Important constraints                                                                                                        |
 | --------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
 | `search_profiles`           | Versioned renter constraints and preferences                                     | Unique name/version; non-negative budgets                                                                                    |
-| `raw_listings`              | Exact fixture or user-supplied capture evidence                                  | Unique idempotency key; evidence required; update/delete triggers                                                            |
+| `raw_listings`              | Exact fixture or user-supplied capture evidence                                  | Acquisition mode retained; unique idempotency key; evidence required; update/delete triggers                                 |
 | `listing_source_records`    | One normalized interpretation per raw record                                     | Unique raw-listing link; confidence and completeness ranges; optional post date/contact channel                              |
 | `listing_photos`            | Metadata for already-supplied photo evidence                                     | No download behavior; inert URL or fixture label required                                                                    |
 | `field_provenance`          | Source, method, confidence, time, and known/unknown state for a normalized field | Unique source-record/field path; raw and source FKs; unknown reason required when unknown                                    |
@@ -138,12 +175,15 @@ erDiagram
 | `viewings`                  | Proposed and confirmed viewing data                                              | State check; no attendees or notification fields                                                                             |
 | `activity_events`           | Immutable material-action audit trail                                            | Correlation index; update/delete triggers                                                                                    |
 | `source_policy_manifests`   | Versioned fail-closed connector policy                                           | Composite connector/version PK; exact capability/operation/network fields; disabled manifests grant no capabilities          |
+| `source_jobs`               | Acquisition orchestration state before immutable raw acceptance                  | Strict payload/result JSON; unique idempotency key; checked states, attempts, hashes, and terminal metadata                  |
+| `source_job_attempts`       | Immutable source-job attempt history                                             | Source-job FK; unique job/attempt number; update/delete triggers                                                             |
+| `browser_nodes`             | Latest safe local browser-node heartbeat snapshot                               | One row per opaque node ID; closed health state; heartbeat expiry and safe capability JSON                                   |
 
 Complex bounded values such as amenities, evidence summaries, preferences, viewing windows, and manifest capabilities use JSON text columns. Repository reads parse every such value through the corresponding strict Zod schema.
 
 ## Evidence and provenance
 
-`RawListing` is an immutable capture. `ListingSourceRecord` is its normalized interpretation. A source record never becomes a canonical record by replacement; it joins a canonical record through `canonical_listing_sources`.
+`RawListing` is an immutable capture. It records `acquisition_mode` independently from its human-readable source label so sanitized fixtures cannot masquerade as a live provider. The production modes are `official_api`, `email_alert`, `local_browser`, and `user_capture`; `fixture` is an additional code-level test-only mode. `ListingSourceRecord` is the raw capture's normalized interpretation. A source record never becomes a canonical record by replacement; it joins a canonical record through `canonical_listing_sources`.
 
 Every baseline normalized field has a `field_provenance` row. Known facts carry a value in the source record; unknown facts carry `value_status=unknown`, zero confidence, a reason code, and no invented value. Each row contains:
 
@@ -201,11 +241,53 @@ stateDiagram-v2
 
 The worker claims one runnable job with a 90-second lease in a short transaction, performs deterministic/provider work without holding the transaction, and commits the source record, all provenance rows, immutable extraction, completion event, and job completion together. Failure records only a safe typed code/category and either schedules bounded exponential retry or moves the job to `dead_letter`. Permanent failure does not pretend unused attempts were consumed.
 
+## Source-job lifecycle
+
+Source jobs are acquisition orchestration records. They are separate from normalization jobs, which exist only after raw evidence has been accepted.
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> dispatched
+    queued --> cancelled_by_policy
+    dispatched --> running
+    dispatched --> deferred_node_offline
+    dispatched --> manual_action_required
+    dispatched --> retryable_failed
+    dispatched --> permanently_failed
+    dispatched --> cancelled_by_policy
+    running --> completed
+    running --> retryable_failed
+    running --> permanently_failed
+    running --> manual_action_required
+    running --> cancelled_by_policy
+    retryable_failed --> queued
+    retryable_failed --> permanently_failed
+    retryable_failed --> cancelled_by_policy
+    deferred_node_offline --> queued
+    deferred_node_offline --> cancelled_by_policy
+    manual_action_required --> queued
+    manual_action_required --> cancelled_by_policy
+```
+
+`completed`, `permanently_failed`, and `cancelled_by_policy` are terminal. Repository transitions execute in a transaction and call the domain transition function before updating a row. Retry reuses the job's stable identity and idempotency key.
+
+The payload is a strict discriminated object with minimum control data only:
+
+- `fixture` names a sanitized fixture-set reference;
+- `user_capture` names an opaque protected capture reference, never pasted evidence;
+- `official_api` and `email_alert` name a reviewed source-configuration reference and optional committed cursor;
+- `local_browser` names an opaque node and saved-search ID, one exact safe URL, an optional committed cursor, and bounded page, record, byte, duration, and concurrency limits.
+
+`JobAttempt` stores the attempt number, times, outcome, safe error or deferred reason, correlation ID, and payload hash. It stores no raw connector output or secret. `BrowserNodeStatus` stores only the most recent safe node/provider identity, closed status (`online`, `offline`, `stale`, or `revoked`), heartbeat times, contract version, and boolean navigation/capture/cancellation capabilities.
+
+Connector and browser results may return a `cursorCandidate`, but neither result envelope nor `source_jobs.result` commits it. A future ingestion transaction may promote that candidate only after all associated raw evidence is durably accepted. Policy denial, unsupported operation, manual action, failure, cancellation, and `deferred_node_offline` create no cursor candidate and never advance the committed cursor.
+
 ## Append-only enforcement
 
 Repository interfaces expose `import`/`get` for raw listings and `append`/`get`/`list` for activity events. They have no update or delete methods.
 
-The migrations install six SQLite immutability triggers:
+The migrations install eight SQLite immutability triggers:
 
 ```text
 raw_listings_no_update
@@ -214,9 +296,24 @@ activity_events_no_update
 activity_events_no_delete
 listing_extractions_no_update
 listing_extractions_no_delete
+source_job_attempts_no_update
+source_job_attempts_no_delete
 ```
 
 The triggers abort direct SQL mutations, protecting the invariant if later code bypasses a repository.
+
+## Migration 0003
+
+`packages/db/drizzle/0003_romantic_fantastic_four.sql` is a forward-only migration that preserves existing user data. It:
+
+1. rebuilds `source_policy_manifests` at schema version 2 with required `acquisition_mode` and `policy_state` columns;
+2. backfills `fixture.feed.v1` to `fixture` / `approved`;
+3. backfills `manual.capture.v1` to `user_capture` / `user_triggered_only`;
+4. backfills legacy label-only source manifests to `fixture` / `disabled` and forces them runtime-disabled;
+5. rebuilds `raw_listings` with required `acquisition_mode`, mapping fixture captures to `fixture` and both manual capture methods to `user_capture`, while recreating its indexes and append-only triggers;
+6. creates `source_jobs`, append-only `source_job_attempts`, and `browser_nodes`.
+
+The migration does not reset raw listings, source records, canonical listings, duplicate clusters, extraction runs, scores, risks, activity events, or normalization jobs. Existing raw content hashes and import idempotency keys remain unchanged because acquisition mode was not added to the version-1 raw content-hash input. Migration execution restores foreign keys and runs SQLite's foreign-key check after applying the migration set. Downgrading to code that understands only manifest schema version 1 is unsupported.
 
 ## Listing lifecycle
 
