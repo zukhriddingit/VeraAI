@@ -7,5 +7,6 @@ export * from "./extraction-request.ts";
 export * from "./fixture-connector.ts";
 export * from "./listing-evidence.ts";
 export * from "./manual-connector.ts";
+export * from "./maritime-orchestrator.ts";
 export * from "./normalizer.ts";
 export * from "./url-policy.ts";
