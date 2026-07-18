@@ -1,10 +1,12 @@
 import {
   ActivityEventSchema,
   ApprovalSchema,
+  BrowserNodeStatusSchema,
   CanonicalListingSchema,
   ContactWorkflowSchema,
   DuplicateClusterSchema,
   FieldProvenanceSchema,
+  JobAttemptSchema,
   ListingPhotoSchema,
   ListingExtractionRunSchema,
   ListingScoreSchema,
@@ -13,14 +15,17 @@ import {
   RawListingSchema,
   RiskSignalSchema,
   SearchProfileSchema,
+  SourceJobSchema,
   SourcePolicyManifestSchema,
   ViewingSchema,
   type ActivityEvent,
   type Approval,
+  type BrowserNodeStatus,
   type CanonicalListing,
   type ContactWorkflow,
   type DuplicateCluster,
   type FieldProvenance,
+  type JobAttempt,
   type ListingPhoto,
   type ListingExtractionRun,
   type ListingScore,
@@ -29,6 +34,7 @@ import {
   type RawListing,
   type RiskSignal,
   type SearchProfile,
+  type SourceJob,
   type SourcePolicyManifest,
   type Viewing
 } from "@vera/domain";
@@ -36,6 +42,7 @@ import {
 import type {
   activityEvents,
   approvals,
+  browserNodes,
   canonicalListings,
   contactWorkflows,
   duplicateClusters,
@@ -48,6 +55,8 @@ import type {
   rawListings,
   riskSignals,
   searchProfiles,
+  sourceJobAttempts,
+  sourceJobs,
   sourcePolicyManifests,
   viewings
 } from "./schema.ts";
@@ -68,6 +77,9 @@ type ApprovalRow = typeof approvals.$inferSelect;
 type ViewingRow = typeof viewings.$inferSelect;
 type ActivityEventRow = typeof activityEvents.$inferSelect;
 type SourcePolicyManifestRow = typeof sourcePolicyManifests.$inferSelect;
+type SourceJobRow = typeof sourceJobs.$inferSelect;
+type SourceJobAttemptRow = typeof sourceJobAttempts.$inferSelect;
+type BrowserNodeRow = typeof browserNodes.$inferSelect;
 
 function fromMicrodegrees(value: number | null): number | null {
   return value === null ? null : value / 1_000_000;
@@ -250,4 +262,16 @@ export function mapActivityEventRow(row: ActivityEventRow): ActivityEvent {
 
 export function mapSourcePolicyManifestRow(row: SourcePolicyManifestRow): SourcePolicyManifest {
   return SourcePolicyManifestSchema.parse(row);
+}
+
+export function mapSourceJobRow(row: SourceJobRow): SourceJob {
+  return SourceJobSchema.parse(row);
+}
+
+export function mapSourceJobAttemptRow(row: SourceJobAttemptRow): JobAttempt {
+  return JobAttemptSchema.parse(row);
+}
+
+export function mapBrowserNodeRow(row: BrowserNodeRow): BrowserNodeStatus {
+  return BrowserNodeStatusSchema.parse(row);
 }

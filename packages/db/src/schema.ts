@@ -1,14 +1,17 @@
 import type {
   ActivityEvent,
+  BrowserNodeStatus,
   CanonicalListing,
   ContactWorkflow,
   DuplicateCluster,
+  JobAttempt,
   JsonObject,
   JsonValue,
   ListingExtractionRun,
   ListingScore,
   RiskSignal,
   SearchProfile,
+  SourceJob,
   SourcePolicyManifest,
   Viewing
 } from "@vera/domain";
@@ -75,6 +78,7 @@ export const rawListings = sqliteTable(
     source: text("source").notNull(),
     sourceListingId: text("source_listing_id"),
     sourceUrl: text("source_url"),
+    acquisitionMode: text("acquisition_mode").notNull(),
     captureMethod: text("capture_method").notNull(),
     observedAt: text("observed_at").notNull(),
     sourcePostedAt: text("source_posted_at"),
@@ -95,6 +99,15 @@ export const rawListings = sqliteTable(
     check(
       "raw_listings_capture_method_allowed",
       sql`${table.captureMethod} IN ('fixture', 'manual_text', 'manual_structured')`
+    ),
+    check(
+      "raw_listings_acquisition_mode_allowed",
+      sql`${table.acquisitionMode} IN ('official_api', 'email_alert', 'local_browser', 'user_capture', 'fixture')`
+    ),
+    check(
+      "raw_listings_capture_mode_consistency",
+      sql`(${table.captureMethod} = 'fixture' AND ${table.acquisitionMode} = 'fixture')
+        OR (${table.captureMethod} IN ('manual_text', 'manual_structured') AND ${table.acquisitionMode} = 'user_capture')`
     )
   ]
 );
@@ -327,6 +340,122 @@ export const normalizationJobs = sqliteTable(
         AND ${table.lastErrorCode} IS NOT NULL
       ) OR ${table.state} = 'leased'`
     )
+  ]
+);
+
+export const sourceJobs = sqliteTable(
+  "source_jobs",
+  {
+    id: text("id").primaryKey(),
+    correlationId: text("correlation_id").notNull(),
+    connectorId: text("connector_id").notNull(),
+    source: text("source").notNull(),
+    acquisitionMode: text("acquisition_mode").notNull(),
+    manifestVersion: integer("manifest_version").notNull(),
+    trigger: text("trigger").notNull(),
+    operation: text("operation").notNull(),
+    payload: text("payload", { mode: "json" }).$type<SourceJob["payload"]>().notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    status: text("status").notNull(),
+    attempts: integer("attempts").notNull(),
+    maxAttempts: integer("max_attempts").notNull(),
+    manualAction: text("manual_action", { mode: "json" }).$type<SourceJob["manualAction"]>(),
+    deferredReason: text("deferred_reason"),
+    result: text("result", { mode: "json" }).$type<SourceJob["result"]>(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    completedAt: text("completed_at")
+  },
+  (table) => [
+    uniqueIndex("source_jobs_idempotency_key_unique").on(table.idempotencyKey),
+    index("source_jobs_status_updated_idx").on(table.status, table.updatedAt),
+    index("source_jobs_connector_idx").on(table.connectorId, table.createdAt),
+    check(
+      "source_jobs_acquisition_mode_allowed",
+      sql`${table.acquisitionMode} IN ('official_api', 'email_alert', 'local_browser', 'user_capture', 'fixture')`
+    ),
+    check("source_jobs_manifest_version_positive", sql`${table.manifestVersion} > 0`),
+    check("source_jobs_trigger_allowed", sql`${table.trigger} IN ('manual', 'scheduled')`),
+    check(
+      "source_jobs_status_allowed",
+      sql`${table.status} IN ('queued', 'dispatched', 'running', 'completed', 'retryable_failed', 'permanently_failed', 'deferred_node_offline', 'manual_action_required', 'cancelled_by_policy')`
+    ),
+    check(
+      "source_jobs_attempts_valid",
+      sql`${table.attempts} >= 0 AND ${table.maxAttempts} > 0 AND ${table.attempts} <= ${table.maxAttempts}`
+    ),
+    check(
+      "source_jobs_terminal_consistency",
+      sql`(${table.status} IN ('completed', 'permanently_failed', 'cancelled_by_policy')) = (${table.completedAt} IS NOT NULL)`
+    ),
+    check(
+      "source_jobs_manual_action_consistency",
+      sql`(${table.status} = 'manual_action_required') = (${table.manualAction} IS NOT NULL)`
+    ),
+    check(
+      "source_jobs_deferred_reason_consistency",
+      sql`(${table.status} = 'deferred_node_offline') = (${table.deferredReason} IS NOT NULL)`
+    ),
+    check(
+      "source_jobs_deferred_reason_allowed",
+      sql`${table.deferredReason} IS NULL OR ${table.deferredReason} IN ('node_unregistered', 'node_offline', 'stale_heartbeat', 'node_revoked')`
+    )
+  ]
+);
+
+export const sourceJobAttempts = sqliteTable(
+  "source_job_attempts",
+  {
+    id: text("id").primaryKey(),
+    sourceJobId: text("source_job_id")
+      .notNull()
+      .references(() => sourceJobs.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    attemptNumber: integer("attempt_number").notNull(),
+    startedAt: text("started_at").notNull(),
+    completedAt: text("completed_at").notNull(),
+    outcomeStatus: text("outcome_status").notNull(),
+    error: text("error", { mode: "json" }).$type<JobAttempt["error"]>(),
+    deferredReason: text("deferred_reason"),
+    correlationId: text("correlation_id").notNull(),
+    payloadHash: text("payload_hash").notNull()
+  },
+  (table) => [
+    uniqueIndex("source_job_attempts_job_number_unique").on(table.sourceJobId, table.attemptNumber),
+    index("source_job_attempts_job_idx").on(table.sourceJobId, table.attemptNumber),
+    check("source_job_attempts_number_positive", sql`${table.attemptNumber} > 0`),
+    check(
+      "source_job_attempts_outcome_allowed",
+      sql`${table.outcomeStatus} IN ('completed', 'retryable_failed', 'permanently_failed', 'deferred_node_offline', 'manual_action_required', 'cancelled_by_policy')`
+    ),
+    check(
+      "source_job_attempts_deferred_reason_allowed",
+      sql`${table.deferredReason} IS NULL OR ${table.deferredReason} IN ('node_unregistered', 'node_offline', 'stale_heartbeat', 'node_revoked')`
+    )
+  ]
+);
+
+export const browserNodes = sqliteTable(
+  "browser_nodes",
+  {
+    nodeId: text("node_id").primaryKey(),
+    providerId: text("provider_id").notNull(),
+    status: text("status").notNull(),
+    lastHeartbeatAt: text("last_heartbeat_at").notNull(),
+    heartbeatExpiresAt: text("heartbeat_expires_at").notNull(),
+    contractVersion: integer("contract_version").notNull(),
+    capabilities: text("capabilities", { mode: "json" })
+      .$type<BrowserNodeStatus["capabilities"]>()
+      .notNull(),
+    updatedAt: text("updated_at").notNull()
+  },
+  (table) => [
+    index("browser_nodes_status_expiry_idx").on(table.status, table.heartbeatExpiresAt),
+    check(
+      "browser_nodes_status_allowed",
+      sql`${table.status} IN ('online', 'offline', 'stale', 'revoked')`
+    ),
+    check("browser_nodes_contract_version_positive", sql`${table.contractVersion} > 0`)
   ]
 );
 
@@ -695,11 +824,13 @@ export const activityEvents = sqliteTable(
 export const sourcePolicyManifests = sqliteTable(
   "source_policy_manifests",
   {
-    schemaVersion: integer("schema_version").notNull().default(1),
+    schemaVersion: integer("schema_version").notNull().default(2),
     connectorId: text("connector_id").notNull(),
     displayName: text("display_name").notNull().default("Sanitized source label"),
     version: integer("version").notNull(),
     source: text("source").notNull(),
+    acquisitionMode: text("acquisition_mode").notNull(),
+    policyState: text("policy_state").notNull(),
     enabled: integer("enabled", { mode: "boolean" }).notNull(),
     execution: text("execution").notNull(),
     capabilities: text("capabilities", { mode: "json" })
@@ -753,7 +884,15 @@ export const sourcePolicyManifests = sqliteTable(
   (table) => [
     primaryKey({ columns: [table.connectorId, table.version] }),
     check("source_policy_manifests_version_positive", sql`${table.version} > 0`),
-    check("source_policy_manifests_schema_version_supported", sql`${table.schemaVersion} = 1`),
+    check("source_policy_manifests_schema_version_supported", sql`${table.schemaVersion} = 2`),
+    check(
+      "source_policy_manifests_acquisition_mode_allowed",
+      sql`${table.acquisitionMode} IN ('official_api', 'email_alert', 'local_browser', 'user_capture', 'fixture')`
+    ),
+    check(
+      "source_policy_manifests_policy_state_allowed",
+      sql`${table.policyState} IN ('approved', 'user_triggered_only', 'experimental_personal', 'disabled')`
+    ),
     check(
       "source_policy_manifests_execution_allowed",
       sql`${table.execution} IN ('manual', 'scheduled')`
@@ -762,6 +901,18 @@ export const sourcePolicyManifests = sqliteTable(
       "source_policy_manifests_scheduling_consistency",
       sql`${table.execution} <> 'scheduled' OR ${table.minimumIntervalSeconds} IS NOT NULL`
     ),
+    check(
+      "source_policy_manifests_disabled_consistency",
+      sql`${table.policyState} <> 'disabled' OR ${table.enabled} = 0`
+    ),
+    check(
+      "source_policy_manifests_user_triggered_consistency",
+      sql`${table.policyState} <> 'user_triggered_only' OR ${table.execution} = 'manual'`
+    ),
+    check(
+      "source_policy_manifests_experimental_consistency",
+      sql`${table.policyState} <> 'experimental_personal' OR ${table.acquisitionMode} = 'local_browser'`
+    ),
     check("source_policy_manifests_concurrency_positive", sql`${table.maxConcurrency} > 0`)
   ]
 );
@@ -769,6 +920,7 @@ export const sourcePolicyManifests = sqliteTable(
 export const schema = {
   activityEvents,
   approvals,
+  browserNodes,
   canonicalFieldSources,
   canonicalListingSources,
   canonicalListings,
@@ -784,5 +936,7 @@ export const schema = {
   riskSignals,
   searchProfiles,
   sourcePolicyManifests,
+  sourceJobAttempts,
+  sourceJobs,
   viewings
 };

@@ -7,6 +7,7 @@ import { canonicalJson, computeRawContentHash, computeRawImportIdempotencyKey } 
 const capture: RawListingCapture = {
   id: "raw-hash-test",
   source: "zillow",
+  acquisitionMode: "fixture",
   sourceListingId: "fixture-001",
   sourceUrl: "https://example.invalid/fixtures/hash-test",
   captureMethod: "fixture",

@@ -56,12 +56,64 @@ describe("sanitized fixture seed", () => {
     ).toHaveLength(3);
     expect(repositories.sourcePolicyManifests.listLatest()).toHaveLength(6);
     expect(
+      repositories.sourcePolicyManifests.listLatest().map((manifest) => ({
+        connectorId: manifest.connectorId,
+        schemaVersion: manifest.schemaVersion,
+        acquisitionMode: manifest.acquisitionMode,
+        policyState: manifest.policyState
+      }))
+    ).toEqual([
+      {
+        connectorId: "fixture-label-apartments_com",
+        schemaVersion: 2,
+        acquisitionMode: "fixture",
+        policyState: "disabled"
+      },
+      {
+        connectorId: "fixture-label-craigslist",
+        schemaVersion: 2,
+        acquisitionMode: "fixture",
+        policyState: "disabled"
+      },
+      {
+        connectorId: "fixture-label-facebook_marketplace",
+        schemaVersion: 2,
+        acquisitionMode: "fixture",
+        policyState: "disabled"
+      },
+      {
+        connectorId: "fixture-label-zillow",
+        schemaVersion: 2,
+        acquisitionMode: "fixture",
+        policyState: "disabled"
+      },
+      {
+        connectorId: "fixture.feed.v1",
+        schemaVersion: 2,
+        acquisitionMode: "fixture",
+        policyState: "approved"
+      },
+      {
+        connectorId: "manual.capture.v1",
+        schemaVersion: 2,
+        acquisitionMode: "user_capture",
+        policyState: "user_triggered_only"
+      }
+    ]);
+    expect(
       repositories.sourcePolicyManifests
         .listLatest()
         .filter((manifest) => manifest.enabled)
         .map((manifest) => manifest.connectorId)
         .sort()
     ).toEqual(["fixture.feed.v1", "manual.capture.v1"]);
+    expect(
+      SOURCE_FIXTURES.every(
+        (fixture) =>
+          fixture.capture.acquisitionMode === "fixture" &&
+          repositories.rawListings.getById(fixture.capture.id)?.acquisitionMode === "fixture"
+      )
+    ).toBe(true);
   });
 
   it("is idempotent without growing evidence, membership, provenance, or audit rows", () => {

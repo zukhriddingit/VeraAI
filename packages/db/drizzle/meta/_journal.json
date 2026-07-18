@@ -22,6 +22,13 @@
       "when": 1784343657717,
       "tag": "0002_neat_pyro",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1784400240666,
+      "tag": "0003_romantic_fantastic_four",
+      "breakpoints": true
     }
   ]
 }

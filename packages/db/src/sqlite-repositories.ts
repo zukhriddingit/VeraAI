@@ -1,6 +1,7 @@
 import {
   ActivityEventSchema,
   ApprovalSchema,
+  BrowserNodeStatusSchema,
   CanonicalFieldSourceSchema,
   CanonicalListingSchema,
   CanonicalListingSourceSchema,
@@ -11,6 +12,7 @@ import {
   ErrorCategorySchema,
   FieldProvenanceSchema,
   IsoDateTimeSchema,
+  JobAttemptSchema,
   ListingLifecycleStateSchema,
   ListingExtractionRunSchema,
   ListingPhotoSchema,
@@ -20,9 +22,12 @@ import {
   RawListingCaptureSchema,
   RiskSignalSchema,
   SearchProfileSchema,
+  SourceJobSchema,
+  SourceJobStatusSchema,
   SourcePolicyManifestSchema,
   ViewingSchema,
   transitionListingLifecycle,
+  transitionSourceJobStatus,
   type CanonicalListingSummary,
   type RawListingCapture
 } from "@vera/domain";
@@ -33,10 +38,13 @@ import { computeRawContentHash, computeRawImportIdempotencyKey } from "./hashing
 import {
   mapActivityEventRow,
   mapApprovalRow,
+  mapBrowserNodeRow,
   mapCanonicalListingRow,
   mapContactWorkflowRow,
   mapDuplicateClusterRow,
   mapFieldProvenanceRow,
+  mapSourceJobAttemptRow,
+  mapSourceJobRow,
   mapListingPhotoRow,
   mapListingExtractionRow,
   mapListingScoreRow,
@@ -56,6 +64,7 @@ import {
 import {
   activityEvents,
   approvals,
+  browserNodes,
   canonicalFieldSources,
   canonicalListingSources,
   canonicalListings,
@@ -70,6 +79,8 @@ import {
   rawListings,
   riskSignals,
   searchProfiles,
+  sourceJobAttempts,
+  sourceJobs,
   sourcePolicyManifests,
   viewings
 } from "./schema.ts";
@@ -556,6 +567,219 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
     },
     count() {
       return scalarCount(db.select({ value: count() }).from(normalizationJobs).get()?.value);
+    }
+  };
+
+  const sourceJobRepository: VeraRepositories["sourceJobs"] = {
+    enqueue(jobInput) {
+      const job = SourceJobSchema.parse(jobInput);
+      const result = db.insert(sourceJobs).values(job).onConflictDoNothing().run();
+      const persisted = sourceJobRepository.getByIdempotencyKey(job.idempotencyKey);
+
+      if (!persisted) {
+        throw new Error("Source job enqueue conflicted without resolving its idempotency key.");
+      }
+
+      if (
+        persisted.payloadHash !== job.payloadHash ||
+        persisted.connectorId !== job.connectorId ||
+        persisted.source !== job.source ||
+        persisted.acquisitionMode !== job.acquisitionMode ||
+        persisted.operation !== job.operation
+      ) {
+        throw new Error("Source job idempotency key resolved to a different job identity.");
+      }
+
+      return { record: persisted, inserted: result.changes === 1 };
+    },
+    getById(idInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const row = db.select().from(sourceJobs).where(eq(sourceJobs.id, id)).get();
+      return row ? mapSourceJobRow(row) : null;
+    },
+    getByIdempotencyKey(keyInput) {
+      const key = keyInput.trim().toLowerCase();
+      if (!/^[a-f0-9]{64}$/u.test(key)) {
+        throw new Error("Source job idempotency keys must be SHA-256 values.");
+      }
+      const row = db.select().from(sourceJobs).where(eq(sourceJobs.idempotencyKey, key)).get();
+      return row ? mapSourceJobRow(row) : null;
+    },
+    list() {
+      return db
+        .select()
+        .from(sourceJobs)
+        .orderBy(asc(sourceJobs.createdAt), asc(sourceJobs.id))
+        .all()
+        .map(mapSourceJobRow);
+    },
+    transition(idInput, requestedInput, transitionedAtInput, patch = {}) {
+      const id = EntityIdSchema.parse(idInput);
+      const requested = SourceJobStatusSchema.parse(requestedInput);
+      const transitionedAt = IsoDateTimeSchema.parse(transitionedAtInput);
+      const transaction = sqlite.transaction(() => {
+        const current = sourceJobRepository.getById(id);
+
+        if (!current) {
+          throw new RepositoryNotFoundError("SourceJob", id);
+        }
+
+        if (Date.parse(transitionedAt) < Date.parse(current.updatedAt)) {
+          throw new Error("Source job transition time cannot precede its current update time.");
+        }
+
+        if (
+          current.status === "completed" &&
+          requested === "completed" &&
+          patch.result !== undefined
+        ) {
+          const replayCandidate = SourceJobSchema.parse({ ...current, result: patch.result });
+          if (
+            current.result !== null &&
+            replayCandidate.result?.resultHash === current.result.resultHash
+          ) {
+            return current;
+          }
+        }
+
+        const status = transitionSourceJobStatus(current.status, requested);
+        const noResultStates = new Set([
+          "queued",
+          "dispatched",
+          "running",
+          "deferred_node_offline",
+          "manual_action_required",
+          "cancelled_by_policy"
+        ]);
+        const candidate = SourceJobSchema.parse({
+          ...current,
+          status,
+          attempts: patch.attempts ?? current.attempts,
+          manualAction: status === "manual_action_required" ? (patch.manualAction ?? null) : null,
+          deferredReason:
+            status === "deferred_node_offline" ? (patch.deferredReason ?? null) : null,
+          result: noResultStates.has(status) ? null : (patch.result ?? current.result),
+          updatedAt: transitionedAt,
+          completedAt: ["completed", "permanently_failed", "cancelled_by_policy"].includes(status)
+            ? transitionedAt
+            : null
+        });
+
+        db.update(sourceJobs)
+          .set({
+            status: candidate.status,
+            attempts: candidate.attempts,
+            manualAction: candidate.manualAction,
+            deferredReason: candidate.deferredReason,
+            result: candidate.result,
+            updatedAt: candidate.updatedAt,
+            completedAt: candidate.completedAt
+          })
+          .where(eq(sourceJobs.id, id))
+          .run();
+
+        const updated = sourceJobRepository.getById(id);
+        if (!updated) {
+          throw new RepositoryNotFoundError("SourceJob", id);
+        }
+        return updated;
+      });
+
+      return transaction.immediate();
+    }
+  };
+
+  const sourceJobAttemptRepository: VeraRepositories["sourceJobAttempts"] = {
+    append(attemptInput) {
+      const attempt = JobAttemptSchema.parse(attemptInput);
+      const job = sourceJobRepository.getById(attempt.sourceJobId);
+
+      if (!job) {
+        throw new RepositoryNotFoundError("SourceJob", attempt.sourceJobId);
+      }
+      if (attempt.correlationId !== job.correlationId || attempt.payloadHash !== job.payloadHash) {
+        throw new Error("Source job attempt identity does not match its source job.");
+      }
+      if (attempt.attemptNumber > job.maxAttempts) {
+        throw new Error("Source job attempt number exceeds the configured maximum.");
+      }
+
+      db.insert(sourceJobAttempts).values(attempt).run();
+      return attempt;
+    },
+    listByJobId(jobIdInput) {
+      const jobId = EntityIdSchema.parse(jobIdInput);
+      return db
+        .select()
+        .from(sourceJobAttempts)
+        .where(eq(sourceJobAttempts.sourceJobId, jobId))
+        .orderBy(asc(sourceJobAttempts.attemptNumber), asc(sourceJobAttempts.id))
+        .all()
+        .map(mapSourceJobAttemptRow);
+    }
+  };
+
+  const browserNodeRepository: VeraRepositories["browserNodes"] = {
+    upsert(statusInput) {
+      const status = BrowserNodeStatusSchema.parse(statusInput);
+      const transaction = sqlite.transaction(() => {
+        const current = browserNodeRepository.getById(status.nodeId);
+
+        if (current) {
+          if (current.providerId !== status.providerId) {
+            throw new Error("Browser node provider identity cannot change after registration.");
+          }
+          if (current.status === "revoked") {
+            if (status.status !== "revoked") {
+              throw new Error("A revoked browser node cannot be revived by a heartbeat update.");
+            }
+            return current;
+          }
+
+          const heartbeatOrder =
+            Date.parse(status.lastHeartbeatAt) - Date.parse(current.lastHeartbeatAt);
+          const updateOrder = Date.parse(status.updatedAt) - Date.parse(current.updatedAt);
+          const isNewer = heartbeatOrder > 0 || (heartbeatOrder === 0 && updateOrder > 0);
+          if (!isNewer) {
+            return current;
+          }
+
+          db.update(browserNodes)
+            .set({
+              status: status.status,
+              lastHeartbeatAt: status.lastHeartbeatAt,
+              heartbeatExpiresAt: status.heartbeatExpiresAt,
+              contractVersion: status.contractVersion,
+              capabilities: status.capabilities,
+              updatedAt: status.updatedAt
+            })
+            .where(eq(browserNodes.nodeId, status.nodeId))
+            .run();
+        } else {
+          db.insert(browserNodes).values(status).run();
+        }
+
+        const persisted = browserNodeRepository.getById(status.nodeId);
+        if (!persisted) {
+          throw new Error("Browser node upsert did not persist or resolve a health record.");
+        }
+        return persisted;
+      });
+
+      return transaction.immediate();
+    },
+    getById(idInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const row = db.select().from(browserNodes).where(eq(browserNodes.nodeId, id)).get();
+      return row ? mapBrowserNodeRow(row) : null;
+    },
+    list() {
+      return db
+        .select()
+        .from(browserNodes)
+        .orderBy(asc(browserNodes.nodeId))
+        .all()
+        .map(mapBrowserNodeRow);
     }
   };
 
@@ -1071,6 +1295,9 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
     viewings: viewingRepository,
     activityEvents: activityEventRepository,
     sourcePolicyManifests: sourcePolicyManifestRepository,
+    sourceJobs: sourceJobRepository,
+    sourceJobAttempts: sourceJobAttemptRepository,
+    browserNodes: browserNodeRepository,
     normalizationJobs: normalizationJobRepository,
     transaction<T>(callback: (transactionRepositories: VeraRepositories) => T): T {
       const transaction = sqlite.transaction(() => {

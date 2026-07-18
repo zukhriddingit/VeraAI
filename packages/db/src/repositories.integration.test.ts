@@ -31,6 +31,7 @@ let repositories: VeraRepositories;
 const capture: RawListingCapture = {
   id: "raw-repository-test",
   source: "craigslist",
+  acquisitionMode: "fixture",
   sourceListingId: "fixture-repository-001",
   sourceUrl: "https://example.invalid/fixtures/craigslist/repository-test",
   captureMethod: "fixture",
@@ -162,6 +163,7 @@ describe("SQLite repositories", () => {
     const manualRaw = repositories.rawListings.import({
       id: "raw-manual-repository-test",
       source: "other",
+      acquisitionMode: "user_capture",
       sourceListingId: null,
       sourceUrl: "https://housing.example/listing/repository-test",
       captureMethod: "manual_structured",
@@ -416,11 +418,13 @@ describe("SQLite repositories", () => {
       updatedAt: now
     });
     const manifest = repositories.sourcePolicyManifests.insert({
-      schemaVersion: 1,
+      schemaVersion: 2,
       connectorId: "fixture-label-craigslist",
       displayName: "Sanitized Craigslist fixture label",
       version: 1,
       source: "craigslist",
+      acquisitionMode: "fixture",
+      policyState: "disabled",
       enabled: false,
       execution: "manual",
       capabilities: [],

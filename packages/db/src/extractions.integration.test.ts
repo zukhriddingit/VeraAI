@@ -39,6 +39,7 @@ function capture(id = "raw-extraction-test"): RawListingCapture {
   return {
     id,
     source: "other",
+    acquisitionMode: "user_capture",
     sourceListingId: null,
     sourceUrl: `https://example.invalid/manual/${id}`,
     captureMethod: "manual_text",

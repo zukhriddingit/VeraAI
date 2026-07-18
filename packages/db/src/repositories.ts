@@ -1,6 +1,7 @@
 import type {
   ActivityEvent,
   Approval,
+  BrowserNodeStatus,
   CanonicalFieldSource,
   CanonicalListing,
   CanonicalListingSource,
@@ -13,11 +14,14 @@ import type {
   ListingPhoto,
   ListingScore,
   ListingSourceRecord,
+  JobAttempt,
   NormalizationJob,
   RawListing,
   RawListingCapture,
   RiskSignal,
   SearchProfile,
+  SourceJob,
+  SourceJobStatus,
   SourcePolicyManifest,
   Viewing
 } from "@vera/domain";
@@ -156,6 +160,37 @@ export interface SourcePolicyManifestRepository {
   listLatest(): readonly SourcePolicyManifest[];
 }
 
+export interface SourceJobTransitionPatch {
+  readonly attempts?: number;
+  readonly manualAction?: SourceJob["manualAction"];
+  readonly deferredReason?: SourceJob["deferredReason"];
+  readonly result?: SourceJob["result"];
+}
+
+export interface SourceJobRepository {
+  enqueue(job: SourceJob): { readonly record: SourceJob; readonly inserted: boolean };
+  getById(id: string): SourceJob | null;
+  getByIdempotencyKey(key: string): SourceJob | null;
+  list(): readonly SourceJob[];
+  transition(
+    id: string,
+    requested: SourceJobStatus,
+    transitionedAt: string,
+    patch?: SourceJobTransitionPatch
+  ): SourceJob;
+}
+
+export interface SourceJobAttemptRepository {
+  append(attempt: JobAttempt): JobAttempt;
+  listByJobId(jobId: string): readonly JobAttempt[];
+}
+
+export interface BrowserNodeRepository {
+  upsert(status: BrowserNodeStatus): BrowserNodeStatus;
+  getById(id: string): BrowserNodeStatus | null;
+  list(): readonly BrowserNodeStatus[];
+}
+
 export interface EnqueueNormalizationJob {
   readonly id: string;
   readonly rawListingId: string;
@@ -220,6 +255,9 @@ export interface VeraRepositories {
   readonly viewings: ViewingRepository;
   readonly activityEvents: ActivityEventRepository;
   readonly sourcePolicyManifests: SourcePolicyManifestRepository;
+  readonly sourceJobs: SourceJobRepository;
+  readonly sourceJobAttempts: SourceJobAttemptRepository;
+  readonly browserNodes: BrowserNodeRepository;
   readonly normalizationJobs: NormalizationJobRepository;
   transaction<T>(callback: (repositories: VeraRepositories) => T): T;
 }

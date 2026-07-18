@@ -29,6 +29,7 @@ function importRaw(id = "raw-job-test"): void {
   repositories.rawListings.import({
     id,
     source: "other",
+    acquisitionMode: "user_capture",
     sourceListingId: null,
     sourceUrl: "https://housing.example/listing/job-test",
     captureMethod: "manual_text",
