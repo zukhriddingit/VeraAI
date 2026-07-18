@@ -39,6 +39,12 @@ export interface RailwayDatabaseOptions {
   readonly rootDirectory?: string;
 }
 
+export interface RailwayProcessLaunch {
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly options: SpawnOptions;
+}
+
 const defaultLogger: RailwayLogger = {
   info(record) {
     process.stdout.write(`${JSON.stringify(record)}\n`);
@@ -124,33 +130,44 @@ export function superviseRailwayProcesses(
   });
 }
 
+export function createRailwayProcessLaunches(
+  configuration: RailwayConfiguration,
+  rootDirectory = defaultRootDirectory
+): Readonly<{ web: RailwayProcessLaunch; worker: RailwayProcessLaunch }> {
+  const commonOptions: SpawnOptions = {
+    env: configuration.childEnvironment,
+    stdio: "inherit"
+  };
+
+  return {
+    worker: {
+      command: process.execPath,
+      args: [join(rootDirectory, "apps/worker/dist/index.js")],
+      options: { ...commonOptions, cwd: rootDirectory }
+    },
+    web: {
+      command: process.execPath,
+      args: [
+        join(rootDirectory, "apps/web/node_modules/next/dist/bin/next"),
+        "start",
+        "--hostname",
+        "0.0.0.0",
+        "--port",
+        String(configuration.port)
+      ],
+      options: { ...commonOptions, cwd: join(rootDirectory, "apps/web") }
+    }
+  };
+}
+
 export async function runRailwayDeployment(): Promise<number> {
   const configuration = resolveRailwayConfiguration();
   const seedResult = initializeRailwayDatabase(configuration);
   defaultLogger.info({ event: "railway_database_ready", ...seedResult });
 
-  const commonOptions: SpawnOptions = {
-    cwd: defaultRootDirectory,
-    env: configuration.childEnvironment,
-    stdio: "inherit"
-  };
-  const worker = spawn(
-    process.execPath,
-    [join(defaultRootDirectory, "apps/worker/dist/index.js")],
-    commonOptions
-  );
-  const web = spawn(
-    process.execPath,
-    [
-      join(defaultRootDirectory, "apps/web/node_modules/next/dist/bin/next"),
-      "start",
-      "--hostname",
-      "0.0.0.0",
-      "--port",
-      String(configuration.port)
-    ],
-    commonOptions
-  );
+  const launches = createRailwayProcessLaunches(configuration);
+  const worker = spawn(launches.worker.command, launches.worker.args, launches.worker.options);
+  const web = spawn(launches.web.command, launches.web.args, launches.web.options);
 
   return superviseRailwayProcesses([
     { name: "worker", process: worker },

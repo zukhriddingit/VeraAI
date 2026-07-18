@@ -3,10 +3,30 @@ import { EventEmitter } from "node:events";
 import { describe, expect, it } from "vitest";
 
 import {
+  createRailwayProcessLaunches,
   superviseRailwayProcesses,
   type ManagedRailwayProcess,
   type RailwayLogger
 } from "./railway-runtime.ts";
+
+describe("Railway process launch plan", () => {
+  it("starts Next from the web workspace so it can find the production build", () => {
+    const rootDirectory = "/workspace";
+    const launches = createRailwayProcessLaunches(
+      {
+        childEnvironment: { VERA_DEMO_MODE: "1" },
+        dataDirectory: "/data",
+        port: 8080
+      },
+      rootDirectory
+    );
+
+    expect(launches.worker.options.cwd).toBe(rootDirectory);
+    expect(launches.web.options.cwd).toBe("/workspace/apps/web");
+    expect(launches.web.args).toContain("start");
+    expect(launches.web.args).toContain("8080");
+  });
+});
 
 class FakeProcess extends EventEmitter implements ManagedRailwayProcess {
   killed = false;
