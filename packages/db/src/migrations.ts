@@ -6,7 +6,15 @@ import type { VeraDatabaseConnection } from "./connection.ts";
 
 const migrationsFolder = fileURLToPath(new URL("../drizzle", import.meta.url));
 
-export function migrateDatabase(connection: VeraDatabaseConnection): void {
+export interface MigrationOptions {
+  readonly migrationsFolder?: string;
+}
+
+export function migrateDatabase(
+  connection: VeraDatabaseConnection,
+  options: MigrationOptions = {}
+): void {
+  const resolvedMigrationsFolder = options.migrationsFolder ?? migrationsFolder;
   const foreignKeysEnabled = connection.sqlite.pragma("foreign_keys", { simple: true }) === 1;
 
   // SQLite table recreation cannot replace referenced parent tables while FK enforcement is on.
@@ -15,7 +23,7 @@ export function migrateDatabase(connection: VeraDatabaseConnection): void {
   connection.sqlite.pragma("foreign_keys = OFF");
 
   try {
-    migrate(connection.db, { migrationsFolder });
+    migrate(connection.db, { migrationsFolder: resolvedMigrationsFolder });
   } finally {
     if (foreignKeysEnabled) {
       connection.sqlite.pragma("foreign_keys = ON");
