@@ -1,7 +1,7 @@
 # Provider-neutral structured extraction design
 
-Status: approved design awaiting implementation  
-Reviewed: 2026-07-17
+Status: implemented and audited
+Reviewed: 2026-07-20
 
 ## Goal
 
@@ -209,7 +209,7 @@ The result contains:
 - total measured latency;
 - repair count, zero or one.
 
-The versions are constants with initial values `listing-extraction.prompt.v1` and `listing-extraction.v1`. Changes to instructions, field semantics, validation, or merge policy require an intentional version change.
+The versions began at `listing-extraction.prompt.v1` and `listing-extraction.v1`. The implemented monetary-role hardening advances extraction semantics to `listing-extraction.v2` while keeping the prompt at v1; persisted v1 runs remain readable. Changes to instructions, field semantics, validation, or merge policy require an intentional version change.
 
 ## Mock provider
 

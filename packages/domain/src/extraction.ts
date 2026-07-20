@@ -4,7 +4,11 @@ import { ContactChannelSchema, PropertyTypeSchema } from "./listing.ts";
 import { EntityIdSchema, IsoDateSchema, IsoDateTimeSchema, Sha256Schema } from "./primitives.ts";
 
 export const LISTING_EXTRACTION_PROMPT_VERSION = "listing-extraction.prompt.v1" as const;
-export const LISTING_EXTRACTION_VERSION = "listing-extraction.v1" as const;
+export const LISTING_EXTRACTION_VERSION = "listing-extraction.v2" as const;
+export const ListingExtractionVersionSchema = z.enum([
+  "listing-extraction.v1",
+  LISTING_EXTRACTION_VERSION
+]);
 
 export const ListingExtractionFieldNameSchema = z.enum([
   "title",
@@ -281,7 +285,7 @@ export const ListingExtractionRunSchema = z
     model: z.string().trim().min(1).max(300).nullable(),
     responseId: z.string().trim().min(1).max(500).nullable(),
     promptVersion: z.literal(LISTING_EXTRACTION_PROMPT_VERSION),
-    extractionVersion: z.literal(LISTING_EXTRACTION_VERSION),
+    extractionVersion: ListingExtractionVersionSchema,
     providerResult: ListingExtractionProviderResultSchema.nullable(),
     mergedExtraction: ListingExtractionSchema,
     usage: ListingExtractionUsageSchema,
@@ -350,6 +354,7 @@ export const ListingExtractionRunSchema = z
   });
 
 export type ListingExtractionFieldName = z.infer<typeof ListingExtractionFieldNameSchema>;
+export type ListingExtractionVersion = z.infer<typeof ListingExtractionVersionSchema>;
 export type ExtractionUnknownReason = z.infer<typeof ExtractionUnknownReasonSchema>;
 export type MoneyObservation = z.infer<typeof MoneyObservationSchema>;
 export type RequiredRecurringFee = z.infer<typeof RequiredRecurringFeeSchema>;

@@ -2,9 +2,9 @@ import { z } from "zod";
 
 import {
   LISTING_EXTRACTION_PROMPT_VERSION,
-  LISTING_EXTRACTION_VERSION,
   ListingExtractionFieldNameSchema,
   ListingExtractionModeSchema,
+  ListingExtractionVersionSchema,
   ListingExtractionUsageSchema
 } from "./extraction.ts";
 import { NormalizationJobStateSchema } from "./jobs.ts";
@@ -108,7 +108,7 @@ export const CaptureExtractionRunSummarySchema = z
     providerId: z.string().trim().min(1).max(160).nullable(),
     model: z.string().trim().min(1).max(300).nullable(),
     promptVersion: z.literal(LISTING_EXTRACTION_PROMPT_VERSION),
-    extractionVersion: z.literal(LISTING_EXTRACTION_VERSION),
+    extractionVersion: ListingExtractionVersionSchema,
     requestedFields: z.array(ListingExtractionFieldNameSchema).max(20),
     requestedFieldCount: z.number().int().nonnegative().max(20),
     usage: ListingExtractionUsageSchema,

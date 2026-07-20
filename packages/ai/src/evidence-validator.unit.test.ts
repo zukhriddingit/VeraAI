@@ -93,6 +93,128 @@ describe("validateExtractionEvidence", () => {
     });
   });
 
+  it("rejects a recurring fee amount mislabeled as base rent", () => {
+    const extraction = createUnknownListingExtraction();
+    extraction.baseRent = {
+      status: "known",
+      value: {
+        amountMinorUnits: 15_000,
+        currency: "USD",
+        billingPeriod: "month",
+        rawAmount: "USD 150 per month"
+      },
+      confidenceBasisPoints: 9_500,
+      evidenceSnippet: "Required parking: USD 150 per month"
+    };
+    const request = requestFor("Required parking: USD 150 per month", "baseRent", "ambiguous");
+    expect(validateExtractionEvidence(request, extraction)).toContainEqual({
+      code: "money_not_supported",
+      field: "baseRent"
+    });
+  });
+
+  it("rejects base rent mislabeled as a required recurring fee", () => {
+    const extraction = createUnknownListingExtraction();
+    extraction.requiredRecurringFees = {
+      status: "known",
+      value: [
+        {
+          label: "Base rent",
+          amount: {
+            amountMinorUnits: 245_000,
+            currency: "USD",
+            billingPeriod: "month",
+            rawAmount: "USD 2450 per month"
+          }
+        }
+      ],
+      confidenceBasisPoints: 9_500,
+      evidenceSnippet: "Base rent: USD 2450 per month"
+    };
+    const request = requestFor(
+      "Base rent: USD 2450 per month",
+      "requiredRecurringFees",
+      "ambiguous"
+    );
+    expect(validateExtractionEvidence(request, extraction)).toContainEqual({
+      code: "money_not_supported",
+      field: "requiredRecurringFees"
+    });
+  });
+
+  it("requires each recurring-fee label and amount to share explicit required context", () => {
+    const extraction = createUnknownListingExtraction();
+    extraction.requiredRecurringFees = {
+      status: "known",
+      value: [
+        {
+          label: "parking",
+          amount: {
+            amountMinorUnits: 15_000,
+            currency: "USD",
+            billingPeriod: "month",
+            rawAmount: "USD 150 per month"
+          }
+        }
+      ],
+      confidenceBasisPoints: 9_500,
+      evidenceSnippet: "Parking is available. USD 150 per month."
+    };
+    const request = requestFor(
+      "Parking is available.\nUSD 150 per month.",
+      "requiredRecurringFees",
+      "ambiguous"
+    );
+    expect(validateExtractionEvidence(request, extraction)).toContainEqual({
+      code: "money_not_supported",
+      field: "requiredRecurringFees"
+    });
+  });
+
+  it("accepts explicitly labeled monthly rent and mandatory recurring fees", () => {
+    const evidence = [
+      "Monthly rent: USD 2450 per month",
+      "Mandatory parking fee: USD 150 per month"
+    ].join("\n");
+    const extraction = createUnknownListingExtraction();
+    extraction.baseRent = {
+      status: "known",
+      value: {
+        amountMinorUnits: 245_000,
+        currency: "USD",
+        billingPeriod: "month",
+        rawAmount: "USD 2450 per month"
+      },
+      confidenceBasisPoints: 9_500,
+      evidenceSnippet: "Monthly rent: USD 2450 per month"
+    };
+    extraction.requiredRecurringFees = {
+      status: "known",
+      value: [
+        {
+          label: "parking fee",
+          amount: {
+            amountMinorUnits: 15_000,
+            currency: "USD",
+            billingPeriod: "month",
+            rawAmount: "USD 150 per month"
+          }
+        }
+      ],
+      confidenceBasisPoints: 9_500,
+      evidenceSnippet: "Mandatory parking fee: USD 150 per month"
+    };
+    const request = ListingExtractionRequestSchema.parse({
+      ...GOLDEN_LISTING_REQUEST,
+      evidenceText: evidence,
+      fieldRequests: [
+        { field: "baseRent", reason: "ambiguous" },
+        { field: "requiredRecurringFees", reason: "ambiguous" }
+      ]
+    });
+    expect(validateExtractionEvidence(request, extraction)).toEqual([]);
+  });
+
   it("requires explicit evidence before accepting an empty recurring-fee list", () => {
     const extraction = createUnknownListingExtraction();
     extraction.requiredRecurringFees = {

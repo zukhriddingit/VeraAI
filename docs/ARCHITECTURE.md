@@ -326,13 +326,13 @@ flowchart LR
     Merge --> Tx --> Detail
 ```
 
-Every field is either known with value, confidence, and a bounded evidence snippet, or unknown with zero confidence and a closed reason. Known provider evidence must occur in the supplied record, confidence must be at least 7,000 basis points, and the provider may populate only requested fields. Deterministic values always win. Money requires an explicit currency and billing period; base rent and recurring fees remain separate; cats and dogs remain separate; raw availability does not imply a date; contacts must occur exactly in evidence.
+Every field is either known with value, confidence, and a bounded evidence snippet, or unknown with zero confidence and a closed reason. Known provider evidence must occur in the supplied record, confidence must be at least 7,000 basis points, and the provider may populate only requested fields. Deterministic values always win. Money requires an explicit currency and billing period. Base rent must be tied to an explicit rent label in its quoted evidence; every recurring fee must bind its label and amount in the same quoted line under explicit required, mandatory, or required-fee-list context. Cats and dogs remain separate; raw availability does not imply a date; contacts must occur exactly in evidence.
 
 The OpenAI provider uses SDK 6.48.0 `responses.parse` plus `zodTextFormat`, `store: false`, no tools, caller cancellation, a 1–30 second validated timeout, and SDK `maxRetries: 0`. The model comes only from `VERA_LLM_MODEL`. Both key and model absent means deterministic-only; partial configuration fails visibly. The live integration test additionally requires `VERA_RUN_LIVE_LLM_TESTS=1`.
 
 Provider work never holds a database transaction. A successful job atomically writes the source record, complete provenance, one immutable `listing_extractions` row, safe completion event, and completed job. Failed provider calls write no partial source/extraction rows. Retryable failures use the durable queue; permanent failures dead-letter immediately. Shutdown cancellation leaves the lease recoverable.
 
-Prompt and extraction versions begin at `listing-extraction.prompt.v1` and `listing-extraction.v1`. The extraction row stores versions, exact input hash, requested fields, validated provider result when present, merged extraction, usage, latency, and repair count. Its raw-listing and source-record links are each unique.
+The current prompt version is `listing-extraction.prompt.v1`; the current extraction semantics are `listing-extraction.v2`. Version 2 adds fail-closed monetary-role validation so recurring charges cannot be accepted as base rent and unlabeled or optional charges cannot be accepted as required recurring fees. Persisted `listing-extraction.v1` rows remain readable. The extraction row stores versions, exact input hash, requested fields, validated provider result when present, merged extraction, usage, latency, and repair count. Its raw-listing and source-record links are each unique.
 
 Allowed AI work:
 

@@ -37,7 +37,7 @@ Live configuration is fail-closed:
 
 The worker performs provider calls outside SQLite transactions. Typed timeout, rate-limit, and transient failures are retryable. Authentication, refusal, invalid-after-repair, configuration, and permanent provider failures dead-letter immediately at the real attempt count. Shutdown cancellation leaves the lease recoverable and writes no partial extraction.
 
-Prompt and extraction semantics start at `listing-extraction.prompt.v1` and `listing-extraction.v1`. Any material instruction, validation, field-semantic, or merge-policy change requires an intentional version change.
+Prompt and extraction semantics start at `listing-extraction.prompt.v1` and `listing-extraction.v1`. Extraction semantics `listing-extraction.v2` add deterministic monetary-role checks: base-rent evidence must identify rent, and recurring-fee evidence must bind each label and amount under explicit required context. Persisted v1 runs remain readable. Any material instruction, validation, field-semantic, or merge-policy change requires an intentional version change.
 
 ## Privacy and audit decision
 

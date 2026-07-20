@@ -2,7 +2,8 @@ import type {
   ListingExtraction,
   ListingExtractionFieldName,
   ListingExtractionRequest,
-  MoneyObservation
+  MoneyObservation,
+  RequiredRecurringFee
 } from "@vera/domain";
 
 import type { ExtractionValidationIssue } from "./prompt.ts";
@@ -98,6 +99,47 @@ function moneyIsSupported(evidence: string, money: MoneyObservation): boolean {
     amountMinorUnits(money.rawAmount) === money.amountMinorUnits &&
     currencyIsExplicit(money.rawAmount, money.currency) &&
     BILLING_MARKERS[money.billingPeriod].test(money.rawAmount)
+  );
+}
+
+function evidenceLines(value: string): readonly string[] {
+  return value
+    .split(/\r?\n/u)
+    .map((line) => normalizeEvidence(line))
+    .filter((line) => line.length > 0);
+}
+
+const NON_BASE_RENT_MARKER =
+  /\b(?:pet|parking|garage|storage|utility|utilities|amenity|service|equipment)\s+rent\b/iu;
+const BASE_RENT_MARKER =
+  /\b(?:base\s+rent|monthly\s+rent)\b|(?:^|[.;]\s*|\bthe\s+)rent\s*(?::|=|-|is\b|of\b|costs?\b|runs?\b)/iu;
+
+function baseRentIsSupported(evidenceSnippet: string, money: MoneyObservation): boolean {
+  return evidenceLines(evidenceSnippet).some(
+    (line) =>
+      moneyIsSupported(line, money) &&
+      BASE_RENT_MARKER.test(line) &&
+      !NON_BASE_RENT_MARKER.test(line)
+  );
+}
+
+const REQUIRED_FEE_MARKER =
+  /\b(?:required|mandatory|compulsory|non[- ]optional|must\s+(?:be\s+)?paid)\b/iu;
+const REQUIRED_FEE_HEADER = /\brequired\s+(?:recurring|monthly)\s+fees?\b/iu;
+
+function isBaseRentLabel(label: string): boolean {
+  return /^(?:(?:base|monthly)\s+)?rent$/iu.test(normalizeEvidence(label));
+}
+
+function recurringFeeIsSupported(evidenceSnippet: string, fee: RequiredRecurringFee): boolean {
+  if (isBaseRentLabel(fee.label)) return false;
+  const lines = evidenceLines(evidenceSnippet);
+  const hasRequiredHeader = lines.some((line) => REQUIRED_FEE_HEADER.test(line));
+  return lines.some(
+    (line) =>
+      normalizedIncludes(line, fee.label) &&
+      moneyIsSupported(line, fee.amount) &&
+      (hasRequiredHeader || REQUIRED_FEE_MARKER.test(line))
   );
 }
 
@@ -249,23 +291,22 @@ export function validateExtractionEvidence(
 
   if (
     extraction.baseRent.status === "known" &&
-    !moneyIsSupported(request.evidenceText, extraction.baseRent.value)
+    !baseRentIsSupported(extraction.baseRent.evidenceSnippet, extraction.baseRent.value)
   ) {
     addIssue(issues, "money_not_supported", "baseRent");
   }
 
   if (extraction.requiredRecurringFees.status === "known") {
+    const recurringFees = extraction.requiredRecurringFees;
     if (
-      extraction.requiredRecurringFees.value.length === 0 &&
-      !explicitNoRecurringFees(extraction.requiredRecurringFees.evidenceSnippet)
+      recurringFees.value.length === 0 &&
+      !explicitNoRecurringFees(recurringFees.evidenceSnippet)
     ) {
       addIssue(issues, "empty_fees_not_supported", "requiredRecurringFees");
     }
     if (
-      extraction.requiredRecurringFees.value.some(
-        (fee) =>
-          !normalizedIncludes(request.evidenceText, fee.label) ||
-          !moneyIsSupported(request.evidenceText, fee.amount)
+      recurringFees.value.some(
+        (fee) => !recurringFeeIsSupported(recurringFees.evidenceSnippet, fee)
       )
     ) {
       addIssue(issues, "money_not_supported", "requiredRecurringFees");

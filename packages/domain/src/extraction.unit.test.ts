@@ -24,6 +24,7 @@ import {
   ExtractedTitleSchema,
   LISTING_EXTRACTION_PROMPT_VERSION,
   LISTING_EXTRACTION_VERSION,
+  ListingExtractionVersionSchema,
   ListingExtractionFieldNameSchema,
   ListingExtractionProviderResultSchema,
   ListingExtractionRequestSchema,
@@ -306,6 +307,27 @@ describe("immutable listing extraction run", () => {
         usage: { inputTokens: 1, outputTokens: 0, totalTokens: 1 }
       })
     ).toThrow();
+  });
+
+  it("reads persisted v1 runs while new requests use the current extraction version", () => {
+    const persistedV1Run = {
+      ...baseRun,
+      mode: "deterministic_only",
+      extractionVersion: "listing-extraction.v1",
+      providerId: null,
+      model: null,
+      responseId: null,
+      providerResult: null,
+      usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
+      latencyMilliseconds: 0,
+      repairCount: 0
+    } as const;
+
+    expect(ListingExtractionVersionSchema.parse("listing-extraction.v1")).toBe(
+      "listing-extraction.v1"
+    );
+    expect(ListingExtractionRunSchema.parse(persistedV1Run)).toEqual(persistedV1Run);
+    expect(LISTING_EXTRACTION_VERSION).toBe("listing-extraction.v2");
   });
 
   it("requires consistent provider metadata and result in LLM-augmented mode", () => {
