@@ -30,6 +30,33 @@ The automated clean-clone demo currently proves the ingestion, extraction, and d
 
 Gmail, Calendar, email-alert acquisition, live Maritime dispatch, and a real OpenClaw bridge remain target MVP work; they are not implemented by this slice.
 
+## P0 decision-cockpit recording path
+
+Use Node 24 and the pinned pnpm version. From the repository root, prepare a clean deterministic dataset and start both the web app and local worker:
+
+```sh
+corepack enable
+pnpm install --frozen-lockfile
+pnpm exec playwright install chromium
+pnpm demo:reset
+pnpm demo:seed
+pnpm demo
+```
+
+Leave the final command running and open `http://127.0.0.1:3000`. The reset targets only Vera's dedicated demo-data directory. Demo startup removes live LLM environment variables and uses no credentials or network-backed listing connector.
+
+Record this click path:
+
+1. On `/`, frame the seeded search profile, then select **Run demo search**.
+2. Show the **New** inbox, fit ordering, unknown/stale markers, source-observed timing, duplicate badges, and the risk-indicator language.
+3. Filter **Source** to Zillow, clear it, and sort by **Price** to demonstrate quick scanning.
+4. Open **Inspect Juniper Row one-bedroom**. Show the stitched facts, three preserved source records, field provenance, duplicate evidence, missing-information checklist, deterministic fit reasons, and evidence-backed risk indicators.
+5. Select **Add Juniper Row one-bedroom to shortlist**, return to `/`, and open the **Shortlisted** tab.
+6. In **New**, select **Dismiss Orchard Lane loft**, then **Confirm**. Open **Archived** to show that dismissal preserves the record.
+7. Open **Activity** and show the demo-search, shortlist, and dismissal events. End by noting that **Prepare outreach** is disabled and no message, browser action, or calendar write occurred.
+
+For a clean retake, stop the running process with `Ctrl-C`, then rerun `pnpm demo:reset`, `pnpm demo:seed`, and `pnpm demo`.
+
 ## Demo modes
 
 ### Deterministic mode

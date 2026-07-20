@@ -14,6 +14,9 @@ test("dashboard identifies the isolated sanitized demo", async ({ page, request 
     "Demo mode — sanitized fixture data; no live marketplace accounts connected."
   );
   await expect(page.getByRole("heading", { name: "Harbor City September Search" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Your housing options, already organized." })
+  ).toBeVisible();
   await expect(page.getByRole("heading", { name: "See what Vera finds." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Run demo search" })).toBeEnabled();
   await expect(page.getByText("This offline demo uses sanitized fixtures only.")).toBeVisible();

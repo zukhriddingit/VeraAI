@@ -23,18 +23,22 @@ test("offline golden path preserves evidence, explains risk, and records user co
   ).toBeVisible({ timeout: 20_000 });
   await expect(page.getByTestId("listing-card")).toHaveCount(8);
   await expect(page.getByTestId("duplicate-badge")).toHaveCount(3);
-  await expect(page.getByText("Zillow", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Facebook Marketplace", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Craigslist", { exact: true }).first()).toBeVisible();
-  await expect(page.getByText("Apartments.com", { exact: true }).first()).toBeVisible();
+  const sourceChips = page.locator(".listing-sources");
+  await expect(sourceChips.getByText("Zillow", { exact: true }).first()).toBeVisible();
+  await expect(
+    sourceChips.getByText("Facebook Marketplace", { exact: true }).first()
+  ).toBeVisible();
+  await expect(sourceChips.getByText("Craigslist", { exact: true }).first()).toBeVisible();
+  await expect(sourceChips.getByText("Apartments.com", { exact: true }).first()).toBeVisible();
 
-  await page.getByRole("link", { name: "View evidence for Juniper Row one-bedroom" }).click();
+  await page.getByRole("link", { name: "Inspect Juniper Row one-bedroom" }).click();
 
   await expect(
     page.getByRole("heading", { name: "101 Juniper Row, 1A, Harbor City, MA" })
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Fit explanation" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Risk indicators" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Missing information" })).toBeVisible();
   await expect(page.locator(".risk-card")).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Deposit before viewing" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Suspicious payment method" })).toBeVisible();

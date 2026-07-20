@@ -3,6 +3,8 @@ import Link from "next/link";
 import { loadCockpitInitialState } from "../lib/cockpit-read-model";
 import { DemoSearch } from "./demo-search";
 
+export const dynamic = "force-dynamic";
+
 export default function HomePage() {
   const initialState = loadCockpitInitialState();
 

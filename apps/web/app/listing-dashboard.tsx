@@ -10,7 +10,7 @@ import {
   type ListingSourceLabel
 } from "@vera/domain";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   DEFAULT_LISTING_INBOX_QUERY,
@@ -323,9 +323,11 @@ export function ListingDashboard({
   useEffect(() => {
     if (refreshKey === 0 && reloadKey === 0) return;
     const controller = new AbortController();
-    setState({ kind: "loading" });
 
     async function loadListings() {
+      await Promise.resolve();
+      if (controller.signal.aborted) return;
+      setState({ kind: "loading" });
       try {
         const response = await fetch("/api/listings", {
           cache: "no-store",
@@ -355,8 +357,8 @@ export function ListingDashboard({
   }, [refreshKey, reloadKey]);
 
   const listings = state.kind === "ready" ? state.listings : [];
-  const visibleListings = useMemo(() => refineListingInbox(listings, query), [listings, query]);
-  const tabCounts = useMemo(() => listingInboxTabCounts(listings), [listings]);
+  const visibleListings = refineListingInbox(listings, query);
+  const tabCounts = listingInboxTabCounts(listings);
 
   function updateListingState(listingId: string, lifecycleState: ListingLifecycleState): void {
     setState((current) =>
