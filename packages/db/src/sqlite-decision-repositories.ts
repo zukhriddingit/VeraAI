@@ -191,6 +191,29 @@ function sourceValue(record: ListingSourceRecord, fieldPath: string): JsonValue 
   return value === undefined || value === null ? null : JsonValueSchema.parse(value);
 }
 
+function canonicalFieldPath(fieldPath: string): string | null {
+  switch (fieldPath) {
+    case "addressText":
+      return "address.line1";
+    case "baseRent":
+      return "monthlyRentCents";
+    case "requiredRecurringFees":
+      return "recurringFeesCents";
+    case "availabilityRaw":
+    case "contactChannel":
+    case "contactEmail":
+    case "contactName":
+    case "contactPhone":
+    case "contactUrl":
+    case "source":
+    case "sourcePostedAt":
+    case "sourceUrl":
+      return null;
+    default:
+      return fieldPath;
+  }
+}
+
 function normalizedDecisionSource(input: {
   readonly record: ListingSourceRecord;
   readonly raw: ReturnType<typeof mapRawListingRow>;
@@ -260,16 +283,25 @@ function normalizedDecisionSource(input: {
         : []
     ),
     contactFingerprints: [],
-    fieldCandidates: input.provenance.map((provenance) => ({
-      fieldPath: provenance.fieldPath,
-      fieldProvenanceId: provenance.id,
-      sourceRecordId: record.id,
-      extractionMethod: provenance.extractionMethod,
-      valueStatus: provenance.valueStatus,
-      value: provenance.valueStatus === "known" ? sourceValue(record, provenance.fieldPath) : null,
-      confidenceBasisPoints: provenance.confidenceBasisPoints,
-      observedAt: provenance.observedAt
-    })),
+    fieldCandidates: input.provenance.flatMap((provenance) => {
+      const fieldPath = canonicalFieldPath(provenance.fieldPath);
+      if (fieldPath === null) return [];
+      const value = provenance.valueStatus === "known" ? sourceValue(record, fieldPath) : null;
+      const valueStatus =
+        provenance.valueStatus === "known" && value !== null ? "known" : "unknown";
+      return [
+        {
+          fieldPath,
+          fieldProvenanceId: provenance.id,
+          sourceRecordId: record.id,
+          extractionMethod: provenance.extractionMethod,
+          valueStatus,
+          value: valueStatus === "known" ? value : null,
+          confidenceBasisPoints: valueStatus === "known" ? provenance.confidenceBasisPoints : 0,
+          observedAt: provenance.observedAt
+        }
+      ];
+    }),
     normalizationReasonCodes:
       address === null ? ["field_unknown", "cost_partial"] : ["address_normalized"]
   });
@@ -830,7 +862,7 @@ export function createSqliteDecisionRepositories(
             if (
               provenance === undefined ||
               provenance.listingSourceRecordId !== selection.selectedSourceRecordId ||
-              provenance.fieldPath !== selection.fieldPath
+              canonicalFieldPath(provenance.fieldPath) !== selection.fieldPath
             ) {
               throw new Error("Canonical field selection has mismatched provenance.");
             }

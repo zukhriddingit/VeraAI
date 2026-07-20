@@ -81,7 +81,17 @@ describe("production decision corpus evaluation", () => {
     expect(metrics.precision!).toBeGreaterThanOrEqual(0.8);
     expect(metrics.recall!).toBeGreaterThanOrEqual(0.8);
     expect(metrics.missingExpectedRiskCodes).toEqual([]);
+    expect(metrics.sourceCounts).toEqual({
+      apartments_com: 3,
+      craigslist: 3,
+      facebook_marketplace: 3,
+      zillow: 3
+    });
+    expect(metrics.canonicalListingCount).toBe(8);
+    expect(metrics.duplicateClusterCount).toBe(3);
+    expect(metrics.determinismVerified).toBe(true);
     expect(report).toContain("small-sample results are regression evidence");
+    expect(report).toContain("Same-input determinism: verified");
     expect(report).toContain("TP=");
   });
 });

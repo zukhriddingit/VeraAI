@@ -35,8 +35,13 @@ test("offline golden path preserves evidence, explains risk, and records user co
   ).toBeVisible();
   await expect(page.getByRole("heading", { name: "Fit explanation" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Risk indicators" })).toBeVisible();
-  await expect(page.locator(".risk-card")).toHaveCount(3);
-  await expect(page.getByText(/Same normalized address and unit/u)).toBeVisible();
+  await expect(page.locator(".risk-card")).toHaveCount(2);
+  await expect(page.getByRole("heading", { name: "Deposit before viewing" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Suspicious payment method" })).toBeVisible();
+  await expect(
+    page.getByText(/deterministic listing-dedupe\.v1 clustering linked records/u)
+  ).toBeVisible();
+  await expect(page.getByText("Version: listing-score.v2")).toBeVisible();
   await expect(page.locator(".source-evidence-card")).toHaveCount(3);
   await expect(page.getByRole("button", { name: "Prepare outreach — coming next" })).toBeDisabled();
 

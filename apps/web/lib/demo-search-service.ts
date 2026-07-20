@@ -1,12 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  CANONICAL_FIXTURES,
-  DEMO_RISK_FIXTURES,
-  DEMO_SCORE_FIXTURES,
-  DUPLICATE_CLUSTER_FIXTURES,
-  SOURCE_FIXTURES
-} from "@vera/db/fixtures";
+import { SOURCE_FIXTURES } from "@vera/db/fixtures";
 import { canonicalJson, sha256Text, type VeraRepositories } from "@vera/db/runtime";
 import {
   ActivityEventSchema,
@@ -75,6 +69,12 @@ function runFromCompletionEvent(
 }
 
 function seededFixturesAreValid(repositories: VeraRepositories): boolean {
+  const activeCanonicals = repositories.canonicalListings.list();
+  const decisionRuns = repositories.decisionHistory.listRuns(DEMO_PROFILE_ID);
+  const succeededJobs = repositories.decisionJobs
+    .list()
+    .filter((job) => job.searchProfileId === DEMO_PROFILE_ID && job.status === "succeeded");
+
   return (
     repositories.searchProfiles.getById(DEMO_PROFILE_ID) !== null &&
     SOURCE_FIXTURES.every(
@@ -82,16 +82,18 @@ function seededFixturesAreValid(repositories: VeraRepositories): boolean {
         repositories.rawListings.getById(fixture.capture.id) !== null &&
         repositories.sourceRecords.getById(fixture.sourceRecord.id) !== null
     ) &&
-    CANONICAL_FIXTURES.every(
-      (fixture) => repositories.canonicalListings.getById(fixture.listing.id) !== null
-    ) &&
-    DUPLICATE_CLUSTER_FIXTURES.every(
-      (fixture) => repositories.duplicateClusters.getById(fixture.id) !== null
-    ) &&
-    DEMO_SCORE_FIXTURES.every(
-      (fixture) => repositories.listingScores.getById(fixture.id) !== null
-    ) &&
-    DEMO_RISK_FIXTURES.every((fixture) => repositories.riskSignals.getById(fixture.id) !== null)
+    activeCanonicals.length === 8 &&
+    repositories.duplicateClusters.count() === 3 &&
+    decisionRuns.length === 1 &&
+    succeededJobs.length === 1 &&
+    decisionRuns[0]?.jobId === succeededJobs[0]?.id &&
+    activeCanonicals.every(
+      (listing) =>
+        repositories.listingScores.getCurrentV2ByCanonicalListingId(
+          listing.id,
+          decisionRuns[0]!.id
+        ) !== null
+    )
   );
 }
 

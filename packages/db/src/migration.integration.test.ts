@@ -72,6 +72,8 @@ function downgradePopulatedDatabaseTo0004Shape(): void {
     DROP TRIGGER IF EXISTS duplicate_pair_evaluations_no_update;
     DROP TRIGGER IF EXISTS listing_scores_no_delete;
     DROP TRIGGER IF EXISTS listing_scores_no_update;
+    DROP TRIGGER IF EXISTS risk_signals_no_delete;
+    DROP TRIGGER IF EXISTS risk_signals_no_update;
 
     CREATE TABLE __legacy_risk_signals_0004 (
       id text PRIMARY KEY NOT NULL,
@@ -676,6 +678,8 @@ describe("forward persistence migrations", () => {
       "listing_scores_no_update",
       "raw_listings_no_delete",
       "raw_listings_no_update",
+      "risk_signals_no_delete",
+      "risk_signals_no_update",
       "source_job_attempts_no_delete",
       "source_job_attempts_no_update"
     ]);
@@ -778,6 +782,8 @@ describe("forward persistence migrations", () => {
       "listing_scores_no_update",
       "raw_listings_no_delete",
       "raw_listings_no_update",
+      "risk_signals_no_delete",
+      "risk_signals_no_update",
       "source_job_attempts_no_delete",
       "source_job_attempts_no_update"
     ]);

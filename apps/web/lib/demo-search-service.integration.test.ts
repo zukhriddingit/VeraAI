@@ -8,12 +8,12 @@ import {
   createSqliteRepositories,
   migrateDatabase,
   openDatabase,
-  seedDatabase,
   type VeraDatabaseConnection,
   type VeraRepositories
 } from "@vera/db";
 import { SOURCE_FIXTURES } from "@vera/db/fixtures";
 
+import { seedAndEvaluateProductionEvidence } from "../test-support/production-seed.ts";
 import { getDemoStatus, runDemoSearch } from "./demo-search-service.ts";
 import { isDemoMode } from "./demo-mode.ts";
 
@@ -26,7 +26,7 @@ beforeEach(() => {
   connection = openDatabase({ filePath: join(directory, "vera.sqlite") });
   migrateDatabase(connection);
   repositories = createSqliteRepositories(connection);
-  seedDatabase(repositories);
+  seedAndEvaluateProductionEvidence(repositories);
 });
 
 afterEach(() => {

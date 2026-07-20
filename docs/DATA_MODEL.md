@@ -1,8 +1,8 @@
 # Vera data model
 
-Status: implemented through source-orchestration contract persistence
+Status: implemented through deterministic decision reconciliation
 
-Reviewed: 2026-07-18
+Reviewed: 2026-07-20
 
 ## Purpose
 
@@ -32,6 +32,16 @@ erDiagram
     LISTING_SOURCE_RECORD ||--o{ LISTING_PHOTO : describes
     RAW_LISTING ||--o{ FIELD_PROVENANCE : supports
     LISTING_SOURCE_RECORD ||--o{ FIELD_PROVENANCE : records
+    SEARCH_PROFILE ||--|| DECISION_CORPUS_STATE : versions
+    SEARCH_PROFILE ||--o{ DECISION_JOB : queues
+    DECISION_JOB ||--o{ DECISION_JOB_ATTEMPT : records
+    DECISION_JOB ||--o| DECISION_RUN : produces
+    DECISION_RUN ||--o{ DUPLICATE_PAIR_EVALUATION : evaluates
+    DECISION_RUN ||--o{ CANONICAL_DECISION_RUN : stitches
+    DECISION_RUN ||--o{ LISTING_SCORE : snapshots
+    DECISION_RUN ||--o{ RISK_SIGNAL : snapshots
+    SEARCH_PROFILE ||--o{ DUPLICATE_OVERRIDE : owns
+    DUPLICATE_OVERRIDE ||--o| DUPLICATE_OVERRIDE_REVOCATION : revoked_by
 
     DUPLICATE_CLUSTER o|--|| CANONICAL_LISTING : groups
     CANONICAL_LISTING ||--|{ CANONICAL_LISTING_SOURCE : retains
@@ -147,6 +157,61 @@ erDiagram
         text extraction_version
         text merged_extraction
     }
+    DECISION_CORPUS_STATE {
+        text search_profile_id PK, FK
+        integer revision
+        text updated_at
+    }
+    DECISION_JOB {
+        text id PK
+        text search_profile_id FK
+        integer target_corpus_revision
+        text status
+        text input_hash
+        text output_hash
+    }
+    DECISION_JOB_ATTEMPT {
+        text id PK
+        text job_id FK
+        integer attempt_number
+        text outcome
+        text error_code
+    }
+    DECISION_RUN {
+        text id PK
+        text job_id FK, UK
+        integer corpus_revision
+        text input_hash
+        text output_hash
+        text plan_version
+    }
+    DUPLICATE_PAIR_EVALUATION {
+        text id PK
+        text decision_run_id FK
+        text decision
+        integer score_basis_points
+        text features_json
+    }
+    DUPLICATE_OVERRIDE {
+        text id PK
+        text search_profile_id FK
+        text kind
+        text source_record_ids_json
+        text payload_hash
+    }
+    DUPLICATE_OVERRIDE_REVOCATION {
+        text id PK
+        text override_id FK, UK
+        text reason
+        text created_at
+    }
+    CANONICAL_DECISION_RUN {
+        text id PK
+        text decision_run_id FK
+        text canonical_listing_id
+        text stitch_input_hash
+        text selected_fields_json
+    }
 ```
 
 The source-orchestration relationships are logical control-plane links. `source_job_attempts.source_job_id` is a database foreign key; manifest authorization is identified by connector and manifest version, and a local-browser node ID is carried only in the job's strict payload. A source job can produce raw evidence only through the existing immutable ingestion gateway, so there is intentionally no direct source-job-to-raw-listing foreign key yet.
@@ -178,6 +243,14 @@ The source-orchestration relationships are logical control-plane links. `source_
 | `source_jobs`               | Acquisition orchestration state before immutable raw acceptance                  | Strict payload/result JSON; persisted capability and optional opaque approval ID; unique idempotency key; checked lifecycle |
 | `source_job_attempts`       | Immutable source-job attempt history                                             | Source-job FK; unique job/attempt number; update/delete triggers                                                             |
 | `browser_nodes`             | Latest safe local browser-node heartbeat snapshot                               | One row per opaque node ID; closed health state; heartbeat expiry and safe capability JSON                                   |
+| `decision_corpus_state`     | Monotonic evidence/override revision per search profile                          | One row per profile; revision never decreases                                                                                |
+| `decision_jobs`             | Leased recomputation queue for one exact corpus revision                         | Unique profile/revision; bounded attempts and leases; typed terminal state                                                    |
+| `decision_job_attempts`     | Immutable reconciliation-attempt history                                         | Unique job/attempt; update/delete triggers                                                                                   |
+| `decision_runs`             | Immutable accepted plan identity and safe counts                                 | One run per job; unique profile/revision/input; update/delete triggers                                                       |
+| `duplicate_pair_evaluations` | Immutable explainable pair decisions and feature values                        | Ordered source pair; one row per run/pair; update/delete triggers                                                            |
+| `duplicate_overrides`       | Operator-authored force-merge or force-split fact                                | Append-only; sorted unique member IDs; hashed payload                                                                        |
+| `duplicate_override_revocations` | Append-only revocation of an override                                      | At most one revocation per override; no destructive delete                                                                  |
+| `canonical_decision_runs`   | Immutable stitched projection and field-selection history                       | One canonical row per decision run; retained source/provenance selection                                                     |
 
 Complex bounded values such as amenities, evidence summaries, preferences, viewing windows, and manifest capabilities use JSON text columns. Repository reads parse every such value through the corresponding strict Zod schema.
 
@@ -241,6 +314,38 @@ stateDiagram-v2
 
 The worker claims one runnable job with a 90-second lease in a short transaction, performs deterministic/provider work without holding the transaction, and commits the source record, all provenance rows, immutable extraction, completion event, and job completion together. Failure records only a safe typed code/category and either schedules bounded exponential retry or moves the job to `dead_letter`. Permanent failure does not pretend unused attempts were consumed.
 
+## Decision reconciliation lifecycle
+
+`decision_jobs` begins only after evidence or an operator override changes the corpus. It is separate from both pre-ingestion `source_jobs` and per-raw-record `normalization_jobs`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> queued
+    queued --> running: atomic lease claim
+    retryable_failed --> running: available retry claimed
+    running --> succeeded: exact revision applied atomically
+    running --> retryable_failed: bounded transient failure
+    running --> permanently_failed: invalid or exhausted
+    queued --> cancelled: operator or policy cancellation
+    retryable_failed --> cancelled: operator or policy cancellation
+```
+
+Each profile owns a monotonic `decision_corpus_state.revision`. A normalization commit or merge/split override increments it and enqueues at most one job for the resulting profile/revision pair. The worker reads an ordered snapshot for exactly that revision, computes outside a transaction, then applies only if the lease and current corpus revision still match. A stale plan cannot partially update canonical listings.
+
+The accepted transaction writes the full projection and append-only evidence together:
+
+- one `decision_run` with plan/input/output versions, hashes, corpus revision, and safe counts;
+- every evaluated candidate pair and feature contribution;
+- every canonical stitch plan and selected field-provenance reference;
+- active/superseded cluster and canonical projection state;
+- immutable score and risk snapshots linked to the run;
+- source memberships and canonical field selections; and
+- a redacted activity event plus job completion.
+
+The canonical ID is stable when a new component has one unambiguous prior identity. When components merge or split, losing projections are marked `superseded` and point to the active survivor; user workflow state is preserved on the survivor. Source evidence and historical decisions are never deleted. Override rows are append-only facts; reversal is a separate append-only revocation.
+
+Decision-job status is queryable through `/api/decision-jobs/[id]`. `/api/dedupe/overrides` validates active references, records a force-merge or force-split, bumps the corpus revision in the same transaction, and returns the queued job. Neither API accepts raw evidence, contacts, credentials, cookies, or browser state.
+
 ## Source-job lifecycle
 
 Source jobs are acquisition orchestration records. They are separate from normalization jobs, which exist only after raw evidence has been accepted.
@@ -287,7 +392,7 @@ Connector and browser results may return a `cursorCandidate`, but neither result
 
 Repository interfaces expose `import`/`get` for raw listings and `append`/`get`/`list` for activity events. They have no update or delete methods.
 
-The migrations install eight SQLite immutability triggers:
+The migrations install 24 SQLite immutability triggers. Each protected table has one update and one delete trigger:
 
 ```text
 raw_listings_no_update
@@ -298,6 +403,22 @@ listing_extractions_no_update
 listing_extractions_no_delete
 source_job_attempts_no_update
 source_job_attempts_no_delete
+decision_job_attempts_no_update
+decision_job_attempts_no_delete
+decision_runs_no_update
+decision_runs_no_delete
+duplicate_pair_evaluations_no_update
+duplicate_pair_evaluations_no_delete
+duplicate_overrides_no_update
+duplicate_overrides_no_delete
+duplicate_override_revocations_no_update
+duplicate_override_revocations_no_delete
+canonical_decision_runs_no_update
+canonical_decision_runs_no_delete
+listing_scores_no_update
+listing_scores_no_delete
+risk_signals_no_update
+risk_signals_no_delete
 ```
 
 The triggers abort direct SQL mutations, protecting the invariant if later code bypasses a repository.
@@ -325,6 +446,20 @@ The migration does not reset raw listings, source records, canonical listings, d
 4. preserves raw IDs, content hashes, and idempotency keys while recreating indexes and append-only triggers.
 
 The migration does not infer that a legacy job had a session or approval. Runtime session availability and the referenced approval's current state and binding are revalidated for every dispatch and retry. A missing provider, missing approval, invalid approval, or provider error fails closed.
+
+## Migration 0005
+
+`packages/db/drizzle/0005_production_decision_engines.sql` is a forward-only migration from the prior schema. It does not reset or delete user evidence. It:
+
+1. creates monotonic corpus state, leased decision jobs, immutable attempts, immutable accepted decision runs, pair histories, canonical decision histories, merge/split overrides, and override revocations;
+2. adds stable active/superseded projection state and decision-run references to canonical listings and duplicate clusters;
+3. adds optional source coordinates with an all-or-none pair constraint;
+4. extends already-supplied photo metadata with byte size, decoded dimensions, MIME type, and explicit perceptual-hash version while marking legacy hashes as `legacy`;
+5. extends listing scores and risk signals with additive version-2 columns while preserving every version-1 row and legacy read compatibility;
+6. removes the legacy one-risk-row-per-listing/code restriction so immutable snapshots can coexist across decision runs; and
+7. adds database triggers for every new append-only history plus `listing_scores` and `risk_signals`.
+
+The table rebuilds copy only columns that existed before migration and supply conservative `NULL`, `active`, or `legacy` defaults for new semantics. Migration integration tests reconstruct the exact migration-0004 schema, insert representative data, run migration 0005, verify foreign keys and row preservation, and exercise the new repositories. Downgrading to code that assumes mutable scores or no projection state is unsupported.
 
 ## Listing lifecycle
 
@@ -376,7 +511,7 @@ The database is file-backed. Tests use unique temporary file databases so WAL an
 
 ## Sanitized seed topology
 
-The idempotent seed produces exactly 12 raw listings, 12 source records, 8 canonical listings, and 3 duplicate clusters:
+The production seed inserts exactly 12 immutable raw listings and 12 source records, then queues one decision job. It does not hand-author canonical listings, scores, or risk indicators. Running the decision worker against that evidence deterministically produces 8 active canonical listings and 3 multi-record duplicate clusters:
 
 | Canonical listing | Source labels                      | Source records |
 | ----------------- | ---------------------------------- | -------------: |
@@ -397,6 +532,7 @@ All facts and addresses are synthetic, all URLs use `example.invalid`, and no co
 pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
+pnpm scoring:evaluate-fixtures
 ```
 
-`db:generate` regenerates a Drizzle migration for review. `db:migrate` creates or upgrades the configured database. `db:seed` requires a migrated database and can be run repeatedly without increasing fixture, audit, or manifest counts. `pnpm worker:run-once` claims and processes at most one queued normalization job.
+`db:generate` checks or generates a Drizzle migration for review. `db:migrate` creates or upgrades the configured database. The root `db:seed` command inserts sanitized evidence and runs the worker's bounded one-shot loop, so displayed canonical rows, scores, and risks come from the same production evaluator used for new captures. Repeating the command does not increase evidence, activity, job, or decision-run counts when nothing changed. `pnpm scoring:evaluate-fixtures` evaluates all 66 labeled record pairs, reports precision/recall, cluster shape, algorithm versions, risk counts, and same-input determinism, and labels its small-corpus metrics as regression evidence rather than production-performance claims.

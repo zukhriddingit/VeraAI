@@ -1,7 +1,7 @@
 # Vera security and privacy baseline
 
 Status: normative MVP controls  
-Reviewed: 2026-07-18
+Reviewed: 2026-07-20
 
 ## Security goals
 
@@ -9,7 +9,7 @@ Vera should reduce rental-search risk without becoming a new source of credentia
 
 ## Current implementation and target boundary
 
-The current clean clone runs fixture and user-capture ingestion through the local SQLite worker. It also defines strict source-job, browser-node, browser-execution, and Maritime control-plane contracts, persists the safe orchestration state, and supplies deterministic no-network browser and Maritime mocks. It does not implement real Maritime transport or deployment, remote node dispatch, email-alert acquisition, an OpenClaw bridge, or source-specific browser monitoring. The controls below distinguish the implemented contract boundary from the additional controls required before live infrastructure exists.
+The current clean clone runs fixture and user-capture ingestion, deterministic-first extraction, and production decision reconciliation through the local SQLite worker. The decision engine performs normalized matching, bounded deduplication, canonical stitching, hard constraints, weighted ranking, and evidence-backed risk evaluation with immutable versioned histories. It also defines strict source-job, browser-node, browser-execution, and Maritime control-plane contracts, persists the safe orchestration state, and supplies deterministic no-network browser and Maritime mocks. It does not implement real Maritime transport or deployment, remote node dispatch, email-alert acquisition, an OpenClaw bridge, or source-specific browser monitoring. The controls below distinguish the implemented contract boundary from the additional controls required before live infrastructure exists.
 
 ## Trust boundaries
 
@@ -63,6 +63,7 @@ The schema has no password, cookie, authorization-header, token, session-export,
 - Cross-site requests to the localhost application.
 - Dependency or build-script compromise.
 - Overconfident risk labels causing harmful user decisions.
+- Adversarial or malformed listing evidence poisoning duplicate clusters, rankings, or comparative risk baselines.
 
 ## Secrets and credentials
 
@@ -185,6 +186,16 @@ source record
 
 Browser evidence cannot directly authorize, notify, message, rank, canonicalize, create an application, change an account, or write a calendar event. Autonomous messaging and account-login automation remain prohibited.
 
+The production decision engine treats every source record, URL, description, coordinate, and photo hash as untrusted typed input. Candidate generation has a hard maximum and fails visibly instead of truncating silently. Exact links do not override material conflicts; probabilistic features are bounded basis-point values; thresholds and weights are closed versioned configuration. A low-price outlier is evaluated only against the current result set and remains a risk indicator with evidence, never a fraud verdict.
+
+Decision computation performs no network access. URL normalization does not resolve or fetch a URL. Photo decoding is allowed only for already-supplied bytes under explicit byte and pixel limits; malformed or oversized images fail with a typed error. Perceptual similarity never causes remote image retrieval.
+
+A result is applied only when the worker still owns the lease and the profile's corpus revision exactly matches the snapshot. The apply operation is one short transaction. Stale, partial, or unparseable plans create no canonical, score, or risk projection. Replaying an identical accepted plan resolves idempotently; changed evidence requires a new monotonic revision and immutable run.
+
+Contact match features accept only normalized in-memory fingerprints. Raw phone numbers and email addresses are not stored in decision histories, score inputs, activity metadata, or logs. The current persisted source projection supplies no contact fingerprints to reconciliation; adding them later requires a keyed-fingerprint storage and rotation decision because unsalted hashes of low-entropy contacts are reversible by enumeration.
+
+Operator merge/split overrides are strict, append-only, payload-hashed records. References must exist, force-merge survivors must be active, and every accepted override queues a new corpus revision in the same transaction. Reversal appends a revocation; APIs expose no destructive mutation path.
+
 ## AI and untrusted-content controls
 
 Listing and message content is data, never instruction. Provider prompts delimit supplied evidence as untrusted quoted content and explicitly reject embedded instructions to reveal secrets, browse, use tools, run commands, contact anyone, change policy, or populate extra fields. The Responses request exposes no tools and receives no OAuth token, browser cookie, local path, raw audit history, policy registry, unrelated mailbox content, or unrelated listing.
@@ -253,6 +264,7 @@ The SQLite job queue supports one worker. Starting a second worker must fail vis
 - Use Node 24 LTS in development and CI.
 - Review install scripts and minimize native dependencies; better-sqlite3 is the intentional native dependency.
 - Run audit tooling as advisory evidence, not an automatic unsafe upgrade mechanism.
+- Keep the pnpm-workspace PostCSS override pinned to a reviewed patched release until Next.js's direct dependency resolves beyond the advisory; current acceptance uses 8.5.20.
 - Keep generated migrations under review.
 - Do not install Maritime, browser, or cloud SDKs before their implementation milestone, exact capability review, and dependency review are approved.
 

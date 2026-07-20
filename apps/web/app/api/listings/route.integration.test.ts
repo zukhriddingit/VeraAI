@@ -4,13 +4,14 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createSqliteRepositories, migrateDatabase, openDatabase, seedDatabase } from "@vera/db";
+import { createSqliteRepositories, migrateDatabase, openDatabase } from "@vera/db";
 import {
   CanonicalListingCollectionResponseSchema,
   ListingsUnavailableResponseSchema
 } from "@vera/domain";
 
 import { runDemoSearch } from "../../../lib/demo-search-service.ts";
+import { seedAndEvaluateProductionEvidence } from "../../../test-support/production-seed.ts";
 
 import { GET } from "./route.ts";
 
@@ -53,7 +54,7 @@ describe.sequential("GET /api/listings", () => {
 
     try {
       migrateDatabase(connection);
-      seedDatabase(createSqliteRepositories(connection));
+      seedAndEvaluateProductionEvidence(createSqliteRepositories(connection));
     } finally {
       connection.close();
     }
@@ -89,7 +90,7 @@ describe.sequential("GET /api/listings", () => {
     try {
       migrateDatabase(connection);
       const repositories = createSqliteRepositories(connection);
-      seedDatabase(repositories);
+      seedAndEvaluateProductionEvidence(repositories);
 
       const beforeResponse = await GET();
       const before = CanonicalListingCollectionResponseSchema.parse(await beforeResponse.json());

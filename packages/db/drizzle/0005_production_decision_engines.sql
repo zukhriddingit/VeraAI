@@ -404,4 +404,14 @@ CREATE TRIGGER `listing_scores_no_delete`
 BEFORE DELETE ON `listing_scores`
 BEGIN
 	SELECT RAISE(ABORT, 'listing scores are append-only');
+END;--> statement-breakpoint
+CREATE TRIGGER `risk_signals_no_update`
+BEFORE UPDATE ON `risk_signals`
+BEGIN
+	SELECT RAISE(ABORT, 'risk signals are append-only');
+END;--> statement-breakpoint
+CREATE TRIGGER `risk_signals_no_delete`
+BEFORE DELETE ON `risk_signals`
+BEGIN
+	SELECT RAISE(ABORT, 'risk signals are append-only');
 END;

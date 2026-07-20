@@ -1,7 +1,8 @@
 import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
-import { EntityIdSchema, ListingActionErrorResponseSchema } from "@vera/domain";
+import { ListingActionErrorResponseSchema } from "@vera/domain";
 
 import { getListingDetail } from "../../../../lib/listing-presentation";
+import { parseRouteEntityId } from "../../../../lib/route-entity-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,8 +15,8 @@ interface RouteContext {
 export async function GET(_request: Request, context: RouteContext): Promise<Response> {
   let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    const parsed = EntityIdSchema.safeParse((await context.params).id);
-    if (!parsed.success) {
+    const listingId = parseRouteEntityId((await context.params).id);
+    if (listingId === null) {
       return Response.json(
         ListingActionErrorResponseSchema.parse({
           code: "not_found",
@@ -25,7 +26,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       );
     }
     connection = openExistingDatabase();
-    const detail = getListingDetail(createSqliteRepositories(connection), parsed.data);
+    const detail = getListingDetail(createSqliteRepositories(connection), listingId);
     if (!detail) {
       return Response.json(
         ListingActionErrorResponseSchema.parse({

@@ -1,9 +1,7 @@
 import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
-import {
-  DecisionApiErrorResponseSchema,
-  DecisionJobSummarySchema,
-  EntityIdSchema
-} from "@vera/domain";
+import { DecisionApiErrorResponseSchema, DecisionJobSummarySchema } from "@vera/domain";
+
+import { parseRouteEntityId } from "../../../../lib/route-entity-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -16,8 +14,8 @@ interface RouteContext {
 export async function GET(_request: Request, context: RouteContext): Promise<Response> {
   let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    const id = EntityIdSchema.safeParse((await context.params).id);
-    if (!id.success) {
+    const id = parseRouteEntityId((await context.params).id);
+    if (id === null) {
       return Response.json(
         DecisionApiErrorResponseSchema.parse({
           code: "not_found",
@@ -28,7 +26,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       );
     }
     connection = openExistingDatabase();
-    const job = createSqliteRepositories(connection).decisionJobs.getById(id.data);
+    const job = createSqliteRepositories(connection).decisionJobs.getById(id);
     if (job === null) {
       return Response.json(
         DecisionApiErrorResponseSchema.parse({

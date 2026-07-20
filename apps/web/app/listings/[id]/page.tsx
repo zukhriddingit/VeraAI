@@ -1,7 +1,7 @@
-import { EntityIdSchema } from "@vera/domain";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { parseRouteEntityId } from "../../../lib/route-entity-id";
 import { ListingDetail } from "./listing-detail";
 
 interface ListingDetailPageProps {
@@ -9,8 +9,8 @@ interface ListingDetailPageProps {
 }
 
 export default async function ListingDetailPage({ params }: ListingDetailPageProps) {
-  const parsed = EntityIdSchema.safeParse((await params).id);
-  if (!parsed.success) notFound();
+  const listingId = parseRouteEntityId((await params).id);
+  if (listingId === null) notFound();
 
   return (
     <main>
@@ -28,7 +28,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
           deciding what to do next.
         </p>
       </header>
-      <ListingDetail listingId={parsed.data} />
+      <ListingDetail listingId={listingId} />
     </main>
   );
 }

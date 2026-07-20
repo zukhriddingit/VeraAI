@@ -8,6 +8,7 @@ import {
 } from "@vera/domain";
 
 import { setListingShortlist } from "../../../../../lib/listing-presentation";
+import { parseRouteEntityId } from "../../../../../lib/route-entity-id";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -31,8 +32,18 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         { status: 400, headers }
       );
     }
+    const listingId = parseRouteEntityId((await context.params).id);
+    if (listingId === null) {
+      return Response.json(
+        ListingActionErrorResponseSchema.parse({
+          code: "not_found",
+          message: "Listing not found."
+        }),
+        { status: 404, headers }
+      );
+    }
     connection = openExistingDatabase();
-    const result = setListingShortlist((await context.params).id, parsed.data.shortlisted, {
+    const result = setListingShortlist(listingId, parsed.data.shortlisted, {
       repositories: createSqliteRepositories(connection),
       now: () => new Date(),
       createId: randomUUID

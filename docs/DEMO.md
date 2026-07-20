@@ -1,7 +1,7 @@
 # Vera Ship Season demo
 
-Status: deterministic demo contract  
-Reviewed: 2026-07-17
+Status: deterministic production-path demo contract
+Reviewed: 2026-07-20
 
 ## What the demo must prove
 
@@ -13,7 +13,7 @@ The audience should be able to see speed, evidence, uncertainty, and human contr
 
 ## Currently implemented demo slice
 
-The automated clean-clone demo currently proves the ingestion and extraction foundation:
+The automated clean-clone demo currently proves the ingestion, extraction, and deterministic decision foundation:
 
 1. `/` displays eight canonical listings from twelve sanitized source records.
 2. `/connectors` shows only the sanitized fixture and manual-capture connectors enabled; platform-label manifests are disabled.
@@ -23,20 +23,27 @@ The automated clean-clone demo currently proves the ingestion and extraction fou
 6. The default runtime is `deterministic_only` and makes no model request. A live provider is used only when key and environment-selected model are both configured and unresolved fields remain.
 7. Repeating the same submission resolves to one immutable raw record, at most one job, one source record, and one immutable extraction run.
 8. The activity log records the capture request, exact policy decision, capture result, and normalization result without recording pasted content, prompts, raw model output, evidence snippets, contacts, or credentials.
+9. Normalization completion queues a versioned decision job. The same production worker computes duplicate clusters, stitched canonical listings, hard constraints, renormalized ranking factors, separate penalties, and evidence-backed risk indicators.
+10. `/` and `/listings/[id]` read the current production-derived score/risk snapshots, show duplicate provenance and unknown facts, and distinguish an ineligible hard-constraint result from a low score.
+11. Reconciliation stores immutable input/output hashes and run history, rejects stale corpus revisions, preserves canonical identity where possible, and marks replaced projections as superseded rather than deleting evidence.
+12. `/api/dedupe/overrides` records append-only operator merge/split decisions and queues recomputation; `/api/decision-jobs/[id]` exposes the resulting safe job status.
 
-Gmail, Calendar, scoring/risk refresh, and new-record canonicalization beats below are the target full demo contract; they are not implemented by this slice.
+Gmail, Calendar, email-alert acquisition, live Maritime dispatch, and a real OpenClaw bridge remain target MVP work; they are not implemented by this slice.
 
 ## Demo modes
 
 ### Deterministic mode
 
-This is the required full clean-clone and automated-test target. The current slice uses sanitized fixtures, manual user-supplied content, deterministic rule extraction, and a temporary or demo SQLite database. The deterministic `MockLLMProvider` exists for injected tests, not as a silent product fallback. Future slices may add fake Gmail/Calendar effect adapters. Default demo mode requires no credentials and makes no external network calls.
+This is the required full clean-clone and automated-test target. The current slice uses sanitized fixtures, manual user-supplied content, deterministic rule extraction and decision evaluation, and a temporary or demo SQLite database. Canonical listings, scores, and risks are computed from seeded evidence through the production worker; they are not hand-authored demo decisions. The deterministic `MockLLMProvider` exists for injected tests, not as a silent product fallback. Future slices may add fake Gmail/Calendar effect adapters. Default demo mode requires no credentials and makes no external network calls.
 
-Represent three clearly labeled channels:
+The implemented sanitized corpus represents four source labels without claiming live connectors:
 
-- fixture-feed;
-- sanitized-email-alert;
-- manual-capture.
+- Zillow;
+- Facebook Marketplace;
+- Craigslist;
+- Apartments.com.
+
+Fixture acquisition remains explicitly `fixture`. Manual capture is the separate implemented user-authorized path. A sanitized email-alert connector must be labeled unavailable until that adapter exists.
 
 The data should include:
 
@@ -61,7 +68,7 @@ For deterministic mode:
 1. Install the documented Node 24 LTS and pinned pnpm version.
 2. Install locked dependencies.
 3. Run migrations against a demo database.
-4. Seed only sanitized fixtures.
+4. Run the root `pnpm db:seed`; it seeds only sanitized evidence and executes the bounded production worker pass.
 5. Start web and worker.
 6. Confirm the connector-health view shows external connectors disabled.
 7. Confirm both live LLM variables are unset so the worker reports deterministic-only mode.
@@ -84,7 +91,7 @@ Never place credentials, real landlord contact information, or personal listing 
 4. Show base rent separately from required recurring fees, raw availability beside any justified date, cats separately from dogs, and contacts only when explicitly present.
 5. Show that a missing fee and move-in date are “unknown,” not “no fee” or “unavailable,” and expand the field explanation/evidence.
 6. Trigger the implemented fixture/manual channels; add the sanitized-email-alert channel only after its fake or connected adapter exists.
-7. Open a seeded duplicate cluster. Show every source record, field provenance, freshness, and the canonical stitched values; explain that the new manual capture is not canonicalized yet.
+7. Open a computed duplicate cluster. Show every source record, field provenance, freshness, and the canonical stitched values. For a new manual capture, follow its normalization and decision-job status until the production reconciliation pass completes.
 8. Open the deterministic score explanation: hard constraints, active weights, factor values, penalties, reason codes, and score version.
 9. Open a risk indicator and its exact evidence. Read the verification action, not a scam verdict.
 10. Shortlist the strongest match.
@@ -148,9 +155,10 @@ After connected mode:
 ## Demo acceptance checklist
 
 - Clean clone works without credentials.
+- Seeded canonical listings, scores, and risks are production-evaluator output rather than fixture-authored decisions.
 - Capture evidence detail shows known/unknown, evidence, method, confidence, and extraction mode.
 - Default demo and automated tests make no live model request.
-- Three sanitized channel labels are visible.
+- Four sanitized source labels are visible without implying live platform access.
 - One real Gmail alert can be ingested in the separate connected acceptance run.
 - Duplicate provenance, unknown fields, score reasons, risk evidence, and latency are visible.
 - Gmail creation ends in draft state with no send path.

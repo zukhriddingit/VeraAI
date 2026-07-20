@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSqliteRepositories, migrateDatabase, openDatabase, seedDatabase } from "@vera/db";
+import { createSqliteRepositories, migrateDatabase, openDatabase } from "@vera/db";
 import {
   DemoRunResponseSchema,
   DemoStatusResponseSchema,
@@ -10,6 +10,7 @@ import {
 } from "@vera/domain";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { seedAndEvaluateProductionEvidence } from "../../../test-support/production-seed.ts";
 import { POST as runDemo } from "./run/route.ts";
 import { GET as getDemoStatus } from "./status/route.ts";
 
@@ -60,7 +61,7 @@ describe.sequential("demo API routes", () => {
 
     try {
       migrateDatabase(connection);
-      seedDatabase(createSqliteRepositories(connection));
+      seedAndEvaluateProductionEvidence(createSqliteRepositories(connection));
     } finally {
       connection.close();
     }

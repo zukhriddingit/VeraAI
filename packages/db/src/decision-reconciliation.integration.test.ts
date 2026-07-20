@@ -85,6 +85,23 @@ describe("atomic revision-checked decision reconciliation", () => {
         .prepare("SELECT count(*) AS count FROM listing_scores WHERE decision_run_id = ?")
         .get(applied.run.id)
     ).toEqual({ count: plan.scoreSnapshots.length });
+    const scoreId = plan.scoreSnapshots[0]?.id;
+    const riskId = plan.riskSignals[0]?.id;
+    expect(scoreId).toBeDefined();
+    expect(riskId).toBeDefined();
+    expect(() =>
+      connection.sqlite
+        .prepare("UPDATE listing_scores SET total_score_basis_points = 0 WHERE id = ?")
+        .run(scoreId)
+    ).toThrow(/append-only/u);
+    expect(() =>
+      connection.sqlite
+        .prepare("UPDATE risk_signals SET status = 'dismissed' WHERE id = ?")
+        .run(riskId)
+    ).toThrow(/append-only/u);
+    expect(() =>
+      connection.sqlite.prepare("DELETE FROM risk_signals WHERE id = ?").run(riskId)
+    ).toThrow(/append-only/u);
     expect(repositories.decisionJobs.getById(job.id)?.status).toBe("succeeded");
   });
 

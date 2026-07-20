@@ -1,8 +1,8 @@
 # Vera architecture and implementation-readiness review
 
-Status: deterministic local demo plus Maritime/OpenClaw contract alignment implemented
+Status: production deterministic decision core plus Maritime/OpenClaw contract alignment implemented
 
-Reviewed: 2026-07-18
+Reviewed: 2026-07-20
 
 ## Readiness verdict
 
@@ -10,7 +10,7 @@ The current implementation is a pnpm TypeScript workspace with a Next.js App Rou
 
 The normative Ship Season topology uses Maritime as Vera's primary orchestration and deployment environment for monitoring jobs, scheduled triggers, durable job state, retries, agent health, notifications, and hosted integration secrets. Browser-only work is dispatched to a registered local browser node. That node uses OpenClaw as the default adapter behind a replaceable browser-executor interface and exclusively owns the user's browser profile and authenticated consumer-site sessions.
 
-Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI. The current alignment adds strict source-job, job-attempt, browser-node, browser-execution, and Maritime control-plane contracts; deterministic no-network mocks; and forward-only migrations `0003_romantic_fantastic_four.sql` and `0004_groovy_zaladane.sql`.
+Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI. Milestone 4 adds one versioned deterministic decision engine for normalization, deduplication, canonical stitching, ranking, and risk indicators; a leased reconciliation queue; immutable decision histories; stable canonical supersession; operator merge/split overrides; production-derived dashboard results; and forward migration `0005_production_decision_engines.sql`. Migrations `0003` and `0004` continue to own the Maritime/OpenClaw contract persistence.
 
 Node 26 is a Current release, so the project should target Node 24 LTS for repeatable development and CI. The installed Node 26 is sufficient for inspection but should not define the project runtime.
 
@@ -240,7 +240,7 @@ A source job may eventually produce a strict connector result envelope for the i
 
 ## Ingestion and canonicalization
 
-All paths enter one ingestion gateway. Steps 1-5 are implemented for fixture and manual capture; steps 6-8 remain later milestone work:
+All paths enter one ingestion gateway. Steps 1-7 and the audit portion of step 8 are implemented for fixture and manual capture. User notifications remain later work:
 
 1. Validate connector output with Zod.
 2. Evaluate source policy before any read or capture.
@@ -249,7 +249,7 @@ All paths enter one ingestion gateway. Steps 1-5 are implemented for fixture and
 5. Run strict deterministic extraction, optionally ask a configured `LLMProvider` only for unresolved fields, validate evidence, merge with closed precedence, and attach provenance to every field.
 6. Generate candidate duplicate edges; cluster without deleting members.
 7. Recompute versioned score and risk snapshots.
-8. Append activity events and notify the UI.
+8. Append activity events and expose the resulting state to the UI; emit user notifications only after a separately reviewed notification capability exists.
 
 Acquisition mode changes how evidence reaches Vera, never the processing order. The invariant end-to-end pipeline is:
 
@@ -266,6 +266,26 @@ source record
 No `official_api`, `email_alert`, `local_browser`, `user_capture`, or test-only `fixture` output may bypass a stage. Browser output cannot directly create a notification, ranking result, canonical fact, message, calendar event, or approval. Each stage has its own deterministic, idempotent boundary, and unknown values remain unknown.
 
 Manual capture currently accepts pasted text plus an optional provenance URL, or strict structured JSON plus an optional provenance URL. HTML uploads are not implemented. The connector validates a URL's syntax and source label without DNS or HTTP access; the URL is inert provenance. Unknown public domains are labeled `other` and classified as requiring a future manual browser-policy entry. Gmail ingestion is not implemented. Sanitized fixtures remain the deterministic first path.
+
+### Implemented decision reconciliation
+
+Normalization completion does not mutate canonical rows directly. In the same short transaction that commits a new source record and provenance, the worker increments that search profile's corpus revision and enqueues one `decision_job` for the revision. Manual merge/split overrides use the same revision boundary.
+
+The decision worker then:
+
+1. atomically leases one runnable job;
+2. reads a strict, consistently ordered snapshot for the exact profile revision;
+3. releases the database before pure computation;
+4. normalizes addresses, units, phones, URLs, money, dates, and supplied photo metadata;
+5. evaluates bounded candidate pairs, exact links, weighted features, conflicts, and active overrides;
+6. forms connected components and stitches canonical fields by freshness, completeness, confidence, and source trust while retaining provenance;
+7. evaluates deterministic hard constraints, renormalized preference factors, and separate stale, confidence, and risk penalties;
+8. derives evidence-backed risk indicators and verification actions; and
+9. atomically applies the complete plan only if the corpus revision and lease still match.
+
+The apply transaction writes an immutable `decision_run`, pair evaluations, canonical decision history, score snapshots, risk snapshots, projection memberships, and one redacted activity event. Existing active canonical identities are reused when the member overlap is unambiguous. Obsolete projections are marked `superseded` and redirect to the survivor; raw and source records are never deleted. An identical job/result replay resolves to the existing run, while a changed corpus revision rejects stale application and is recomputed from a new job.
+
+Algorithms and inputs are independently versioned and hashed. The current closed versions are `decision-normalization.v1`, `listing-dedupe.v1`, `canonical-stitch.v1`, `listing-score.v2`, `listing-risk.v2`, and `decision-plan.v1`. The evaluator is pure and performs no network access. Remote images are not fetched: perceptual hashes are computed only from already-supplied, size-bounded bytes.
 
 ### Implemented capture sequence
 
@@ -387,6 +407,7 @@ Versions were checked against the npm registry on 2026-07-17. Exact versions bel
 | Unit/integration   | Vitest 4.1.10 and @vitest/coverage-v8 4.1.10                                                     |
 | End to end         | @playwright/test 1.61.1                                                                          |
 | Lint/format        | ESLint 9.39.5, eslint-config-next 16.2.10, typescript-eslint 8.64.0, Prettier 3.9.5              |
+| CSS transform      | Next-managed PostCSS with workspace security override pinned to PostCSS 8.5.20                 |
 | Type packages      | @types/node 24.13.3, @types/react 19.2.17, @types/react-dom 19.2.3, @types/better-sqlite3 7.6.13 |
 
 Do not use TypeScript 7.0.2 yet. The current typescript-eslint 8.64.0 peer range is TypeScript >=4.8.4 and <6.1.0, so TypeScript 6.0.3 is the newest compatible stable line.
@@ -403,16 +424,18 @@ The root package.json should contain these scripts:
 {
   "scripts": {
     "dev": "pnpm -r --parallel --stream --filter @vera/web --filter @vera/worker run dev",
-    "build": "pnpm -r --if-present run build",
+    "build": "pnpm -r --if-present run build && node scripts/build-railway-start.mjs",
     "lint": "eslint . --max-warnings=0",
-    "typecheck": "pnpm -r --if-present run typecheck",
+    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
     "test": "pnpm run test:unit && pnpm run test:integration && pnpm run test:e2e",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
     "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @vera/db run db:generate",
     "db:migrate": "pnpm --filter @vera/db run db:migrate",
-    "db:seed": "pnpm --filter @vera/db run db:seed",
+    "db:seed": "pnpm --filter @vera/db run db:seed && pnpm --filter @vera/worker run run-once",
+    "worker:run-once": "pnpm --filter @vera/worker run run-once",
+    "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures",
     "worker:start": "pnpm --filter @vera/worker run start"
   }
 }
@@ -432,7 +455,7 @@ Vitest uses named unit and integration projects. Integration tests create a uniq
 1. Scaffold only the workspace, strict configs, package boundaries, health endpoint, minimal dashboard, and CI.
 2. Add domain schemas, migrations, repositories, append-only triggers, fixture seed, and SQLite job leases.
 3. Implement fixture and manual capture with no network fetch, deterministic-first structured extraction, an optional provider gap-fill boundary, and capture evidence detail.
-4. Add new-record duplicate clustering/canonicalization, deterministic scoring/risk refresh, decision UI, and golden-path tests.
+4. Implemented: new-record duplicate clustering/canonicalization, deterministic scoring/risk refresh, production-derived decision UI, operator override/job APIs, and decision-engine regression tests.
 5. Replace the local Maritime mock with a live adapter behind `MaritimeOrchestrator`: durable schedules, authenticated dispatch, bounded retries, health, notifications, and hosted secrets. Retain local fixture/manual execution for deterministic development.
 6. Implement Craigslist official `email_alert` ingestion behind the existing provider-neutral connector contract before automated browser sources.
 7. Replace the no-network browser mock with a registered local node and real OpenClaw adapter behind `BrowserExecutionProvider`, preserving manual login, exact saved-search limits, cursor commits, manual blockers, and `deferred_node_offline` visibility.

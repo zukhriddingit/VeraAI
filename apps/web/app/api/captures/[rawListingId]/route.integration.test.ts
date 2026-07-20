@@ -15,6 +15,7 @@ import {
   type CaptureAcceptedResponse,
   type ListingExtractionRun
 } from "@vera/domain";
+import { evaluateCorpus } from "@vera/scoring";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { POST } from "../route.ts";
@@ -93,7 +94,7 @@ function completeCapture(
     let nextId = 0;
     const normalized = normalizeRawListing(envelope, {
       rawListingId: raw.id,
-      createId: () => `capture-detail-${++nextId}`,
+      createId: () => `${raw.id}:capture-detail-${++nextId}`,
       now: () => new Date(completedAt)
     });
     const augmentedAmenities = {
@@ -269,6 +270,95 @@ describe.sequential("GET /api/captures/:rawListingId", () => {
       evidenceSnippet: null
     });
     expect(detail.fields.every((field) => field.explanation.length > 0)).toBe(true);
+  });
+
+  it("maps extraction provenance into canonical decision fields without leaking contacts", async () => {
+    initializeDatabase();
+    const accepted = await capture({
+      kind: "manual_text",
+      sourceUrl: "https://housing.example/capture-detail/decision-aliases",
+      listingText: [
+        "Base rent: USD 2450 per month",
+        "1 bed and 1 bath",
+        "Address: 101 Decision Example Way, Harbor City, MA",
+        "Posted: 2026-07-17",
+        "Contact me through the platform"
+      ].join("\n")
+    });
+    completeCapture(accepted);
+    const unsupportedCurrency = await capture({
+      kind: "manual_structured",
+      listing: {
+        source: "other",
+        title: "Synthetic CAD listing",
+        baseRent: {
+          amountMinorUnits: 245_000,
+          currency: "CAD",
+          billingPeriod: "month",
+          rawAmount: "CAD 2450 per month"
+        }
+      }
+    });
+    completeCapture(unsupportedCurrency);
+
+    const connection = openDatabase({ filePath: join(directory, "vera.sqlite") });
+    try {
+      const repositories = createSqliteRepositories(connection);
+      const sourceRecord = repositories.sourceRecords.getByRawListingId(accepted.rawListingId);
+      const unsupportedCurrencyRecord = repositories.sourceRecords.getByRawListingId(
+        unsupportedCurrency.rawListingId
+      );
+      expect(sourceRecord).not.toBeNull();
+      expect(unsupportedCurrencyRecord).not.toBeNull();
+      const job = repositories.decisionJobs.bumpCorpusRevisionAndEnqueue({
+        id: "decision-alias-regression-job",
+        searchProfileId: "profile-demo-harbor-city",
+        trigger: "normalization",
+        now: completedAt
+      });
+      const snapshot = repositories.decisionReconciliation.readSnapshot({
+        searchProfileId: job.searchProfileId,
+        targetCorpusRevision: job.targetCorpusRevision
+      });
+      const source = snapshot.sourceRecords.find(
+        (candidate) => candidate.sourceRecordId === sourceRecord!.id
+      );
+      expect(source?.fieldCandidates).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            fieldPath: "address.line1",
+            valueStatus: "known",
+            value: "101 Decision Example Way, Harbor City, MA"
+          }),
+          expect.objectContaining({
+            fieldPath: "monthlyRentCents",
+            valueStatus: "known",
+            value: 245_000
+          })
+        ])
+      );
+      expect(source?.fieldCandidates.some(({ fieldPath }) => fieldPath.startsWith("contact"))).toBe(
+        false
+      );
+      const unsupportedCurrencySource = snapshot.sourceRecords.find(
+        (candidate) => candidate.sourceRecordId === unsupportedCurrencyRecord!.id
+      );
+      expect(
+        unsupportedCurrencySource?.fieldCandidates.find(
+          ({ fieldPath }) => fieldPath === "monthlyRentCents"
+        )
+      ).toMatchObject({ valueStatus: "unknown", value: null, confidenceBasisPoints: 0 });
+
+      const plan = evaluateCorpus(snapshot, { now: completedAt });
+      const canonical = plan.canonicalPlans.find(({ memberSourceRecordIds }) =>
+        memberSourceRecordIds.includes(sourceRecord!.id)
+      );
+      expect(
+        canonical?.selectedFields.find(({ fieldPath }) => fieldPath === "monthlyRentCents")
+      ).toMatchObject({ valueStatus: "known", value: 245_000 });
+    } finally {
+      connection.close();
+    }
   });
 
   it("returns safe augmented metadata and requested fields without opaque provider data", async () => {
