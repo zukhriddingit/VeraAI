@@ -184,8 +184,19 @@ export function ListingDetail({ listingId }: { listingId: string }) {
             {detail.score?.factors.map((factor) => (
               <div className="factor-row" key={factor.code}>
                 <span>{factorName(factor.code)}</span>
-                <strong>{String(Math.round((factor.scoreBasisPoints + 10_000) / 200))}%</strong>
-                <small>{factor.reasonCode.replaceAll("_", " ")}</small>
+                <strong>
+                  {"valueStatus" in factor
+                    ? factor.scoreBasisPoints === null
+                      ? "Unknown"
+                      : `${String(Math.round(factor.scoreBasisPoints / 100))}%`
+                    : `${String(Math.round((factor.scoreBasisPoints + 10_000) / 200))}%`}
+                </strong>
+                <small>
+                  {("reasonCodes" in factor
+                    ? factor.reasonCodes.join(", ")
+                    : factor.reasonCode
+                  ).replaceAll("_", " ")}
+                </small>
               </div>
             )) ?? <p>No score snapshot is available.</p>}
           </div>

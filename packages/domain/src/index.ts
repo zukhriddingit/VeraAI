@@ -4,6 +4,7 @@ export type { HealthReport, HealthReportInput, ServiceName } from "./health.ts";
 export * from "./activity.ts";
 export * from "./api.ts";
 export * from "./capture-api.ts";
+export * from "./decision.ts";
 export * from "./demo-api.ts";
 export * from "./extraction.ts";
 export * from "./jobs.ts";

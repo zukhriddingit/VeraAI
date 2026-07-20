@@ -77,6 +77,8 @@ function sourceRecord(
     bedrooms: null,
     bathrooms: null,
     squareFeet: null,
+    latitude: null,
+    longitude: null,
     propertyType: null,
     availableOn: null,
     leaseTermMonths: null,

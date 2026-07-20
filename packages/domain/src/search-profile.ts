@@ -38,6 +38,7 @@ export const WeightedPreferenceSchema = z
   .object({
     code: z.string().trim().min(1).max(100),
     weightBasisPoints: PercentageBasisPointsSchema,
+    unknownBehavior: z.enum(["neutral", "penalize"]).default("neutral"),
     description: z.string().trim().min(1).max(500)
   })
   .strict();
@@ -74,6 +75,15 @@ export const SearchProfileSchema = z
   })
   .strict()
   .superRefine((profile, context) => {
+    const preferenceCodes = profile.weightedPreferences.map((preference) => preference.code);
+    if (new Set(preferenceCodes).size !== preferenceCodes.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["weightedPreferences"],
+        message: "Weighted preference codes must be unique."
+      });
+    }
+
     if (
       profile.targetMonthlyTotalCents !== null &&
       profile.absoluteMonthlyMaximumCents !== null &&
@@ -100,3 +110,6 @@ export const SearchProfileSchema = z
   });
 
 export type SearchProfile = z.infer<typeof SearchProfileSchema>;
+export type UnknownPreferenceBehavior = z.infer<
+  typeof WeightedPreferenceSchema.shape.unknownBehavior
+>;

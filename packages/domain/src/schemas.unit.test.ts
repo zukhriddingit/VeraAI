@@ -153,6 +153,24 @@ describe("strict Vera domain schemas", () => {
     ).toBe(0);
 
     expect(
+      ListingPhotoSchema.parse({
+        id: "photo-juniper-decoded",
+        listingSourceRecordId: validSourceRecord.id,
+        sourceUrl: null,
+        fixtureAssetLabel: "synthetic-juniper-decoded",
+        byteHash: hash,
+        byteSize: 1_024,
+        width: 640,
+        height: 480,
+        mimeType: "image/png",
+        perceptualHash: "0123456789abcdef",
+        perceptualHashVersion: "listing-photo.dhash64.v1",
+        position: 1,
+        observedAt: now
+      }).perceptualHashVersion
+    ).toBe("listing-photo.dhash64.v1");
+
+    expect(
       FieldProvenanceSchema.parse({
         id: "prov-juniper-rent",
         listingSourceRecordId: validSourceRecord.id,
@@ -351,6 +369,32 @@ describe("strict Vera domain schemas", () => {
     expect(parsed.monthlyRentCents).toBeNull();
     expect(parsed.bathrooms).toBeNull();
     expect(parsed.petPolicy).toBeNull();
+  });
+
+  it("keeps coordinate, photo-metadata, and canonical-projection state internally consistent", () => {
+    expect(() =>
+      ListingSourceRecordSchema.parse({ ...validSourceRecord, latitude: 42.36, longitude: null })
+    ).toThrow(/coordinates/iu);
+    expect(() =>
+      ListingPhotoSchema.parse({
+        id: "photo-partial-metadata",
+        listingSourceRecordId: validSourceRecord.id,
+        sourceUrl: null,
+        fixtureAssetLabel: "synthetic-partial",
+        byteHash: hash,
+        byteSize: 100,
+        perceptualHash: null,
+        position: 0,
+        observedAt: now
+      })
+    ).toThrow(/metadata/iu);
+    expect(() =>
+      CanonicalListingSchema.parse({
+        ...validCanonicalListing,
+        projectionState: "superseded",
+        supersededById: null
+      })
+    ).toThrow(/survivor/iu);
   });
 
   it("supports manual captures and an explicit other source label", () => {

@@ -145,6 +145,8 @@ export const ListingSourceRecordSchema = z
     bedrooms: z.number().nonnegative().max(50).multipleOf(0.5).nullable(),
     bathrooms: z.number().nonnegative().max(50).multipleOf(0.5).nullable(),
     squareFeet: z.number().int().positive().max(1_000_000).nullable(),
+    latitude: z.number().finite().min(-90).max(90).nullable().default(null),
+    longitude: z.number().finite().min(-180).max(180).nullable().default(null),
     propertyType: PropertyTypeSchema.nullable(),
     availableOn: IsoDateSchema.nullable(),
     leaseTermMonths: z.number().int().positive().max(120).nullable(),
@@ -156,7 +158,16 @@ export const ListingSourceRecordSchema = z
     observedAt: IsoDateTimeSchema,
     createdAt: IsoDateTimeSchema
   })
-  .strict();
+  .strict()
+  .superRefine((record, context) => {
+    if ((record.latitude === null) !== (record.longitude === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["latitude"],
+        message: "Listing coordinates require both latitude and longitude or neither."
+      });
+    }
+  });
 
 export const ListingPhotoSchema = z
   .object({
@@ -165,10 +176,18 @@ export const ListingPhotoSchema = z
     sourceUrl: z.string().url().max(2_048).nullable(),
     fixtureAssetLabel: z.string().trim().min(1).max(300).nullable(),
     byteHash: Sha256Schema.nullable(),
+    byteSize: z.number().int().positive().max(10_000_000).nullable().default(null),
+    width: z.number().int().positive().max(10_000).nullable().default(null),
+    height: z.number().int().positive().max(10_000).nullable().default(null),
+    mimeType: z
+      .enum(["image/jpeg", "image/png", "image/webp", "image/avif"])
+      .nullable()
+      .default(null),
     perceptualHash: z
       .string()
       .regex(/^[a-f0-9]{16,128}$/u)
       .nullable(),
+    perceptualHashVersion: z.string().trim().min(1).max(100).nullable().default(null),
     position: z.number().int().nonnegative(),
     observedAt: IsoDateTimeSchema
   })
@@ -179,6 +198,24 @@ export const ListingPhotoSchema = z
         code: "custom",
         path: ["sourceUrl"],
         message: "Photo metadata requires an inert URL or fixture asset label."
+      });
+    }
+
+    const decodedMetadata = [photo.byteSize, photo.width, photo.height, photo.mimeType];
+    const metadataCount = decodedMetadata.filter((value) => value !== null).length;
+    if (metadataCount !== 0 && metadataCount !== decodedMetadata.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["byteSize"],
+        message:
+          "Decoded photo metadata must include byte size, dimensions, and MIME type together."
+      });
+    }
+    if ((photo.perceptualHash === null) !== (photo.perceptualHashVersion === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["perceptualHashVersion"],
+        message: "Perceptual hashes require a version and vice versa."
       });
     }
   });
@@ -263,12 +300,40 @@ export const CanonicalListingSchema = z
     amenities: z.array(z.string().trim().min(1).max(120)),
     description: z.string().trim().min(1).max(20_000).nullable(),
     lifecycleState: ListingLifecycleStateSchema,
+    projectionState: z.enum(["active", "superseded"]).default("active"),
+    supersededById: EntityIdSchema.nullable().default(null),
+    stitchVersion: z.string().trim().min(1).max(100).nullable().default(null),
+    stitchInputHash: Sha256Schema.nullable().default(null),
+    updatedByDecisionRunId: EntityIdSchema.nullable().default(null),
     completenessBasisPoints: PercentageBasisPointsSchema,
     freshestObservedAt: IsoDateTimeSchema,
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema
   })
-  .strict();
+  .strict()
+  .superRefine((listing, context) => {
+    if (listing.projectionState === "active" && listing.supersededById !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["supersededById"],
+        message: "Active canonical listings cannot redirect to a survivor."
+      });
+    }
+    if (listing.projectionState === "superseded" && listing.supersededById === null) {
+      context.addIssue({
+        code: "custom",
+        path: ["supersededById"],
+        message: "Superseded canonical listings require a survivor redirect."
+      });
+    }
+    if ((listing.stitchVersion === null) !== (listing.stitchInputHash === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["stitchInputHash"],
+        message: "Canonical stitch version and input hash must be set together."
+      });
+    }
+  });
 
 export const CanonicalListingSourceSchema = z
   .object({

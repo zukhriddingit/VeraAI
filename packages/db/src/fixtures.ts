@@ -178,6 +178,8 @@ function makeSourceFixture(options: SourceFixtureOptions): SourceFixture {
     bedrooms: options.bedrooms,
     bathrooms: options.bathrooms,
     squareFeet: options.squareFeet,
+    latitude: null,
+    longitude: null,
     propertyType: options.propertyType,
     availableOn: options.availableOn,
     leaseTermMonths: options.leaseTermMonths,
@@ -566,6 +568,11 @@ function makeCanonical(
     amenities: primary.amenities,
     description: primary.description,
     lifecycleState: "new",
+    projectionState: "active",
+    supersededById: null,
+    stitchVersion: null,
+    stitchInputHash: null,
+    updatedByDecisionRunId: null,
     completenessBasisPoints: overrides.completenessBasisPoints ?? primary.completenessBasisPoints,
     freshestObservedAt: overrides.freshestObservedAt ?? primary.observedAt,
     createdAt,
@@ -666,11 +673,13 @@ export const DEMO_SEARCH_PROFILE = {
     {
       code: "laundry",
       weightBasisPoints: 6_000,
+      unknownBehavior: "neutral",
       description: "Laundry in the building or unit"
     },
     {
       code: "bicycle_storage",
       weightBasisPoints: 4_000,
+      unknownBehavior: "neutral",
       description: "Secure bicycle storage"
     }
   ],

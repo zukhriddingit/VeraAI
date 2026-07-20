@@ -7,6 +7,7 @@ import {
   ListingExtractionVersionSchema,
   ListingExtractionUsageSchema
 } from "./extraction.ts";
+import { DecisionJobSummarySchema } from "./decision.ts";
 import { NormalizationJobStateSchema } from "./jobs.ts";
 import {
   FieldExtractionMethodSchema,
@@ -23,7 +24,8 @@ export const CaptureAcceptedResponseSchema = z
     contentHash: Sha256Schema,
     duplicate: z.boolean(),
     normalizationJobId: EntityIdSchema.nullable(),
-    normalizationState: NormalizationJobStateSchema
+    normalizationState: NormalizationJobStateSchema,
+    decisionJob: DecisionJobSummarySchema.nullable().optional()
   })
   .strict();
 
@@ -168,6 +170,7 @@ export const CaptureStatusResponseSchema = z
     duplicate: z.boolean(),
     state: CaptureStatusStateSchema,
     normalizationState: NormalizationJobStateSchema,
+    decisionJob: DecisionJobSummarySchema.nullable().optional(),
     extractionRun: CaptureExtractionRunSummarySchema.nullable(),
     fields: z.array(CaptureFieldSummarySchema),
     updatedAt: IsoDateTimeSchema

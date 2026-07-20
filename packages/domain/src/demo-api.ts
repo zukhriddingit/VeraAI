@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { ActivityOutcomeSchema, PolicyDecisionSchema } from "./activity.ts";
 import { CanonicalListingSummarySchema } from "./api.ts";
+import { ListingScoreV2Schema, RiskSignalV2Schema } from "./decision.ts";
 import {
   CanonicalListingSchema,
   FieldProvenanceSchema,
@@ -92,8 +93,8 @@ export const CanonicalListingDetailResponseSchema = z
     summary: CanonicalListingSummarySchema,
     sources: z.array(ListingSourceEvidenceSchema).min(1),
     duplicateExplanation: z.string().trim().min(1).max(500).nullable(),
-    score: ListingScoreSchema.nullable(),
-    risks: z.array(RiskSignalSchema),
+    score: z.union([ListingScoreSchema, ListingScoreV2Schema]).nullable(),
+    risks: z.array(z.union([RiskSignalSchema, RiskSignalV2Schema])),
     activity: z.array(ActivityPresentationSchema),
     generatedAt: IsoDateTimeSchema
   })
