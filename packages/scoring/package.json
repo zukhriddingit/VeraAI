@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "evaluate:fixtures": "node --import tsx src/evaluate-fixtures-cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -14,6 +15,7 @@
     "sharp": "0.35.3"
   },
   "devDependencies": {
+    "@vera/testing": "workspace:*",
     "@types/node": "24.13.3"
   }
 }

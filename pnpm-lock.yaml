@@ -164,8 +164,15 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
+      '@vera/testing':
+        specifier: workspace:*
+        version: link:../testing
 
   packages/testing:
+    dependencies:
+      '@vera/domain':
+        specifier: workspace:*
+        version: link:../domain
     devDependencies:
       '@types/node':
         specifier: 24.13.3

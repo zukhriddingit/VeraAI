@@ -6,6 +6,9 @@
   "exports": {
     ".": "./src/index.ts"
   },
+  "dependencies": {
+    "@vera/domain": "workspace:*"
+  },
   "scripts": {
     "generate:photo-fixtures": "node --import tsx scripts/generate-photo-fixtures.ts",
     "typecheck": "tsc --noEmit"

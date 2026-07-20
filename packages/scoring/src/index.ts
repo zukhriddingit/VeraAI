@@ -9,6 +9,7 @@ export * from "./dedupe/features.ts";
 export * from "./dedupe/pair.ts";
 export * from "./dedupe/overrides.ts";
 export * from "./determinism.ts";
+export * from "./evaluate-corpus.ts";
 export * from "./normalization/index.ts";
 export * from "./photos.ts";
 export * from "./ranking/config.ts";

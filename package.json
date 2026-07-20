@@ -29,7 +29,8 @@
     "worker:health": "pnpm --filter @vera/worker run health",
     "worker:noop": "pnpm --filter @vera/worker run noop",
     "worker:run-once": "pnpm --filter @vera/worker run run-once",
-    "worker:start": "pnpm --filter @vera/worker run start"
+    "worker:start": "pnpm --filter @vera/worker run start",
+    "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures"
   },
   "dependencies": {
     "better-sqlite3": "12.11.1"
