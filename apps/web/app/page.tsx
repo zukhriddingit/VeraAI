@@ -1,9 +1,10 @@
 import Link from "next/link";
 
+import { loadCockpitInitialState } from "../lib/cockpit-read-model";
 import { DemoSearch } from "./demo-search";
 
 export default function HomePage() {
-  const demoMode = process.env.VERA_DEMO_MODE === "1";
+  const initialState = loadCockpitInitialState();
 
   return (
     <main>
@@ -30,7 +31,7 @@ export default function HomePage() {
         </div>
       </header>
 
-      <DemoSearch demoMode={demoMode} />
+      <DemoSearch initialState={initialState} />
 
       <section className="next-step" aria-labelledby="next-step-heading">
         <p className="eyebrow">Your decision, not an autonomous action</p>

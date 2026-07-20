@@ -144,15 +144,18 @@ function ListingCard({ listing }: { listing: CanonicalListingSummary }) {
 }
 
 export function ListingDashboard({
+  initialListings,
   refreshKey = 0,
   demoMode = false
 }: {
+  initialListings: readonly CanonicalListingSummary[];
   refreshKey?: number;
   demoMode?: boolean;
 }) {
-  const [state, setState] = useState<ListingState>({ kind: "loading" });
+  const [state, setState] = useState<ListingState>({ kind: "ready", listings: initialListings });
 
   useEffect(() => {
+    if (refreshKey === 0) return;
     const controller = new AbortController();
 
     async function loadListings() {

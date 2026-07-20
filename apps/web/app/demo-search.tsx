@@ -6,8 +6,9 @@ import {
   DemoStatusResponseSchema,
   type DemoStatusResponse
 } from "@vera/domain";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
+import type { CockpitInitialState } from "../lib/cockpit-read-model";
 import { ListingDashboard } from "./listing-dashboard";
 
 type DemoState =
@@ -34,9 +35,13 @@ async function requestDemoStatus(signal?: AbortSignal): Promise<DemoStatusRespon
   return DemoStatusResponseSchema.parse((await response.json()) as unknown);
 }
 
-export function DemoSearch({ demoMode }: { demoMode: boolean }) {
-  const [state, setState] = useState<DemoState>(
-    demoMode ? { kind: "loading" } : { kind: "error", message: "" }
+export function DemoSearch({ initialState }: { initialState: CockpitInitialState }) {
+  const [state, setState] = useState<DemoState>(() =>
+    initialState.kind === "unavailable"
+      ? { kind: "error", message: initialState.message }
+      : initialState.demoStatus
+        ? { kind: "ready", status: initialState.demoStatus }
+        : { kind: "error", message: "" }
   );
   const [running, setRunning] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
@@ -51,23 +56,6 @@ export function DemoSearch({ demoMode }: { demoMode: boolean }) {
       });
     }
   }
-
-  useEffect(() => {
-    if (!demoMode) return;
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        setState({ kind: "ready", status: await requestDemoStatus(controller.signal) });
-      } catch (error: unknown) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setState({
-          kind: "error",
-          message: "Demo data is not ready. Run pnpm demo:reset and pnpm demo:seed."
-        });
-      }
-    })();
-    return () => controller.abort();
-  }, [demoMode]);
 
   async function runSearch() {
     setRunning(true);
@@ -95,8 +83,8 @@ export function DemoSearch({ demoMode }: { demoMode: boolean }) {
     }
   }
 
-  if (!demoMode) {
-    return <ListingDashboard />;
+  if (!initialState.demoMode && initialState.kind === "ready") {
+    return <ListingDashboard initialListings={initialState.listingCollection.listings} />;
   }
 
   if (state.kind === "loading") {
@@ -180,7 +168,13 @@ export function DemoSearch({ demoMode }: { demoMode: boolean }) {
           </div>
           <p>Compare fit, missing facts, risk evidence, and duplicate sources before deciding.</p>
         </div>
-        <ListingDashboard refreshKey={refreshKey} demoMode />
+        <ListingDashboard
+          initialListings={
+            initialState.kind === "ready" ? initialState.listingCollection.listings : []
+          }
+          refreshKey={refreshKey}
+          demoMode
+        />
       </section>
     </>
   );
