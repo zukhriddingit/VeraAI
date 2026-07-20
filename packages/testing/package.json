@@ -7,6 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "generate:photo-fixtures": "node --import tsx scripts/generate-photo-fixtures.ts",
     "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "sharp": "0.35.3"
   }
 }

@@ -102,6 +102,11 @@ export const NormalizationReasonCodeSchema = z.enum([
   "money_normalized",
   "date_normalized",
   "photo_hash_computed",
+  "address_ambiguous",
+  "url_rejected",
+  "contact_normalized",
+  "contact_rejected",
+  "cost_partial",
   "value_preserved",
   "field_unknown"
 ]);
@@ -145,7 +150,7 @@ export const ProvenancedFieldCandidateSchema = z
   });
 
 /**
- * Internal evaluator input. `contactFingerprint` is process-local protected data:
+ * Internal evaluator input. `contactFingerprints` are process-local protected data:
  * it must never appear in pair evaluations, plans, logs, metrics, or persistence.
  */
 export const NormalizedDecisionSourceSchema = z
@@ -173,7 +178,17 @@ export const NormalizedDecisionSourceSchema = z
     availableOn: IsoDateSchema.nullable(),
     descriptionText: z.string().max(20_000),
     photoHashes: z.array(PhotoHashSchema).max(50),
-    contactFingerprint: Sha256Schema.nullable(),
+    contactFingerprints: z
+      .array(Sha256Schema)
+      .max(10)
+      .superRefine((values, context) => {
+        if (!isSortedUnique(values)) {
+          context.addIssue({
+            code: "custom",
+            message: "Contact fingerprints must be unique and sorted."
+          });
+        }
+      }),
     fieldCandidates: z.array(ProvenancedFieldCandidateSchema).max(500),
     normalizationReasonCodes: z.array(NormalizationReasonCodeSchema).max(50)
   })

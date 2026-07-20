@@ -56,7 +56,7 @@ const normalizedSource = {
       version: PHOTO_HASH_VERSION
     }
   ],
-  contactFingerprint: hashA,
+  contactFingerprints: [hashA],
   fieldCandidates: [
     {
       fieldPath: "monthlyRentCents",
