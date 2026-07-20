@@ -120,6 +120,21 @@ export const ShortlistResponseSchema = z
     path: ["shortlisted"]
   });
 
+export const DismissListingRequestSchema = z
+  .object({
+    dismissed: z.literal(true)
+  })
+  .strict();
+
+export const DismissListingResponseSchema = z
+  .object({
+    listingId: EntityIdSchema,
+    lifecycleState: z.literal("dismissed"),
+    activityEventId: EntityIdSchema,
+    updatedAt: IsoDateTimeSchema
+  })
+  .strict();
+
 export const ListingActionErrorResponseSchema = z
   .object({
     code: z.enum(["not_found", "invalid_transition", "malformed_request", "database_unavailable"]),
@@ -135,3 +150,5 @@ export type ListingSourceEvidence = z.infer<typeof ListingSourceEvidenceSchema>;
 export type CanonicalListingDetailResponse = z.infer<typeof CanonicalListingDetailResponseSchema>;
 export type ShortlistRequest = z.infer<typeof ShortlistRequestSchema>;
 export type ShortlistResponse = z.infer<typeof ShortlistResponseSchema>;
+export type DismissListingRequest = z.infer<typeof DismissListingRequestSchema>;
+export type DismissListingResponse = z.infer<typeof DismissListingResponseSchema>;

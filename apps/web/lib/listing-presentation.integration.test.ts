@@ -14,7 +14,7 @@ import {
 } from "@vera/db";
 import { InvalidListingTransitionError } from "@vera/domain";
 
-import { getListingDetail, setListingShortlist } from "./listing-presentation.ts";
+import { dismissListing, getListingDetail, setListingShortlist } from "./listing-presentation.ts";
 
 let directory: string;
 let connection: VeraDatabaseConnection;
@@ -76,5 +76,24 @@ describe("listing presentation", () => {
       })
     ).toThrow(InvalidListingTransitionError);
     expect(repositories.activityEvents.count()).toBe(count);
+  });
+
+  it("persists a terminal dismissal and its audit event atomically", () => {
+    let id = 0;
+    const result = dismissListing("can-cedar-flat", {
+      repositories,
+      now: () => new Date("2026-07-17T12:45:00.000Z"),
+      createId: () => `dismiss-id-${String(++id)}`
+    });
+
+    expect(result.lifecycleState).toBe("dismissed");
+    expect(repositories.canonicalListings.getById("can-cedar-flat")?.lifecycleState).toBe(
+      "dismissed"
+    );
+    expect(
+      repositories.activityEvents
+        .listByTarget("canonical_listing", "can-cedar-flat")
+        .map(({ action }) => action)
+    ).toContain("listing.dismissed");
   });
 });

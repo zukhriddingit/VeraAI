@@ -5,11 +5,13 @@ import {
   ActivityEventSchema,
   ActivityPresentationSchema,
   CanonicalListingDetailResponseSchema,
+  DismissListingResponseSchema,
   EntityIdSchema,
   ShortlistResponseSchema,
   type ActivityEvent,
   type ActivityPresentation,
   type CanonicalListingDetailResponse,
+  type DismissListingResponse,
   type ShortlistResponse
 } from "@vera/domain";
 
@@ -43,6 +45,8 @@ function safeActivityDetail(event: ActivityEvent): string | null {
       return "Listing added to the shortlist.";
     case "listing.shortlist_removed":
       return "Listing removed from the shortlist.";
+    case "listing.dismissed":
+      return "Listing dismissed from the active inbox.";
     case "seed.completed":
       return "Legacy sanitized fixtures were seeded for migration compatibility.";
     default:
@@ -192,6 +196,51 @@ export function setListingShortlist(
     listingId,
     lifecycleState: listing.lifecycleState,
     shortlisted: listing.lifecycleState === "shortlisted",
+    activityEventId,
+    updatedAt
+  });
+}
+
+export function dismissListing(
+  listingIdInput: string,
+  dependencies: SetListingShortlistDependencies
+): DismissListingResponse {
+  const listingId = EntityIdSchema.parse(listingIdInput);
+  const updatedAt = dependencies.now().toISOString();
+  const createId = dependencies.createId ?? randomUUID;
+  const payloadHash = sha256Text(`listing-dismiss:v1:${canonicalJson({ listingId })}`);
+  const activityEventId = createId();
+
+  const listing = dependencies.repositories.transaction((repositories) => {
+    const updated = repositories.canonicalListings.transitionLifecycle(
+      listingId,
+      "dismissed",
+      updatedAt
+    );
+    repositories.activityEvents.append(
+      ActivityEventSchema.parse({
+        id: activityEventId,
+        correlationId: createId(),
+        causationId: null,
+        actor: "user",
+        action: "listing.dismissed",
+        targetType: "canonical_listing",
+        targetId: listingId,
+        policyDecision: "not_applicable",
+        approvalId: null,
+        payloadHash,
+        outcome: "succeeded",
+        errorCategory: null,
+        metadata: { lifecycleState: "dismissed" },
+        occurredAt: updatedAt
+      })
+    );
+    return updated;
+  });
+
+  return DismissListingResponseSchema.parse({
+    listingId,
+    lifecycleState: listing.lifecycleState,
     activityEventId,
     updatedAt
   });
