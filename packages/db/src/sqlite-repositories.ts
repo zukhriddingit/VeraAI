@@ -17,10 +17,12 @@ import {
   ListingExtractionRunSchema,
   ListingPhotoSchema,
   ListingScoreSchema,
+  ListingScoreV2Schema,
   ListingSourceRecordSchema,
   NormalizationJobSchema,
   RawListingCaptureSchema,
   RiskSignalSchema,
+  RiskSignalV2Schema,
   SearchProfileSchema,
   SourceJobSchema,
   SourceJobStatusSchema,
@@ -201,6 +203,14 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
       const id = EntityIdSchema.parse(idInput);
       const row = db.select().from(searchProfiles).where(eq(searchProfiles.id, id)).get();
       return row ? mapSearchProfileRow(row) : null;
+    },
+    list() {
+      return db
+        .select()
+        .from(searchProfiles)
+        .orderBy(asc(searchProfiles.createdAt), asc(searchProfiles.id))
+        .all()
+        .map(mapSearchProfileRow);
     },
     count() {
       return scalarCount(db.select({ value: count() }).from(searchProfiles).get()?.value);
@@ -946,6 +956,7 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
       return db
         .select()
         .from(canonicalListings)
+        .where(eq(canonicalListings.projectionState, "active"))
         .orderBy(desc(canonicalListings.freshestObservedAt), asc(canonicalListings.id))
         .all()
         .map(mapCanonicalListingRow);
@@ -1014,6 +1025,26 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           .filter((entry) => entry[1] === null)
           .map((entry) => String(entry[0]));
         const score = scoreByListing.get(listing.id) ?? null;
+        const scoreV2 =
+          listing.updatedByDecisionRunId === null
+            ? null
+            : listingScoreRepository.getCurrentV2ByCanonicalListingId(
+                listing.id,
+                listing.updatedByDecisionRunId
+              );
+        const currentRisks =
+          listing.updatedByDecisionRunId === null
+            ? null
+            : riskSignalRepository.listCurrentV2ByCanonicalListingId(
+                listing.id,
+                listing.updatedByDecisionRunId
+              );
+        const displayScore = scoreV2?.finalScoreBasisPoints ?? score?.totalScoreBasisPoints ?? null;
+        const penaltyTotal = scoreV2
+          ? scoreV2.stalePenaltyBasisPoints +
+            scoreV2.lowConfidencePenaltyBasisPoints +
+            scoreV2.riskPenaltyBasisPoints
+          : 0;
 
         return CanonicalListingSummarySchema.parse({
           id: listing.id,
@@ -1034,25 +1065,43 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           sourceRecordCount,
           duplicateCount: Math.max(0, sourceRecordCount - 1),
           unknownFields,
-          fitScoreBasisPoints: score?.totalScoreBasisPoints ?? null,
-          fitLabel: score ? fitLabel(score.totalScoreBasisPoints) : null,
-          topPositiveReason: score
-            ? firstReason(
-                score.reasonCodes,
-                positiveReasonText,
-                "Known facts do not yet establish a positive fit."
-              )
-            : null,
-          topConcern: score
-            ? firstReason(
-                score.reasonCodes,
-                concernReasonText,
-                unknownFields.length > 0
+          fitScoreBasisPoints: displayScore,
+          eligible: scoreV2?.eligible ?? null,
+          baseScoreBasisPoints: scoreV2?.baseScoreBasisPoints ?? null,
+          stalePenaltyBasisPoints: scoreV2?.stalePenaltyBasisPoints ?? null,
+          lowConfidencePenaltyBasisPoints: scoreV2?.lowConfidencePenaltyBasisPoints ?? null,
+          riskPenaltyBasisPoints: scoreV2?.riskPenaltyBasisPoints ?? null,
+          fitLabel: displayScore === null ? null : fitLabel(displayScore),
+          topPositiveReason: scoreV2
+            ? scoreV2.explanation.slice(0, 300)
+            : score
+              ? firstReason(
+                  score.reasonCodes,
+                  positiveReasonText,
+                  "Known facts do not yet establish a positive fit."
+                )
+              : null,
+          topConcern: scoreV2
+            ? !scoreV2.eligible
+              ? "A known hard constraint excludes this listing; inspect the exact result below."
+              : penaltyTotal > 0
+                ? `${String(penaltyTotal / 100)} percentage points of separate evidence penalties apply.`
+                : unknownFields.length > 0
                   ? `${unknownFields[0] ?? "A listing fact"} needs verification.`
-                  : "No concern was identified from the four demo factors."
-              )
-            : null,
-          riskIndicatorCount: riskCountByListing.get(listing.id) ?? 0
+                  : "No deterministic concern is active."
+            : score
+              ? firstReason(
+                  score.reasonCodes,
+                  concernReasonText,
+                  unknownFields.length > 0
+                    ? `${unknownFields[0] ?? "A listing fact"} needs verification.`
+                    : "No concern was identified from the four demo factors."
+                )
+              : null,
+          riskIndicatorCount:
+            currentRisks?.filter(({ status }) => status === "open").length ??
+            riskCountByListing.get(listing.id) ??
+            0
         });
       });
     },
@@ -1136,6 +1185,55 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
         .all()
         .map(mapListingScoreRow);
     },
+    getCurrentV2ByCanonicalListingId(idInput, decisionRunIdInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const decisionRunId = EntityIdSchema.parse(decisionRunIdInput);
+      const row = db
+        .select()
+        .from(listingScores)
+        .where(
+          and(
+            eq(listingScores.canonicalListingId, id),
+            eq(listingScores.decisionRunId, decisionRunId),
+            eq(listingScores.schemaVersion, "listing-score.v2")
+          )
+        )
+        .get();
+      if (
+        row === undefined ||
+        row.searchProfileId === null ||
+        row.eligible === null ||
+        row.hardConstraintsV2 === null ||
+        row.factorsV2 === null ||
+        row.baseScoreBasisPoints === null ||
+        row.stalePenaltyBasisPoints === null ||
+        row.lowConfidencePenaltyBasisPoints === null ||
+        row.riskPenaltyBasisPoints === null ||
+        row.finalScoreBasisPoints === null ||
+        row.explanation === null
+      ) {
+        return null;
+      }
+      return ListingScoreV2Schema.parse({
+        id: row.id,
+        schemaVersion: 2,
+        canonicalListingId: row.canonicalListingId,
+        searchProfileId: row.searchProfileId,
+        algorithmVersion: row.algorithmVersion,
+        inputHash: row.inputHash,
+        eligible: row.eligible,
+        hardConstraints: row.hardConstraintsV2,
+        factors: row.factorsV2,
+        baseScoreBasisPoints: row.baseScoreBasisPoints,
+        stalePenaltyBasisPoints: row.stalePenaltyBasisPoints,
+        lowConfidencePenaltyBasisPoints: row.lowConfidencePenaltyBasisPoints,
+        riskPenaltyBasisPoints: row.riskPenaltyBasisPoints,
+        finalScoreBasisPoints: row.finalScoreBasisPoints,
+        reasonCodes: row.reasonCodes,
+        explanation: row.explanation,
+        computedAt: row.computedAt
+      });
+    },
     count() {
       return scalarCount(db.select({ value: count() }).from(listingScores).get()?.value);
     }
@@ -1161,6 +1259,49 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
         .orderBy(desc(riskSignals.createdAt), asc(riskSignals.id))
         .all()
         .map(mapRiskSignalRow);
+    },
+    listCurrentV2ByCanonicalListingId(idInput, decisionRunIdInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const decisionRunId = EntityIdSchema.parse(decisionRunIdInput);
+      return db
+        .select()
+        .from(riskSignals)
+        .where(
+          and(
+            eq(riskSignals.canonicalListingId, id),
+            eq(riskSignals.decisionRunId, decisionRunId),
+            eq(riskSignals.schemaVersion, "listing-risk.v2")
+          )
+        )
+        .orderBy(desc(riskSignals.createdAt), asc(riskSignals.id))
+        .all()
+        .map((row) => {
+          if (
+            row.algorithmVersion === null ||
+            row.inputHash === null ||
+            row.idempotencyKey === null ||
+            row.evidenceV2 === null ||
+            row.evaluatedAt === null
+          ) {
+            throw new Error("Current v2 risk row is incomplete.");
+          }
+          return RiskSignalV2Schema.parse({
+            id: row.id,
+            schemaVersion: 2,
+            canonicalListingId: row.canonicalListingId,
+            algorithmVersion: row.algorithmVersion,
+            inputHash: row.inputHash,
+            idempotencyKey: row.idempotencyKey,
+            code: row.code,
+            severity: row.severity === "info" ? "informational" : row.severity,
+            confidenceBasisPoints: row.confidenceBasisPoints,
+            evidence: row.evidenceV2,
+            needsVerification: row.needsVerification,
+            verificationAction: row.verificationAction,
+            status: row.status,
+            createdAt: row.evaluatedAt
+          });
+        });
     },
     count() {
       return scalarCount(db.select({ value: count() }).from(riskSignals).get()?.value);

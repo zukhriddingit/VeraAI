@@ -1,4 +1,3 @@
-export * from "./demo-evaluation.ts";
 export * from "./canonical/identity.ts";
 export * from "./canonical/plan.ts";
 export * from "./canonical/stitch.ts";

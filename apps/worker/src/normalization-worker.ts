@@ -54,6 +54,8 @@ export type NormalizationWorkerResult =
       readonly model: string | null;
       readonly totalTokens: number;
       readonly latencyMilliseconds: number;
+      readonly decisionJobId: string;
+      readonly targetCorpusRevision: number;
     }
   | {
       readonly status: "retryable" | "dead_letter";
@@ -202,7 +204,9 @@ function successMetadata(
   job: NormalizationJob,
   pipeline: ListingExtractionPipelineResult,
   extractionRunId: string,
-  sourceRecordId: string
+  sourceRecordId: string,
+  decisionJobId: string,
+  targetCorpusRevision: number
 ): JsonObject {
   const provider = pipeline.providerResult;
   const counts = extractionCounts(pipeline);
@@ -223,7 +227,9 @@ function successMetadata(
     totalTokens: provider?.usage.totalTokens ?? 0,
     latencyMilliseconds: provider?.latencyMilliseconds ?? 0,
     repairCount: provider?.repairCount ?? 0,
-    outcomeCode: "normalization_completed"
+    outcomeCode: "normalization_completed",
+    decisionJobId,
+    targetCorpusRevision
   };
 }
 
@@ -296,7 +302,7 @@ export async function processNextNormalizationJob(
       completedAt
     });
 
-    dependencies.repositories.transaction((repositories) => {
+    const decisionJob = dependencies.repositories.transaction((repositories) => {
       if (
         repositories.sourceRecords.getByRawListingId(raw.id) !== null ||
         repositories.listingExtractions.getByRawListingId(raw.id) !== null
@@ -309,6 +315,20 @@ export async function processNextNormalizationJob(
         repositories.fieldProvenance.insert(provenance);
       }
       repositories.listingExtractions.insert(extractionRun);
+      const profiles = repositories.searchProfiles.list();
+      if (profiles.length !== 1) {
+        throw new NormalizationProcessingError(
+          "normalization_search_profile_ambiguous",
+          "conflict",
+          false
+        );
+      }
+      const decisionJob = repositories.decisionJobs.bumpCorpusRevisionAndEnqueue({
+        id: dependencies.createId(),
+        searchProfileId: profiles[0]!.id,
+        trigger: "normalization",
+        now: completedAt
+      });
       repositories.activityEvents.append(
         ActivityEventSchema.parse({
           id: completionEventId,
@@ -323,7 +343,14 @@ export async function processNextNormalizationJob(
           payloadHash: raw.contentHash,
           outcome: "succeeded",
           errorCategory: null,
-          metadata: successMetadata(job, pipeline, extractionRun.id, normalized.sourceRecord.id),
+          metadata: successMetadata(
+            job,
+            pipeline,
+            extractionRun.id,
+            normalized.sourceRecord.id,
+            decisionJob.id,
+            decisionJob.targetCorpusRevision
+          ),
           occurredAt: completedAt
         })
       );
@@ -332,6 +359,7 @@ export async function processNextNormalizationJob(
         leaseOwner: dependencies.leaseOwner,
         completedAt
       });
+      return decisionJob;
     });
 
     return {
@@ -341,7 +369,9 @@ export async function processNextNormalizationJob(
       providerId: provider?.providerId ?? null,
       model: provider?.model ?? null,
       totalTokens: provider?.usage.totalTokens ?? 0,
-      latencyMilliseconds: provider?.latencyMilliseconds ?? 0
+      latencyMilliseconds: provider?.latencyMilliseconds ?? 0,
+      decisionJobId: decisionJob.id,
+      targetCorpusRevision: decisionJob.targetCorpusRevision
     };
   } catch (error: unknown) {
     if (signal.aborted) return { status: "cancelled", jobId: job.id };

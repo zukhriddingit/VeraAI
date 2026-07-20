@@ -34,13 +34,17 @@ function safeActivityDetail(event: ActivityEvent): string | null {
     case "normalization.reused":
       return "Existing deterministic normalization for a staged sanitized fixture was reused.";
     case "normalization.completed":
-      return "Deterministic normalization completed.";
+      return "Deterministic normalization completed and queued revisioned decision work.";
+    case "decision.completed":
+      return "Deterministic deduplication, ranking, and risk evaluation completed atomically.";
+    case "seed.evidence_completed":
+      return "Sanitized evidence was seeded and queued for production decision processing.";
     case "listing.shortlisted":
       return "Listing added to the shortlist.";
     case "listing.shortlist_removed":
       return "Listing removed from the shortlist.";
     case "seed.completed":
-      return "Sanitized demo fixtures were seeded.";
+      return "Legacy sanitized fixtures were seeded for migration compatibility.";
     default:
       return null;
   }
@@ -68,11 +72,14 @@ function duplicateExplanation(
 ): string | null {
   if (duplicateClusterId === null) return null;
   const cluster = repositories.duplicateClusters.getById(duplicateClusterId);
-  if (!cluster || !cluster.reasonCodes.includes("fixture_declared_duplicate")) return null;
+  if (!cluster) return null;
   const names = sourceLabels.map(
     (source) => sourceNames[source as keyof typeof sourceNames] ?? source
   );
-  return `Same normalized address and unit; listed across ${names.join(", ")} sanitized fixtures. Fixture relationships preserve every source record.`;
+  const basis = cluster.reasonCodes.includes("fixture_declared_duplicate")
+    ? "Same normalized address and unit; "
+    : "";
+  return `${basis}deterministic ${cluster.algorithmVersion} clustering linked records across ${names.join(", ")} while preserving every source record and its provenance. Reasons: ${cluster.reasonCodes.join(", ")}.`;
 }
 
 export function getListingDetail(
@@ -82,7 +89,7 @@ export function getListingDetail(
 ): CanonicalListingDetailResponse | null {
   const listingId = EntityIdSchema.parse(listingIdInput);
   const canonical = repositories.canonicalListings.getById(listingId);
-  if (!canonical) return null;
+  if (!canonical || canonical.projectionState !== "active") return null;
   const summary = repositories.canonicalListings
     .listSummaries()
     .find((candidate) => candidate.id === listingId);
@@ -99,6 +106,21 @@ export function getListingDetail(
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
     .map(projectActivityEvent);
 
+  const score =
+    canonical.updatedByDecisionRunId === null
+      ? (repositories.listingScores.listByCanonicalListingId(listingId)[0] ?? null)
+      : repositories.listingScores.getCurrentV2ByCanonicalListingId(
+          listingId,
+          canonical.updatedByDecisionRunId
+        );
+  const risks =
+    canonical.updatedByDecisionRunId === null
+      ? repositories.riskSignals.listByCanonicalListingId(listingId)
+      : repositories.riskSignals.listCurrentV2ByCanonicalListingId(
+          listingId,
+          canonical.updatedByDecisionRunId
+        );
+
   return CanonicalListingDetailResponseSchema.parse({
     canonical,
     summary,
@@ -112,8 +134,8 @@ export function getListingDetail(
       canonical.duplicateClusterId,
       summary.sourceLabels
     ),
-    score: repositories.listingScores.listByCanonicalListingId(listingId)[0] ?? null,
-    risks: repositories.riskSignals.listByCanonicalListingId(listingId),
+    score,
+    risks,
     activity,
     generatedAt: now().toISOString()
   });

@@ -4,6 +4,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { createSqliteRepositories, openDatabase } from "../packages/db/src/index.ts";
+
 import { resolveRailwayConfiguration } from "./railway-environment.ts";
 import { initializeRailwayDatabase } from "./railway-runtime.ts";
 
@@ -29,11 +31,27 @@ describe("Railway database bootstrap", () => {
 
     expect(first).toMatchObject({
       activityEvents: 1,
-      canonicalListings: 8,
+      evidenceChanged: true,
+      decisionJobStatus: "queued",
       rawListings: 12,
       sourceRecords: 12
     });
-    expect(second).toEqual(first);
+    expect(second).toMatchObject({
+      ...first,
+      evidenceChanged: false
+    });
+    expect(second.decisionJobId).toBe(first.decisionJobId);
+
+    const connection = openDatabase({ filePath: join(dataDirectory, "vera.sqlite") });
+    try {
+      const repositories = createSqliteRepositories(connection);
+      expect(repositories.canonicalListings.count()).toBe(0);
+      expect(repositories.listingScores.count()).toBe(0);
+      expect(repositories.riskSignals.count()).toBe(0);
+      expect(repositories.decisionJobs.list()).toHaveLength(1);
+    } finally {
+      connection.close();
+    }
     expect(existsSync(join(dataDirectory, "vera.sqlite"))).toBe(true);
   });
 });

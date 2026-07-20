@@ -73,6 +73,7 @@ export interface SourceFixture {
       readonly catsAllowed?: boolean;
       readonly dogsAllowed?: boolean;
       readonly amenities: readonly string[];
+      readonly description?: string;
     };
   };
 }
@@ -141,7 +142,8 @@ function makeSourceFixture(options: SourceFixtureOptions): SourceFixture {
     ...(options.petPolicy === null || options.petPolicy.dogs === "unknown"
       ? {}
       : { dogsAllowed: options.petPolicy.dogs === "allowed" }),
-    amenities: options.amenities
+    amenities: options.amenities,
+    ...(options.description === null ? {} : { description: options.description })
   } as const;
   const request = { kind: "fixture", sanitized: true, listing } as const;
   const capture: RawListingCapture = {

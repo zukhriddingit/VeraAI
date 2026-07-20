@@ -6,8 +6,8 @@ import {
   createSqliteRepositories,
   migrateDatabase,
   openDatabase,
-  seedDatabase,
-  type SeedResult
+  seedEvidenceDatabase,
+  type EvidenceSeedResult
 } from "../packages/db/src/index.ts";
 import { resolveRailwayConfiguration, type RailwayConfiguration } from "./railway-environment.ts";
 
@@ -57,7 +57,7 @@ const defaultLogger: RailwayLogger = {
 export function initializeRailwayDatabase(
   configuration: RailwayConfiguration,
   options: RailwayDatabaseOptions = {}
-): SeedResult {
+): EvidenceSeedResult {
   const rootDirectory = options.rootDirectory ?? defaultRootDirectory;
   const connection = openDatabase({
     filePath: join(configuration.dataDirectory, "vera.sqlite")
@@ -67,7 +67,7 @@ export function initializeRailwayDatabase(
     migrateDatabase(connection, {
       migrationsFolder: join(rootDirectory, "packages/db/drizzle")
     });
-    return seedDatabase(createSqliteRepositories(connection));
+    return seedEvidenceDatabase(createSqliteRepositories(connection));
   } finally {
     connection.close();
   }

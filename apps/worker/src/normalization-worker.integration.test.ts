@@ -24,6 +24,7 @@ import {
   type VeraDatabaseConnection,
   type VeraRepositories
 } from "@vera/db";
+import { DEMO_SEARCH_PROFILE } from "@vera/db/fixtures";
 import {
   ListingExtractionFieldNameSchema,
   ListingExtractionProviderResultSchema,
@@ -179,6 +180,7 @@ beforeEach(() => {
   connection = openDatabase({ filePath: join(directory, "vera.sqlite") });
   migrateDatabase(connection);
   repositories = createSqliteRepositories(connection);
+  repositories.searchProfiles.insert(DEMO_SEARCH_PROFILE);
 });
 
 afterEach(() => {
@@ -214,6 +216,7 @@ describe("normalization worker extraction orchestration", () => {
       usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 }
     });
     expect(repositories.normalizationJobs.getByRawListingId(rawListingId)?.state).toBe("completed");
+    expect(repositories.decisionJobs.list()).toHaveLength(1);
     const completed = repositories.activityEvents
       .list()
       .find((event) => event.action === "normalization.completed");

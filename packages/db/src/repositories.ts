@@ -22,12 +22,14 @@ import type {
   ListingLifecycleState,
   ListingPhoto,
   ListingScore,
+  ListingScoreV2,
   ListingSourceRecord,
   JobAttempt,
   NormalizationJob,
   RawListing,
   RawListingCapture,
   RiskSignal,
+  RiskSignalV2,
   SearchProfile,
   SourceJob,
   SourceJobStatus,
@@ -111,6 +113,7 @@ export class RepositoryJobLeaseError extends Error {
 export interface SearchProfileRepository {
   insert(profile: SearchProfile): SearchProfile;
   getById(id: string): SearchProfile | null;
+  list(): readonly SearchProfile[];
   count(): number;
 }
 
@@ -175,6 +178,7 @@ export interface ListingScoreRepository {
   insert(score: ListingScore): ListingScore;
   getById(id: string): ListingScore | null;
   listByCanonicalListingId(id: string): readonly ListingScore[];
+  getCurrentV2ByCanonicalListingId(id: string, decisionRunId: string): ListingScoreV2 | null;
   count(): number;
 }
 
@@ -182,6 +186,7 @@ export interface RiskSignalRepository {
   insert(signal: RiskSignal): RiskSignal;
   getById(id: string): RiskSignal | null;
   listByCanonicalListingId(id: string): readonly RiskSignal[];
+  listCurrentV2ByCanonicalListingId(id: string, decisionRunId: string): readonly RiskSignalV2[];
   count(): number;
 }
 

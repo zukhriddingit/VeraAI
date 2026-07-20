@@ -32,7 +32,7 @@ function createHealthDependencies(write: (message: string) => void): WorkerCliDe
     nodeVersion: "24.13.3",
     version: "0.1.0",
     createNormalizationRuntime: () => ({
-      processNext: async () => ({ status: "idle" }),
+      processNext: async () => ({ kind: "normalization", result: { status: "idle" } }),
       close() {}
     })
   };
@@ -60,16 +60,27 @@ describe("worker CLI", () => {
     const output: string[] = [];
     let closed = false;
     const dependencies = createHealthDependencies((message) => output.push(message));
+    let invocation = 0;
     dependencies.createNormalizationRuntime = () => ({
-      processNext: async () => ({
-        status: "completed",
-        jobId: "job-1",
-        mode: "deterministic_only",
-        providerId: null,
-        model: null,
-        totalTokens: 0,
-        latencyMilliseconds: 0
-      }),
+      processNext: async () => {
+        invocation += 1;
+        return invocation === 1
+          ? {
+              kind: "normalization" as const,
+              result: {
+                status: "completed" as const,
+                jobId: "job-1",
+                mode: "deterministic_only" as const,
+                providerId: null,
+                model: null,
+                totalTokens: 0,
+                latencyMilliseconds: 0,
+                decisionJobId: "decision-job-1",
+                targetCorpusRevision: 1
+              }
+            }
+          : { kind: "decision" as const, result: { status: "idle" as const } };
+      },
       close() {
         closed = true;
       }
@@ -79,9 +90,14 @@ describe("worker CLI", () => {
 
     expect(exitCode).toBe(0);
     expect(JSON.parse(output.join(""))).toMatchObject({
-      status: "completed",
-      jobId: "job-1",
-      mode: "deterministic_only"
+      status: "batch_completed",
+      results: [
+        {
+          kind: "normalization",
+          result: { status: "completed", jobId: "job-1", mode: "deterministic_only" }
+        },
+        { kind: "decision", result: { status: "idle" } }
+      ]
     });
     expect(closed).toBe(true);
   });
@@ -106,7 +122,10 @@ describe("worker CLI", () => {
             { once: true }
           );
         });
-        return { status: "cancelled", jobId: "job-leased" };
+        return {
+          kind: "normalization" as const,
+          result: { status: "cancelled" as const, jobId: "job-leased" }
+        };
       },
       close() {
         closed = true;

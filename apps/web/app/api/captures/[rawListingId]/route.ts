@@ -2,6 +2,7 @@ import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime
 import {
   CaptureErrorResponseSchema,
   CaptureStatusResponseSchema,
+  DecisionJobSummarySchema,
   EntityIdSchema
 } from "@vera/domain";
 
@@ -59,6 +60,12 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
     const job = repositories.normalizationJobs.getByRawListingId(rawListing.id);
     const sourceRecord = repositories.sourceRecords.getByRawListingId(rawListing.id);
     const extractionRun = repositories.listingExtractions.getByRawListingId(rawListing.id);
+    const normalizationEvent = repositories.activityEvents
+      .listByTarget("raw_listing", rawListing.id)
+      .find((event) => event.action === "normalization.completed");
+    const decisionJobId = normalizationEvent?.metadata.decisionJobId;
+    const decisionJob =
+      typeof decisionJobId === "string" ? repositories.decisionJobs.getById(decisionJobId) : null;
 
     if (!job && !sourceRecord) {
       return Response.json(
@@ -73,7 +80,13 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
     }
 
     const state = sourceRecord
-      ? "completed"
+      ? decisionJob?.status === "queued" || decisionJob?.status === "retryable_failed"
+        ? "decision_queued"
+        : decisionJob?.status === "running"
+          ? "decision_processing"
+          : decisionJob?.status === "permanently_failed" || decisionJob?.status === "cancelled"
+            ? "decision_failed"
+            : "completed"
       : job?.state === "leased"
         ? "processing"
         : job?.state === "dead_letter"
@@ -92,6 +105,20 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       duplicate: false,
       state,
       normalizationState: sourceRecord ? "completed" : (job?.state ?? "dead_letter"),
+      decisionJob:
+        decisionJob === null
+          ? null
+          : DecisionJobSummarySchema.parse({
+              id: decisionJob.id,
+              searchProfileId: decisionJob.searchProfileId,
+              targetCorpusRevision: decisionJob.targetCorpusRevision,
+              status: decisionJob.status,
+              attemptCount: decisionJob.attemptCount,
+              createdAt: decisionJob.createdAt,
+              updatedAt: decisionJob.updatedAt,
+              completedAt: decisionJob.completedAt,
+              errorCode: decisionJob.errorCode
+            }),
       extractionRun: projectCaptureExtractionRun(extractionRun),
       fields,
       updatedAt:

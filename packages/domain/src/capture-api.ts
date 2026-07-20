@@ -32,6 +32,9 @@ export const CaptureAcceptedResponseSchema = z
 export const CaptureStatusStateSchema = z.enum([
   "queued",
   "processing",
+  "decision_queued",
+  "decision_processing",
+  "decision_failed",
   "completed",
   "failed",
   "duplicate_resolved"

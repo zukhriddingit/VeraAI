@@ -122,6 +122,7 @@ export function ListingDetail({ listingId }: { listingId: string }) {
 
   const { detail } = state;
   const shortlisted = detail.canonical.lifecycleState === "shortlisted";
+  const scoreV2 = detail.score && "schemaVersion" in detail.score ? detail.score : null;
   return (
     <div className="listing-detail-shell">
       <section className="listing-detail-summary">
@@ -174,7 +175,7 @@ export function ListingDetail({ listingId }: { listingId: string }) {
 
       <div className="detail-grid">
         <section className="detail-panel" aria-labelledby="fit-heading">
-          <p className="eyebrow">Deterministic demo score</p>
+          <p className="eyebrow">Versioned deterministic score</p>
           <h2 id="fit-heading">Fit explanation</h2>
           <p className="detail-callout detail-callout-positive">
             {detail.summary.topPositiveReason}
@@ -200,6 +201,25 @@ export function ListingDetail({ listingId }: { listingId: string }) {
               </div>
             )) ?? <p>No score snapshot is available.</p>}
           </div>
+          {scoreV2 ? (
+            <>
+              <p className="detail-callout">{scoreV2.explanation}</p>
+              <div className="factor-list" aria-label="Hard constraint results">
+                {scoreV2.hardConstraints.map((constraint) => (
+                  <div className="factor-row" key={constraint.code}>
+                    <span>{factorName(constraint.code)}</span>
+                    <strong>{constraint.status}</strong>
+                    <small>{constraint.reasonCode.replaceAll("_", " ")}</small>
+                  </div>
+                ))}
+              </div>
+              <p>
+                Separate penalties: stale {String(scoreV2.stalePenaltyBasisPoints / 100)}%, low
+                confidence {String(scoreV2.lowConfidencePenaltyBasisPoints / 100)}%, risk{" "}
+                {String(scoreV2.riskPenaltyBasisPoints / 100)}%.
+              </p>
+            </>
+          ) : null}
           <small>Version: {detail.score?.algorithmVersion ?? "not available"}</small>
         </section>
 
@@ -215,7 +235,12 @@ export function ListingDetail({ listingId }: { listingId: string }) {
                   <span>{risk.severity} · needs verification</span>
                   <h3>{factorName(risk.code)}</h3>
                   {risk.evidence.map((evidence) => (
-                    <p key={`${risk.id}-${evidence.sourceRecordId}`}>{evidence.summary}</p>
+                    <div
+                      key={`${risk.id}-${evidence.sourceRecordId}-${evidence.fieldPath ?? "record"}`}
+                    >
+                      <p>{evidence.summary}</p>
+                      {"excerpt" in evidence ? <blockquote>{evidence.excerpt}</blockquote> : null}
+                    </div>
                   ))}
                   <strong>Verify: {risk.verificationAction}</strong>
                 </article>

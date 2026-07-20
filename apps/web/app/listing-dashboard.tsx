@@ -57,7 +57,7 @@ function formatFreshness(value: string): string {
 
 function fitScore(value: number | null): string {
   if (value === null) return "Not scored";
-  return `${String(Math.round((value + 10_000) / 200))}% fit`;
+  return `${String(Math.round(value >= 0 ? value / 100 : (value + 10_000) / 200))}% fit`;
 }
 
 const fitLabels = {
@@ -109,8 +109,12 @@ function ListingCard({ listing }: { listing: CanonicalListingSummary }) {
       </div>
       <div className="listing-fit-row">
         <span className={`fit-pill fit-pill-${listing.fitLabel ?? "unscored"}`}>
-          {listing.fitLabel ? fitLabels[listing.fitLabel] : "Not scored"} ·{" "}
-          {fitScore(listing.fitScoreBasisPoints)}
+          {listing.eligible === false
+            ? "Excluded by hard constraint"
+            : listing.fitLabel
+              ? fitLabels[listing.fitLabel]
+              : "Not scored"}{" "}
+          · {fitScore(listing.fitScoreBasisPoints)}
         </span>
         <span
           className={listing.riskIndicatorCount > 0 ? "risk-count risk-count-open" : "risk-count"}

@@ -898,6 +898,29 @@ export const CreateDuplicateOverrideResponseSchema = z
   })
   .strict();
 
+export const DuplicateOverrideHistoryResponseSchema = z
+  .object({
+    overrides: z.array(DuplicateOverrideSchema),
+    revocations: z.array(DuplicateOverrideRevocationSchema),
+    activeOverrideIds: sortedUniqueEntityIds(0, 10_000),
+    generatedAt: IsoDateTimeSchema
+  })
+  .strict();
+
+export const DecisionApiErrorResponseSchema = z
+  .object({
+    code: z.enum([
+      "not_found",
+      "malformed_request",
+      "invalid_override_reference",
+      "conflicting_override",
+      "database_unavailable"
+    ]),
+    message: z.string().trim().min(1).max(300),
+    retryable: z.boolean()
+  })
+  .strict();
+
 export type DecisionJobStatus = z.infer<typeof DecisionJobStatusSchema>;
 export type DecisionJobTrigger = z.infer<typeof DecisionJobTriggerSchema>;
 export type DecisionJobErrorCode = z.infer<typeof DecisionJobErrorCodeSchema>;
@@ -937,3 +960,7 @@ export type DecisionJobAttempt = z.infer<typeof DecisionJobAttemptSchema>;
 export type DecisionJobSummary = z.infer<typeof DecisionJobSummarySchema>;
 export type CreateDuplicateOverrideRequest = z.infer<typeof CreateDuplicateOverrideRequestSchema>;
 export type CreateDuplicateOverrideResponse = z.infer<typeof CreateDuplicateOverrideResponseSchema>;
+export type DuplicateOverrideHistoryResponse = z.infer<
+  typeof DuplicateOverrideHistoryResponseSchema
+>;
+export type DecisionApiErrorResponse = z.infer<typeof DecisionApiErrorResponseSchema>;

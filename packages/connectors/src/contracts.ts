@@ -97,6 +97,7 @@ export const StructuredListingInputSchema = z
     catsAllowed: z.boolean().nullish(),
     dogsAllowed: z.boolean().nullish(),
     amenities: z.array(z.string().trim().min(1).max(120)).max(200).nullish(),
+    description: z.string().trim().min(1).max(20_000).nullish(),
     sourcePostedAt: IsoDateTimeSchema.nullish(),
     contactChannel: ContactChannelSchema.nullish(),
     contactName: z.string().trim().min(1).max(200).nullish(),

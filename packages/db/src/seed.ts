@@ -33,6 +33,19 @@ export interface SeedResult {
   readonly riskSignals: number;
 }
 
+export interface EvidenceSeedResult {
+  readonly searchProfiles: number;
+  readonly rawListings: number;
+  readonly sourceRecords: number;
+  readonly fieldProvenance: number;
+  readonly sourcePolicyManifests: number;
+  readonly activityEvents: number;
+  readonly evidenceChanged: boolean;
+  readonly decisionJobId: string;
+  readonly targetCorpusRevision: number;
+  readonly decisionJobStatus: string;
+}
+
 function assertFixtureMatch(label: string, expected: unknown, actual: unknown): void {
   const expectedJson = canonicalJson(JsonValueSchema.parse(expected));
   const actualJson = canonicalJson(JsonValueSchema.parse(actual));
@@ -226,6 +239,139 @@ export function seedDatabase(repositories: VeraRepositories): SeedResult {
       activityEvents: transactionRepositories.activityEvents.count(),
       listingScores: transactionRepositories.listingScores.count(),
       riskSignals: transactionRepositories.riskSignals.count()
+    };
+  });
+}
+
+/**
+ * Production/demo seed entrypoint. It inserts sanitized evidence only and queues the same
+ * deterministic decision worker used by normalized user captures. Legacy hand-authored
+ * decisions remain available solely to migration compatibility tests through `seedDatabase`.
+ */
+export function seedEvidenceDatabase(repositories: VeraRepositories): EvidenceSeedResult {
+  return repositories.transaction((transactionRepositories) => {
+    let evidenceChanged = false;
+    const existingProfile = transactionRepositories.searchProfiles.getById(DEMO_SEARCH_PROFILE.id);
+    if (existingProfile === null) {
+      transactionRepositories.searchProfiles.insert(DEMO_SEARCH_PROFILE);
+      evidenceChanged = true;
+    } else {
+      assertFixtureMatch(
+        `SearchProfile ${DEMO_SEARCH_PROFILE.id}`,
+        DEMO_SEARCH_PROFILE,
+        existingProfile
+      );
+    }
+
+    for (const fixture of SOURCE_FIXTURES) {
+      const imported = transactionRepositories.rawListings.import(fixture.capture);
+      evidenceChanged ||= imported.inserted;
+      const existingSource = transactionRepositories.sourceRecords.getById(fixture.sourceRecord.id);
+      if (existingSource === null) {
+        transactionRepositories.sourceRecords.insert(fixture.sourceRecord);
+        evidenceChanged = true;
+      } else {
+        assertFixtureMatch(
+          `ListingSourceRecord ${fixture.sourceRecord.id}`,
+          fixture.sourceRecord,
+          existingSource
+        );
+      }
+      const factPaths = normalizedFactEntries(fixture.sourceRecord).map(([fieldPath]) => fieldPath);
+      if (fixture.sourceRecord.petPolicy !== null) factPaths.push("petPolicy");
+      for (const fieldPath of [...new Set(factPaths)].sort()) {
+        const provenance: FieldProvenance = {
+          id: `prov:${fixture.sourceRecord.id}:${fieldPath}`,
+          listingSourceRecordId: fixture.sourceRecord.id,
+          rawListingId: fixture.sourceRecord.rawListingId,
+          fieldPath,
+          extractionMethod: "fixture_structured",
+          confidenceBasisPoints: fixture.sourceRecord.extractionConfidenceBasisPoints,
+          valueStatus: "known",
+          unknownReason: null,
+          observedAt: fixture.sourceRecord.observedAt,
+          evidenceExcerpt: null
+        };
+        const existing = transactionRepositories.fieldProvenance.getById(provenance.id);
+        if (existing === null) {
+          transactionRepositories.fieldProvenance.insert(FieldProvenanceSchema.parse(provenance));
+          evidenceChanged = true;
+        } else {
+          assertFixtureMatch(`FieldProvenance ${provenance.id}`, provenance, existing);
+        }
+      }
+    }
+
+    for (const manifest of SOURCE_POLICY_MANIFEST_FIXTURES) {
+      const existing = transactionRepositories.sourcePolicyManifests.get(
+        manifest.connectorId,
+        manifest.version
+      );
+      if (existing === null) {
+        transactionRepositories.sourcePolicyManifests.insert(manifest);
+        evidenceChanged = true;
+      } else {
+        assertFixtureMatch(`SourcePolicyManifest ${manifest.connectorId}`, manifest, existing);
+      }
+    }
+
+    const currentState = transactionRepositories.decisionJobs.ensureCorpusState(
+      DEMO_SEARCH_PROFILE.id,
+      "2026-07-20T18:00:00.000Z"
+    );
+    const targetRevision = evidenceChanged ? currentState.revision + 1 : currentState.revision;
+    const enqueueInput = {
+      id: `decision-job:seed:v2:${String(targetRevision)}`,
+      searchProfileId: DEMO_SEARCH_PROFILE.id,
+      trigger: "seed" as const,
+      now: "2026-07-20T18:00:00.000Z"
+    };
+    const decisionJob = evidenceChanged
+      ? transactionRepositories.decisionJobs.bumpCorpusRevisionAndEnqueue(enqueueInput)
+      : transactionRepositories.decisionJobs.enqueueCurrentRevision(enqueueInput);
+    const event: ActivityEvent = {
+      id: `event:seed:v2:${String(decisionJob.targetCorpusRevision)}`,
+      correlationId: decisionJob.id,
+      causationId: null,
+      actor: "system",
+      action: "seed.evidence_completed",
+      targetType: "search_profile",
+      targetId: DEMO_SEARCH_PROFILE.id,
+      policyDecision: "not_applicable",
+      approvalId: null,
+      payloadHash: sha256Text(
+        canonicalJson({
+          fixtureVersion: 2,
+          sourceRecords: SOURCE_FIXTURES.length,
+          targetCorpusRevision: decisionJob.targetCorpusRevision
+        })
+      ),
+      outcome: "succeeded",
+      errorCategory: null,
+      metadata: {
+        fixtureVersion: 2,
+        sanitized: true,
+        sourceRecords: SOURCE_FIXTURES.length,
+        decisionJobId: decisionJob.id,
+        targetCorpusRevision: decisionJob.targetCorpusRevision
+      },
+      occurredAt: "2026-07-20T18:00:00.000Z"
+    };
+    if (transactionRepositories.activityEvents.getById(event.id) === null) {
+      transactionRepositories.activityEvents.append(event);
+    }
+
+    return {
+      searchProfiles: transactionRepositories.searchProfiles.count(),
+      rawListings: transactionRepositories.rawListings.count(),
+      sourceRecords: transactionRepositories.sourceRecords.count(),
+      fieldProvenance: transactionRepositories.fieldProvenance.count(),
+      sourcePolicyManifests: transactionRepositories.sourcePolicyManifests.list().length,
+      activityEvents: transactionRepositories.activityEvents.count(),
+      evidenceChanged,
+      decisionJobId: decisionJob.id,
+      targetCorpusRevision: decisionJob.targetCorpusRevision,
+      decisionJobStatus: decisionJob.status
     };
   });
 }

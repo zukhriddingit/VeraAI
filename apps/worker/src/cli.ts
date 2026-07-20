@@ -13,6 +13,8 @@ import {
   processNextNormalizationJob,
   type NormalizationWorkerResult
 } from "./normalization-worker.js";
+import { processNextDecisionJob, type DecisionWorkerResult } from "./decision-worker.js";
+import { createAlternatingWorkerRuntime } from "./decision-runtime.js";
 import { createWorkerProviderRuntime } from "./provider-factory.js";
 
 export interface CliOutput {
@@ -30,7 +32,10 @@ export interface WorkerCliDependencies {
 }
 
 export interface NormalizationRuntime {
-  processNext(signal: AbortSignal): Promise<NormalizationWorkerResult>;
+  processNext(signal: AbortSignal): Promise<{
+    readonly kind: "normalization" | "decision";
+    readonly result: NormalizationWorkerResult | DecisionWorkerResult;
+  }>;
   close(): void;
 }
 
@@ -38,10 +43,9 @@ function createDefaultNormalizationRuntime(leaseOwner: string): NormalizationRun
   const providerRuntime = createWorkerProviderRuntime();
   const connection = openExistingDatabase();
   const repositories = createSqliteRepositories(connection);
-
-  return {
-    processNext(signal) {
-      return processNextNormalizationJob(
+  const runtime = createAlternatingWorkerRuntime({
+    processNormalization: (signal) =>
+      processNextNormalizationJob(
         {
           repositories,
           leaseOwner,
@@ -51,8 +55,21 @@ function createDefaultNormalizationRuntime(leaseOwner: string): NormalizationRun
           createId: randomUUID
         },
         signal
-      );
-    },
+      ),
+    processDecision: (signal) =>
+      processNextDecisionJob(
+        {
+          repositories,
+          leaseOwner,
+          now: () => new Date(),
+          createId: randomUUID
+        },
+        signal
+      )
+  });
+
+  return {
+    processNext: runtime.processNext,
     close() {
       connection.close();
     }
@@ -133,9 +150,16 @@ export async function runCli(
   if (command === "run-once") {
     const abortController = new AbortController();
     try {
-      const result = await normalizationRuntime.processNext(abortController.signal);
-      dependencies.output.write(JSON.stringify(result) + "\n");
-      return result.status === "dead_letter" || result.status === "cancelled" ? 1 : 0;
+      const results = [];
+      for (let index = 0; index < 2; index += 1) {
+        results.push(await normalizationRuntime.processNext(abortController.signal));
+      }
+      dependencies.output.write(JSON.stringify({ status: "batch_completed", results }) + "\n");
+      return results.some(
+        ({ result }) => result.status === "dead_letter" || result.status === "cancelled"
+      )
+        ? 1
+        : 0;
     } catch (error: unknown) {
       logger.error(
         { event: "normalization_run_once_failed", ...safeWorkerErrorFields(error) },
@@ -152,10 +176,10 @@ export async function runCli(
     const poller = createAsyncWorkerPoller({
       poll: async (signal) => {
         const result = await normalizationRuntime.processNext(signal);
-        if (result.status !== "idle") {
+        if (result.result.status !== "idle") {
           logger.info(
-            { event: "normalization_job_processed", ...result },
-            "Normalization job processed."
+            { event: `${result.kind}_job_processed`, ...result.result },
+            "Worker job processed."
           );
         }
       },
