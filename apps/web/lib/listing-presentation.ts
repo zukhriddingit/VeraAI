@@ -3,12 +3,14 @@ import { randomUUID } from "node:crypto";
 import { canonicalJson, sha256Text, type VeraRepositories } from "@vera/db/runtime";
 import {
   ActivityEventSchema,
+  ActivityCollectionResponseSchema,
   ActivityPresentationSchema,
   CanonicalListingDetailResponseSchema,
   DismissListingResponseSchema,
   EntityIdSchema,
   ShortlistResponseSchema,
   type ActivityEvent,
+  type ActivityCollectionResponse,
   type ActivityPresentation,
   type CanonicalListingDetailResponse,
   type DismissListingResponse,
@@ -86,6 +88,37 @@ function duplicateExplanation(
   return `${basis}deterministic ${cluster.algorithmVersion} clustering linked records across ${names.join(", ")} while preserving every source record and its provenance. Reasons: ${cluster.reasonCodes.join(", ")}.`;
 }
 
+const missingInformationCopy: Readonly<Record<string, { fieldPath: string; question: string }>> = {
+  "monthly rent": {
+    fieldPath: "monthlyRentCents",
+    question: "What is the confirmed base monthly rent?"
+  },
+  "recurring fees": {
+    fieldPath: "recurringFeesCents",
+    question: "Which recurring fees are required in addition to rent?"
+  },
+  bedrooms: { fieldPath: "bedrooms", question: "How many legal bedrooms are included?" },
+  bathrooms: { fieldPath: "bathrooms", question: "How many bathrooms are included?" },
+  "square feet": { fieldPath: "squareFeet", question: "What is the approximate interior size?" },
+  availability: { fieldPath: "availableOn", question: "What move-in date is actually available?" },
+  "lease term": { fieldPath: "leaseTermMonths", question: "What lease term is required?" },
+  "pet policy": { fieldPath: "petPolicy", question: "Are the required pets explicitly allowed?" }
+};
+
+export function getActivityCollection(
+  repositories: VeraRepositories,
+  now: () => Date = () => new Date()
+): ActivityCollectionResponse {
+  const events = [...repositories.activityEvents.list()]
+    .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
+    .map(projectActivityEvent);
+  return ActivityCollectionResponseSchema.parse({
+    events,
+    count: events.length,
+    generatedAt: now().toISOString()
+  });
+}
+
 export function getListingDetail(
   repositories: VeraRepositories,
   listingIdInput: string,
@@ -132,6 +165,14 @@ export function getListingDetail(
       record,
       provenance: repositories.fieldProvenance.listBySourceRecordId(record.id)
     })),
+    fieldSources: repositories.canonicalListings.listFieldSources(listingId),
+    missingInformation: summary.unknownFields.map((label) => {
+      const copy = missingInformationCopy[label] ?? {
+        fieldPath: label.replaceAll(" ", "_"),
+        question: `What is the verified ${label}?`
+      };
+      return { fieldPath: copy.fieldPath, label, verificationQuestion: copy.question };
+    }),
     duplicateExplanation: duplicateExplanation(
       repositories,
       listingId,

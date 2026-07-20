@@ -1,7 +1,7 @@
 import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
-import { ActivityCollectionResponseSchema, DemoUnavailableResponseSchema } from "@vera/domain";
+import { DemoUnavailableResponseSchema } from "@vera/domain";
 
-import { projectActivityEvent } from "../../../lib/listing-presentation";
+import { getActivityCollection } from "../../../lib/listing-presentation";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,17 +11,10 @@ export async function GET(): Promise<Response> {
   let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
     connection = openExistingDatabase();
-    const events = [...createSqliteRepositories(connection).activityEvents.list()]
-      .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
-      .map(projectActivityEvent);
-    return Response.json(
-      ActivityCollectionResponseSchema.parse({
-        events,
-        count: events.length,
-        generatedAt: new Date().toISOString()
-      }),
-      { status: 200, headers }
-    );
+    return Response.json(getActivityCollection(createSqliteRepositories(connection)), {
+      status: 200,
+      headers
+    });
   } catch {
     return Response.json(
       DemoUnavailableResponseSchema.parse({

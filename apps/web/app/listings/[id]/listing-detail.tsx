@@ -7,7 +7,7 @@ import {
   type ListingSourceLabel
 } from "@vera/domain";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 
 type DetailState =
   | { kind: "loading" }
@@ -64,8 +64,14 @@ async function requestListingDetail(
   return CanonicalListingDetailResponseSchema.parse((await response.json()) as unknown);
 }
 
-export function ListingDetail({ listingId }: { listingId: string }) {
-  const [state, setState] = useState<DetailState>({ kind: "loading" });
+export function ListingDetail({
+  listingId,
+  initialDetail
+}: {
+  listingId: string;
+  initialDetail: CanonicalListingDetailResponse;
+}) {
+  const [state, setState] = useState<DetailState>({ kind: "ready", detail: initialDetail });
   const [saving, setSaving] = useState(false);
 
   async function load(): Promise<void> {
@@ -78,22 +84,6 @@ export function ListingDetail({ listingId }: { listingId: string }) {
       setState({ kind: "error", message: "Listing evidence is unavailable." });
     }
   }
-
-  useEffect(() => {
-    const controller = new AbortController();
-    void (async () => {
-      try {
-        setState({
-          kind: "ready",
-          detail: await requestListingDetail(listingId, controller.signal)
-        });
-      } catch (error: unknown) {
-        if (error instanceof DOMException && error.name === "AbortError") return;
-        setState({ kind: "error", message: "Listing evidence is unavailable." });
-      }
-    })();
-    return () => controller.abort();
-  }, [listingId]);
 
   async function toggleShortlist() {
     if (state.kind !== "ready") return;
@@ -123,6 +113,9 @@ export function ListingDetail({ listingId }: { listingId: string }) {
   const { detail } = state;
   const shortlisted = detail.canonical.lifecycleState === "shortlisted";
   const scoreV2 = detail.score && "schemaVersion" in detail.score ? detail.score : null;
+  const selectedProvenanceIds = new Set(
+    detail.fieldSources.map(({ fieldProvenanceId }) => fieldProvenanceId)
+  );
   return (
     <div className="listing-detail-shell">
       <section className="listing-detail-summary">
@@ -171,6 +164,31 @@ export function ListingDetail({ listingId }: { listingId: string }) {
           <span>Sources retained</span>
           <strong>{detail.sources.length}</strong>
         </div>
+      </section>
+
+      <section className="detail-panel missing-information-panel" aria-labelledby="missing-heading">
+        <div className="section-heading compact-heading">
+          <div>
+            <p className="eyebrow">Unknown is not false</p>
+            <h2 id="missing-heading">Missing information</h2>
+          </div>
+          <span className="missing-count">{String(detail.missingInformation.length)} open</span>
+        </div>
+        {detail.missingInformation.length === 0 ? (
+          <p>Core comparison facts are present. Source evidence may still become stale.</p>
+        ) : (
+          <ul className="missing-information-list">
+            {detail.missingInformation.map((item) => (
+              <li key={item.fieldPath}>
+                <span aria-hidden="true">?</span>
+                <div>
+                  <strong>{factorName(item.label)}</strong>
+                  <p>{item.verificationQuestion}</p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
       </section>
 
       <div className="detail-grid">
@@ -266,6 +284,12 @@ export function ListingDetail({ listingId }: { listingId: string }) {
                 {record.bathrooms ?? "?"} bath
               </p>
               <small>Observed {dateTime.format(new Date(record.observedAt))}</small>
+              <small>
+                Source posted{" "}
+                {record.sourcePostedAt
+                  ? dateTime.format(new Date(record.sourcePostedAt))
+                  : "unknown"}
+              </small>
               <details>
                 <summary>Field provenance ({provenance.length})</summary>
                 <dl className="provenance-list">
@@ -275,6 +299,9 @@ export function ListingDetail({ listingId }: { listingId: string }) {
                       <dd>
                         {field.extractionMethod.replaceAll("_", " ")} ·{" "}
                         {String(field.confidenceBasisPoints / 100)}% confidence
+                        {selectedProvenanceIds.has(field.id)
+                          ? " · selected for canonical value"
+                          : ""}
                       </dd>
                     </div>
                   ))}

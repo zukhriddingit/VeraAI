@@ -966,7 +966,9 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
       const memberships = db
         .select({
           canonicalListingId: canonicalListingSources.canonicalListingId,
-          source: listingSourceRecords.source
+          source: listingSourceRecords.source,
+          observedAt: listingSourceRecords.observedAt,
+          sourcePostedAt: listingSourceRecords.sourcePostedAt
         })
         .from(canonicalListingSources)
         .innerJoin(
@@ -988,7 +990,11 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
         }
       }
       const riskRows = db
-        .select({ canonicalListingId: riskSignals.canonicalListingId, status: riskSignals.status })
+        .select({
+          canonicalListingId: riskSignals.canonicalListingId,
+          status: riskSignals.status,
+          severity: riskSignals.severity
+        })
         .from(riskSignals)
         .all();
       const riskCountByListing = new Map<string, number>();
@@ -1012,6 +1018,20 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
         const sourceRecordCount = memberships.filter(
           (membership) => membership.canonicalListingId === listing.id
         ).length;
+        const freshestMembership = memberships
+          .filter((membership) => membership.canonicalListingId === listing.id)
+          .sort((left, right) => right.observedAt.localeCompare(left.observedAt))[0];
+        const freshestSourcePostedAt = freshestMembership?.sourcePostedAt ?? null;
+        const alertLatencySeconds =
+          freshestMembership && freshestSourcePostedAt
+            ? Math.max(
+                0,
+                Math.floor(
+                  (Date.parse(freshestMembership.observedAt) - Date.parse(freshestSourcePostedAt)) /
+                    1_000
+                )
+              )
+            : null;
         const unknownFields = [
           ["monthly rent", listing.monthlyRentCents],
           ["recurring fees", listing.recurringFeesCents],
@@ -1039,6 +1059,11 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
                 listing.id,
                 listing.updatedByDecisionRunId
               );
+        const listingRisks =
+          currentRisks ?? riskRows.filter((risk) => risk.canonicalListingId === listing.id);
+        const highestRiskSeverity = ["high", "medium", "low", "info"].find((severity) =>
+          listingRisks.some((risk) => risk.status === "open" && risk.severity === severity)
+        );
         const displayScore = scoreV2?.finalScoreBasisPoints ?? score?.totalScoreBasisPoints ?? null;
         const penaltyTotal = scoreV2
           ? scoreV2.stalePenaltyBasisPoints +
@@ -1061,6 +1086,8 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           lifecycleState: listing.lifecycleState,
           completenessBasisPoints: listing.completenessBasisPoints,
           freshestObservedAt: listing.freshestObservedAt,
+          freshestSourcePostedAt,
+          alertLatencySeconds,
           sourceLabels,
           sourceRecordCount,
           duplicateCount: Math.max(0, sourceRecordCount - 1),
@@ -1101,7 +1128,8 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           riskIndicatorCount:
             currentRisks?.filter(({ status }) => status === "open").length ??
             riskCountByListing.get(listing.id) ??
-            0
+            0,
+          highestRiskSeverity: highestRiskSeverity ?? null
         });
       });
     },

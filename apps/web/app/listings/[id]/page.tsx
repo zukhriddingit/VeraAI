@@ -1,8 +1,12 @@
+import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { getListingDetail } from "../../../lib/listing-presentation";
 import { parseRouteEntityId } from "../../../lib/route-entity-id";
 import { ListingDetail } from "./listing-detail";
+
+export const dynamic = "force-dynamic";
 
 interface ListingDetailPageProps {
   readonly params: Promise<{ id: string }>;
@@ -11,6 +15,14 @@ interface ListingDetailPageProps {
 export default async function ListingDetailPage({ params }: ListingDetailPageProps) {
   const listingId = parseRouteEntityId((await params).id);
   if (listingId === null) notFound();
+  const connection = openExistingDatabase();
+  let initialDetail: ReturnType<typeof getListingDetail>;
+  try {
+    initialDetail = getListingDetail(createSqliteRepositories(connection), listingId);
+  } finally {
+    connection.close();
+  }
+  if (initialDetail === null) notFound();
 
   return (
     <main>
@@ -28,7 +40,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
           deciding what to do next.
         </p>
       </header>
-      <ListingDetail listingId={listingId} />
+      <ListingDetail listingId={listingId} initialDetail={initialDetail} />
     </main>
   );
 }

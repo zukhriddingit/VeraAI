@@ -4,6 +4,7 @@ import { ActivityOutcomeSchema, PolicyDecisionSchema } from "./activity.ts";
 import { CanonicalListingSummarySchema } from "./api.ts";
 import { ListingScoreV2Schema, RiskSignalV2Schema } from "./decision.ts";
 import {
+  CanonicalFieldSourceSchema,
   CanonicalListingSchema,
   FieldProvenanceSchema,
   ListingScoreSchema,
@@ -87,11 +88,21 @@ export const ListingSourceEvidenceSchema = z
   })
   .strict();
 
+export const MissingInformationItemSchema = z
+  .object({
+    fieldPath: z.string().trim().min(1).max(200),
+    label: z.string().trim().min(1).max(120),
+    verificationQuestion: z.string().trim().min(1).max(300)
+  })
+  .strict();
+
 export const CanonicalListingDetailResponseSchema = z
   .object({
     canonical: CanonicalListingSchema,
     summary: CanonicalListingSummarySchema,
     sources: z.array(ListingSourceEvidenceSchema).min(1),
+    fieldSources: z.array(CanonicalFieldSourceSchema),
+    missingInformation: z.array(MissingInformationItemSchema),
     duplicateExplanation: z.string().trim().min(1).max(500).nullable(),
     score: z.union([ListingScoreSchema, ListingScoreV2Schema]).nullable(),
     risks: z.array(z.union([RiskSignalSchema, RiskSignalV2Schema])),
@@ -147,6 +158,7 @@ export type DemoStatusResponse = z.infer<typeof DemoStatusResponseSchema>;
 export type ActivityPresentation = z.infer<typeof ActivityPresentationSchema>;
 export type ActivityCollectionResponse = z.infer<typeof ActivityCollectionResponseSchema>;
 export type ListingSourceEvidence = z.infer<typeof ListingSourceEvidenceSchema>;
+export type MissingInformationItem = z.infer<typeof MissingInformationItemSchema>;
 export type CanonicalListingDetailResponse = z.infer<typeof CanonicalListingDetailResponseSchema>;
 export type ShortlistRequest = z.infer<typeof ShortlistRequestSchema>;
 export type ShortlistResponse = z.infer<typeof ShortlistResponseSchema>;

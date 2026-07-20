@@ -26,6 +26,30 @@ function money(cents: number | null): string {
   return cents === null ? "Unknown" : currency.format(cents / 100);
 }
 
+const profileDate = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  timeZone: "UTC"
+});
+
+function moveInWindow(profile: DemoStatusResponse["profile"]): string {
+  if (profile.moveInEarliest === null && profile.moveInLatest === null) return "Flexible";
+  const earliest = profile.moveInEarliest
+    ? profileDate.format(new Date(`${profile.moveInEarliest}T00:00:00.000Z`))
+    : "Any time";
+  const latest = profile.moveInLatest
+    ? profileDate.format(new Date(`${profile.moveInLatest}T00:00:00.000Z`))
+    : "open-ended";
+  return `${earliest} – ${latest}`;
+}
+
+function petRequirements(profile: DemoStatusResponse["profile"]): string {
+  const required = profile.petRequirements
+    .filter(({ required: isRequired }) => isRequired)
+    .map(({ animal }) => animal);
+  return required.length > 0 ? `${required.join(" + ")} required` : "No required pet policy";
+}
+
 async function requestDemoStatus(signal?: AbortSignal): Promise<DemoStatusResponse> {
   const response = await fetch("/api/demo/status", {
     cache: "no-store",
@@ -108,11 +132,15 @@ export function DemoSearch({ initialState }: { initialState: CockpitInitialState
     <>
       <section className="profile-card" aria-labelledby="profile-heading">
         <div className="profile-card-copy">
-          <p className="eyebrow">Sanitized search profile</p>
+          <div className="profile-card-label">
+            <p className="eyebrow">Your active search</p>
+            <span>Read-only demo profile</span>
+          </div>
           <h2 id="profile-heading">{profile.name}</h2>
           <p>
-            A focused September search using only fictional Harbor City data and deterministic
-            criteria.
+            {profile.locationText}
+            {profile.radiusKilometers ? ` · ${String(profile.radiusKilometers)} km radius` : ""} ·
+            deterministic criteria
           </p>
         </div>
         <dl className="profile-facts">
@@ -125,15 +153,22 @@ export function DemoSearch({ initialState }: { initialState: CockpitInitialState
           </div>
           <div>
             <dt>Home</dt>
-            <dd>{String(profile.minimumBedrooms ?? 0)}+ bedroom · cat required</dd>
+            <dd>
+              {String(profile.minimumBedrooms ?? 0)}+ bed · {String(profile.minimumBathrooms ?? 0)}+
+              bath
+            </dd>
           </div>
           <div>
             <dt>Move-in</dt>
-            <dd>September 2026</dd>
+            <dd>{moveInWindow(profile)}</dd>
           </div>
           <div>
-            <dt>Must-haves</dt>
-            <dd>Laundry · bicycle storage preferred</dd>
+            <dt>Pets</dt>
+            <dd>{petRequirements(profile)}</dd>
+          </div>
+          <div>
+            <dt>Preferences</dt>
+            <dd>{profile.weightedPreferences.map(({ description }) => description).join(" · ")}</dd>
           </div>
         </dl>
       </section>
@@ -160,11 +195,14 @@ export function DemoSearch({ initialState }: { initialState: CockpitInitialState
         </button>
       </section>
 
-      <section className="listings-section" aria-labelledby="listings-heading">
+      <section
+        className="listings-section cockpit-listings-section"
+        aria-labelledby="listings-heading"
+      >
         <div className="listings-heading">
           <div>
-            <p className="eyebrow">Canonical listing inbox</p>
-            <h2 id="listings-heading">Homes worth reviewing</h2>
+            <p className="eyebrow">Decision cockpit</p>
+            <h2 id="listings-heading">Homes worth your attention</h2>
           </div>
           <p>Compare fit, missing facts, risk evidence, and duplicate sources before deciding.</p>
         </div>

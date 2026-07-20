@@ -67,6 +67,15 @@ describe.sequential("GET /api/listings", () => {
     expect(response.headers.get("Cache-Control")).toContain("no-store");
     expect(parsed.count).toBe(8);
     expect(parsed.listings.filter((listing) => listing.duplicateCount > 0)).toHaveLength(3);
+    expect(parsed.listings.every(({ alertLatencySeconds }) => alertLatencySeconds === null)).toBe(
+      true
+    );
+    expect(
+      parsed.listings.every(({ freshestSourcePostedAt }) => freshestSourcePostedAt === null)
+    ).toBe(true);
+    expect(
+      parsed.listings.find(({ title }) => title === "Juniper Row one-bedroom")?.highestRiskSeverity
+    ).toBe("high");
   });
 
   it("fails closed with a safe response when the database is uninitialized", async () => {

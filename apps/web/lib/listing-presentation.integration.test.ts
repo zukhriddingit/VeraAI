@@ -43,6 +43,20 @@ describe("listing presentation", () => {
     expect(detail?.duplicateExplanation).toContain("Zillow");
     expect(detail?.score?.factors).toHaveLength(4);
     expect(detail?.risks).toHaveLength(3);
+    expect(detail?.fieldSources.length).toBeGreaterThan(0);
+    const incompleteSummary = repositories.canonicalListings
+      .listSummaries()
+      .find(({ unknownFields }) => unknownFields.length > 0);
+    expect(incompleteSummary).toBeDefined();
+    const incompleteDetail = getListingDetail(repositories, incompleteSummary!.id);
+    expect(incompleteDetail?.missingInformation).toHaveLength(
+      incompleteSummary!.unknownFields.length
+    );
+    expect(
+      incompleteDetail?.missingInformation.every(
+        ({ verificationQuestion }) => verificationQuestion.length > 0
+      )
+    ).toBe(true);
     expect(JSON.stringify(detail)).not.toMatch(/@[a-z0-9.-]+\.[a-z]{2,}/iu);
   });
 

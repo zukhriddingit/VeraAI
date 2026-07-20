@@ -30,6 +30,8 @@ export const CanonicalListingSummarySchema = z
     supersededById: EntityIdSchema.nullable().optional(),
     completenessBasisPoints: PercentageBasisPointsSchema,
     freshestObservedAt: IsoDateTimeSchema,
+    freshestSourcePostedAt: IsoDateTimeSchema.nullable(),
+    alertLatencySeconds: z.number().int().nonnegative().safe().nullable(),
     sourceLabels: z.array(ListingSourceLabelSchema).min(1),
     sourceRecordCount: z.number().int().positive(),
     duplicateCount: z.number().int().nonnegative(),
@@ -43,7 +45,8 @@ export const CanonicalListingSummarySchema = z
     fitLabel: z.enum(["strong_fit", "possible_fit", "needs_review"]).nullable(),
     topPositiveReason: z.string().trim().min(1).max(300).nullable(),
     topConcern: z.string().trim().min(1).max(300).nullable(),
-    riskIndicatorCount: z.number().int().nonnegative()
+    riskIndicatorCount: z.number().int().nonnegative(),
+    highestRiskSeverity: z.enum(["info", "low", "medium", "high"]).nullable()
   })
   .strict();
 
