@@ -7,7 +7,16 @@ import type {
   CanonicalListingSource,
   CanonicalListingSummary,
   ContactWorkflow,
+  DecisionCorpusSnapshot,
+  DecisionJob,
+  DecisionJobAttempt,
+  DecisionJobErrorCode,
+  DecisionJobTrigger,
+  DecisionPlan,
   DuplicateCluster,
+  DuplicateOverride,
+  DuplicateOverrideRevocation,
+  DuplicatePairEvaluation,
   FieldProvenance,
   ListingExtractionRun,
   ListingLifecycleState,
@@ -25,6 +34,52 @@ import type {
   SourcePolicyManifest,
   Viewing
 } from "@vera/domain";
+
+export interface DecisionCorpusState {
+  readonly searchProfileId: string;
+  readonly revision: number;
+  readonly updatedAt: string;
+}
+
+export interface DecisionRunRecord {
+  readonly id: string;
+  readonly jobId: string;
+  readonly searchProfileId: string;
+  readonly corpusRevision: number;
+  readonly planVersion: string;
+  readonly inputHash: string;
+  readonly outputHash: string;
+  readonly counts: Readonly<Record<string, number>>;
+  readonly createdAt: string;
+}
+
+export interface EnqueueDecisionJobInput {
+  readonly id: string;
+  readonly searchProfileId: string;
+  readonly trigger: DecisionJobTrigger;
+  readonly now: string;
+}
+
+export interface ClaimDecisionJobInput {
+  readonly leaseOwner: string;
+  readonly now: string;
+  readonly leaseExpiresAt: string;
+}
+
+export interface FailDecisionJobInput {
+  readonly id: string;
+  readonly leaseOwner: string;
+  readonly retryable: boolean;
+  readonly errorCode: DecisionJobErrorCode;
+  readonly errorMessage: string;
+  readonly failedAt: string;
+  readonly retryAt: string;
+}
+
+export interface AppliedDecisionRun {
+  readonly run: DecisionRunRecord;
+  readonly replayed: boolean;
+}
 
 export interface RawImportResult {
   readonly record: RawListing;
@@ -239,6 +294,48 @@ export interface NormalizationJobRepository {
   count(): number;
 }
 
+export interface DecisionJobRepository {
+  getCorpusState(searchProfileId: string): DecisionCorpusState | null;
+  ensureCorpusState(searchProfileId: string, now: string): DecisionCorpusState;
+  bumpCorpusRevisionAndEnqueue(input: EnqueueDecisionJobInput): DecisionJob;
+  enqueueCurrentRevision(input: EnqueueDecisionJobInput): DecisionJob;
+  getById(id: string): DecisionJob | null;
+  getByProfileRevision(searchProfileId: string, revision: number): DecisionJob | null;
+  list(): readonly DecisionJob[];
+  claimNext(input: ClaimDecisionJobInput): DecisionJob | null;
+  appendAttempt(attempt: DecisionJobAttempt): DecisionJobAttempt;
+  listAttempts(jobId: string): readonly DecisionJobAttempt[];
+  fail(input: FailDecisionJobInput): DecisionJob;
+  cancel(id: string, cancelledAt: string): DecisionJob;
+}
+
+export interface DuplicateOverrideRepository {
+  create(override: DuplicateOverride): DuplicateOverride;
+  revoke(revocation: DuplicateOverrideRevocation): DuplicateOverrideRevocation;
+  list(searchProfileId: string): readonly DuplicateOverride[];
+  listActive(searchProfileId: string): readonly DuplicateOverride[];
+  listRevocations(searchProfileId: string): readonly DuplicateOverrideRevocation[];
+}
+
+export interface DecisionHistoryRepository {
+  getRunById(id: string): DecisionRunRecord | null;
+  getRunByJobId(jobId: string): DecisionRunRecord | null;
+  listRuns(searchProfileId: string): readonly DecisionRunRecord[];
+  listPairEvaluations(decisionRunId: string): readonly DuplicatePairEvaluation[];
+}
+
+export interface DecisionReconciliationRepository {
+  readSnapshot(input: {
+    readonly searchProfileId: string;
+    readonly targetCorpusRevision: number;
+  }): DecisionCorpusSnapshot;
+  applyPlan(input: {
+    readonly jobId: string;
+    readonly leaseOwner: string;
+    readonly plan: DecisionPlan;
+  }): AppliedDecisionRun;
+}
+
 export interface VeraRepositories {
   readonly searchProfiles: SearchProfileRepository;
   readonly rawListings: RawListingRepository;
@@ -259,5 +356,9 @@ export interface VeraRepositories {
   readonly sourceJobAttempts: SourceJobAttemptRepository;
   readonly browserNodes: BrowserNodeRepository;
   readonly normalizationJobs: NormalizationJobRepository;
+  readonly decisionJobs: DecisionJobRepository;
+  readonly duplicateOverrides: DuplicateOverrideRepository;
+  readonly decisionHistory: DecisionHistoryRepository;
+  readonly decisionReconciliation: DecisionReconciliationRepository;
   transaction<T>(callback: (repositories: VeraRepositories) => T): T;
 }

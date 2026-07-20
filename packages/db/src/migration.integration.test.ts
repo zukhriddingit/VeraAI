@@ -51,10 +51,215 @@ function applyInitialMigration(): void {
   `);
 }
 
+function downgradePopulatedDatabaseTo0004Shape(): void {
+  if (!connection) {
+    throw new Error("Migration test database is not open.");
+  }
+
+  connection.sqlite.pragma("foreign_keys = OFF");
+  connection.sqlite.exec(`
+    DROP TRIGGER IF EXISTS canonical_decision_runs_no_delete;
+    DROP TRIGGER IF EXISTS canonical_decision_runs_no_update;
+    DROP TRIGGER IF EXISTS decision_job_attempts_no_delete;
+    DROP TRIGGER IF EXISTS decision_job_attempts_no_update;
+    DROP TRIGGER IF EXISTS decision_runs_no_delete;
+    DROP TRIGGER IF EXISTS decision_runs_no_update;
+    DROP TRIGGER IF EXISTS duplicate_override_revocations_no_delete;
+    DROP TRIGGER IF EXISTS duplicate_override_revocations_no_update;
+    DROP TRIGGER IF EXISTS duplicate_overrides_no_delete;
+    DROP TRIGGER IF EXISTS duplicate_overrides_no_update;
+    DROP TRIGGER IF EXISTS duplicate_pair_evaluations_no_delete;
+    DROP TRIGGER IF EXISTS duplicate_pair_evaluations_no_update;
+    DROP TRIGGER IF EXISTS listing_scores_no_delete;
+    DROP TRIGGER IF EXISTS listing_scores_no_update;
+
+    CREATE TABLE __legacy_risk_signals_0004 (
+      id text PRIMARY KEY NOT NULL,
+      canonical_listing_id text NOT NULL REFERENCES canonical_listings(id),
+      code text NOT NULL,
+      severity text NOT NULL,
+      confidence_basis_points integer NOT NULL,
+      evidence text NOT NULL,
+      verification_action text NOT NULL,
+      status text NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL
+    );
+    INSERT INTO __legacy_risk_signals_0004
+    SELECT id, canonical_listing_id, code, severity, confidence_basis_points,
+           evidence, verification_action, status, created_at, updated_at
+    FROM risk_signals;
+    DROP TABLE risk_signals;
+    ALTER TABLE __legacy_risk_signals_0004 RENAME TO risk_signals;
+    CREATE UNIQUE INDEX risk_signals_listing_code_unique
+      ON risk_signals(canonical_listing_id, code);
+
+    CREATE TABLE __legacy_listing_scores_0004 (
+      id text PRIMARY KEY NOT NULL,
+      canonical_listing_id text NOT NULL REFERENCES canonical_listings(id),
+      search_profile_id text REFERENCES search_profiles(id),
+      algorithm_version text NOT NULL,
+      input_hash text NOT NULL,
+      total_score_basis_points integer NOT NULL,
+      factors text NOT NULL,
+      reason_codes text NOT NULL,
+      computed_at text NOT NULL
+    );
+    INSERT INTO __legacy_listing_scores_0004
+    SELECT id, canonical_listing_id, search_profile_id, algorithm_version,
+           input_hash, total_score_basis_points, factors, reason_codes, computed_at
+    FROM listing_scores;
+    DROP TABLE listing_scores;
+    ALTER TABLE __legacy_listing_scores_0004 RENAME TO listing_scores;
+    CREATE UNIQUE INDEX listing_scores_snapshot_unique
+      ON listing_scores(canonical_listing_id, search_profile_id, algorithm_version, input_hash);
+
+    CREATE TABLE __legacy_canonical_listings_0004 (
+      id text PRIMARY KEY NOT NULL,
+      duplicate_cluster_id text REFERENCES duplicate_clusters(id),
+      primary_source_record_id text NOT NULL REFERENCES listing_source_records(id),
+      title text NOT NULL,
+      address_line_1 text,
+      address_unit text,
+      address_city text,
+      address_region text,
+      address_postal_code text,
+      address_country_code text,
+      monthly_rent_cents integer,
+      recurring_fees_cents integer,
+      bedrooms_half_units integer,
+      bathrooms_half_units integer,
+      square_feet integer,
+      property_type text,
+      available_on text,
+      lease_term_months integer,
+      pet_policy text DEFAULT 'null',
+      amenities text NOT NULL,
+      description text,
+      lifecycle_state text NOT NULL,
+      completeness_basis_points integer NOT NULL,
+      freshest_observed_at text NOT NULL,
+      created_at text NOT NULL,
+      updated_at text NOT NULL
+    );
+    INSERT INTO __legacy_canonical_listings_0004
+    SELECT id, duplicate_cluster_id, primary_source_record_id, title, address_line_1,
+           address_unit, address_city, address_region, address_postal_code,
+           address_country_code, monthly_rent_cents, recurring_fees_cents,
+           bedrooms_half_units, bathrooms_half_units, square_feet, property_type,
+           available_on, lease_term_months, pet_policy, amenities, description,
+           lifecycle_state, completeness_basis_points, freshest_observed_at,
+           created_at, updated_at
+    FROM canonical_listings;
+    DROP TABLE canonical_listings;
+    ALTER TABLE __legacy_canonical_listings_0004 RENAME TO canonical_listings;
+    CREATE UNIQUE INDEX canonical_listings_duplicate_cluster_unique
+      ON canonical_listings(duplicate_cluster_id);
+
+    CREATE TABLE __legacy_duplicate_clusters_0004 (
+      id text PRIMARY KEY NOT NULL,
+      cluster_key text NOT NULL,
+      algorithm_version text NOT NULL,
+      reason_codes text NOT NULL,
+      created_at text NOT NULL
+    );
+    INSERT INTO __legacy_duplicate_clusters_0004
+    SELECT id, cluster_key, algorithm_version, reason_codes, created_at
+    FROM duplicate_clusters;
+    DROP TABLE duplicate_clusters;
+    ALTER TABLE __legacy_duplicate_clusters_0004 RENAME TO duplicate_clusters;
+    CREATE UNIQUE INDEX duplicate_clusters_key_unique ON duplicate_clusters(cluster_key);
+
+    CREATE TABLE __legacy_listing_photos_0004 (
+      id text PRIMARY KEY NOT NULL,
+      listing_source_record_id text NOT NULL REFERENCES listing_source_records(id),
+      source_url text,
+      fixture_asset_label text,
+      byte_hash text,
+      perceptual_hash text,
+      position integer NOT NULL,
+      observed_at text NOT NULL
+    );
+    INSERT INTO __legacy_listing_photos_0004
+    SELECT id, listing_source_record_id, source_url, fixture_asset_label,
+           byte_hash, perceptual_hash, position, observed_at
+    FROM listing_photos;
+    DROP TABLE listing_photos;
+    ALTER TABLE __legacy_listing_photos_0004 RENAME TO listing_photos;
+    CREATE UNIQUE INDEX listing_photos_source_position_unique
+      ON listing_photos(listing_source_record_id, position);
+
+    CREATE TABLE __legacy_listing_source_records_0004 (
+      id text PRIMARY KEY NOT NULL,
+      raw_listing_id text NOT NULL REFERENCES raw_listings(id),
+      source text NOT NULL,
+      source_listing_id text,
+      source_url text,
+      source_posted_at text,
+      contact_channel text DEFAULT 'unknown' NOT NULL,
+      title text NOT NULL,
+      address_line_1 text,
+      address_unit text,
+      address_city text,
+      address_region text,
+      address_postal_code text,
+      address_country_code text,
+      monthly_rent_cents integer,
+      recurring_fees_cents integer,
+      bedrooms_half_units integer,
+      bathrooms_half_units integer,
+      square_feet integer,
+      property_type text,
+      available_on text,
+      lease_term_months integer,
+      pet_policy text DEFAULT 'null',
+      amenities text NOT NULL,
+      description text,
+      extraction_confidence_basis_points integer NOT NULL,
+      completeness_basis_points integer NOT NULL,
+      observed_at text NOT NULL,
+      created_at text NOT NULL
+    );
+    INSERT INTO __legacy_listing_source_records_0004
+    SELECT id, raw_listing_id, source, source_listing_id, source_url, source_posted_at,
+           contact_channel, title, address_line_1, address_unit, address_city,
+           address_region, address_postal_code, address_country_code,
+           monthly_rent_cents, recurring_fees_cents, bedrooms_half_units,
+           bathrooms_half_units, square_feet, property_type, available_on,
+           lease_term_months, pet_policy, amenities, description,
+           extraction_confidence_basis_points, completeness_basis_points,
+           observed_at, created_at
+    FROM listing_source_records;
+    DROP TABLE listing_source_records;
+    ALTER TABLE __legacy_listing_source_records_0004 RENAME TO listing_source_records;
+    CREATE UNIQUE INDEX listing_source_records_raw_listing_unique
+      ON listing_source_records(raw_listing_id);
+    CREATE INDEX listing_source_records_source_idx ON listing_source_records(source);
+
+    DROP TABLE canonical_decision_runs;
+    DROP TABLE duplicate_pair_evaluations;
+    DROP TABLE duplicate_override_revocations;
+    DROP TABLE duplicate_overrides;
+    DROP TABLE decision_runs;
+    DROP TABLE decision_job_attempts;
+    DROP TABLE decision_jobs;
+    DROP TABLE decision_corpus_state;
+    DELETE FROM __drizzle_migrations
+      WHERE created_at = (SELECT MAX(created_at) FROM __drizzle_migrations);
+  `);
+  connection.sqlite.pragma("foreign_keys = ON");
+
+  if ((connection.sqlite.pragma("foreign_key_check") as readonly unknown[]).length > 0) {
+    throw new Error("0004 migration fixture has foreign-key integrity violations.");
+  }
+}
+
 function downgradePopulatedDatabaseTo0002Shape(): void {
   if (!connection) {
     throw new Error("Migration test database is not open.");
   }
+
+  downgradePopulatedDatabaseTo0004Shape();
 
   connection.sqlite.pragma("foreign_keys = OFF");
   connection.sqlite.exec(`
@@ -162,6 +367,8 @@ function downgradePopulatedDatabaseTo0003Shape(): void {
   if (!connection) {
     throw new Error("Migration test database is not open.");
   }
+
+  downgradePopulatedDatabaseTo0004Shape();
 
   connection.sqlite.pragma("foreign_keys = OFF");
   connection.sqlite.exec(`
@@ -451,8 +658,22 @@ describe("forward persistence migrations", () => {
     ).toEqual([
       "activity_events_no_delete",
       "activity_events_no_update",
+      "canonical_decision_runs_no_delete",
+      "canonical_decision_runs_no_update",
+      "decision_job_attempts_no_delete",
+      "decision_job_attempts_no_update",
+      "decision_runs_no_delete",
+      "decision_runs_no_update",
+      "duplicate_override_revocations_no_delete",
+      "duplicate_override_revocations_no_update",
+      "duplicate_overrides_no_delete",
+      "duplicate_overrides_no_update",
+      "duplicate_pair_evaluations_no_delete",
+      "duplicate_pair_evaluations_no_update",
       "listing_extractions_no_delete",
       "listing_extractions_no_update",
+      "listing_scores_no_delete",
+      "listing_scores_no_update",
       "raw_listings_no_delete",
       "raw_listings_no_update",
       "source_job_attempts_no_delete",
@@ -539,8 +760,22 @@ describe("forward persistence migrations", () => {
     ).toEqual([
       "activity_events_no_delete",
       "activity_events_no_update",
+      "canonical_decision_runs_no_delete",
+      "canonical_decision_runs_no_update",
+      "decision_job_attempts_no_delete",
+      "decision_job_attempts_no_update",
+      "decision_runs_no_delete",
+      "decision_runs_no_update",
+      "duplicate_override_revocations_no_delete",
+      "duplicate_override_revocations_no_update",
+      "duplicate_overrides_no_delete",
+      "duplicate_overrides_no_update",
+      "duplicate_pair_evaluations_no_delete",
+      "duplicate_pair_evaluations_no_update",
       "listing_extractions_no_delete",
       "listing_extractions_no_update",
+      "listing_scores_no_delete",
+      "listing_scores_no_update",
       "raw_listings_no_delete",
       "raw_listings_no_update",
       "source_job_attempts_no_delete",

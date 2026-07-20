@@ -7,3 +7,4 @@ export * from "./repositories.ts";
 export * from "./schema.ts";
 export * from "./seed.ts";
 export * from "./sqlite-repositories.ts";
+export * from "./sqlite-decision-repositories.ts";

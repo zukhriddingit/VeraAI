@@ -2,14 +2,19 @@ import type {
   ActivityEvent,
   BrowserNodeStatus,
   CanonicalListing,
+  CanonicalListingPlan,
   ContactWorkflow,
   DuplicateCluster,
+  DuplicateOverride,
+  DuplicatePairEvaluation,
   JobAttempt,
   JsonObject,
   JsonValue,
   ListingExtractionRun,
   ListingScore,
+  ListingScoreV2,
   RiskSignal,
+  RiskSignalV2,
   SearchProfile,
   SourceJob,
   SourcePolicyManifest,
@@ -139,6 +144,8 @@ export const listingSourceRecords = sqliteTable(
     bedroomsHalfUnits: integer("bedrooms_half_units"),
     bathroomsHalfUnits: integer("bathrooms_half_units"),
     squareFeet: integer("square_feet"),
+    latitude: integer("latitude_microdegrees"),
+    longitude: integer("longitude_microdegrees"),
     propertyType: text("property_type"),
     availableOn: text("available_on"),
     leaseTermMonths: integer("lease_term_months"),
@@ -155,6 +162,7 @@ export const listingSourceRecords = sqliteTable(
   (table) => [
     uniqueIndex("listing_source_records_raw_listing_unique").on(table.rawListingId),
     index("listing_source_records_source_idx").on(table.source),
+    index("listing_source_records_coordinates_idx").on(table.latitude, table.longitude),
     check(
       "listing_source_records_confidence_range",
       sql`${table.extractionConfidenceBasisPoints} BETWEEN 0 AND 10000`
@@ -173,6 +181,10 @@ export const listingSourceRecords = sqliteTable(
       sql`${table.contactChannel} IN (
         'email', 'phone', 'platform_message', 'website_form', 'other', 'unknown'
       )`
+    ),
+    check(
+      "listing_source_records_coordinate_pair",
+      sql`(${table.latitude} IS NULL) = (${table.longitude} IS NULL)`
     )
   ]
 );
@@ -188,6 +200,11 @@ export const listingPhotos = sqliteTable(
     fixtureAssetLabel: text("fixture_asset_label"),
     byteHash: text("byte_hash"),
     perceptualHash: text("perceptual_hash"),
+    byteSize: integer("byte_size"),
+    width: integer("width"),
+    height: integer("height"),
+    mimeType: text("mime_type"),
+    perceptualHashVersion: text("perceptual_hash_version"),
     position: integer("position").notNull(),
     observedAt: text("observed_at").notNull()
   },
@@ -200,7 +217,20 @@ export const listingPhotos = sqliteTable(
       "listing_photos_reference_required",
       sql`${table.sourceUrl} IS NOT NULL OR ${table.fixtureAssetLabel} IS NOT NULL`
     ),
-    check("listing_photos_position_nonnegative", sql`${table.position} >= 0`)
+    check("listing_photos_position_nonnegative", sql`${table.position} >= 0`),
+    check(
+      "listing_photos_decoded_metadata_consistency",
+      sql`((${table.byteSize} IS NULL) + (${table.width} IS NULL) + (${table.height} IS NULL) + (${table.mimeType} IS NULL)) IN (0, 4)`
+    ),
+    check(
+      "listing_photos_perceptual_version_consistency",
+      sql`(${table.perceptualHash} IS NULL) = (${table.perceptualHashVersion} IS NULL)`
+    ),
+    index("listing_photos_byte_hash_idx").on(table.byteHash),
+    index("listing_photos_perceptual_hash_idx").on(
+      table.perceptualHashVersion,
+      table.perceptualHash
+    )
   ]
 );
 
@@ -547,18 +577,270 @@ export const listingExtractions = sqliteTable(
   ]
 );
 
+export const decisionCorpusState = sqliteTable(
+  "decision_corpus_state",
+  {
+    searchProfileId: text("search_profile_id")
+      .primaryKey()
+      .references(() => searchProfiles.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    revision: integer("revision").notNull(),
+    updatedAt: text("updated_at").notNull()
+  },
+  (table) => [check("decision_corpus_state_revision_nonnegative", sql`${table.revision} >= 0`)]
+);
+
+export const decisionJobs = sqliteTable(
+  "decision_jobs",
+  {
+    id: text("id").primaryKey(),
+    searchProfileId: text("search_profile_id")
+      .notNull()
+      .references(() => searchProfiles.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    targetCorpusRevision: integer("target_corpus_revision").notNull(),
+    trigger: text("trigger").notNull(),
+    status: text("status").notNull(),
+    inputHash: text("input_hash"),
+    outputHash: text("output_hash"),
+    attemptCount: integer("attempt_count").notNull(),
+    availableAt: text("available_at").notNull(),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: text("lease_expires_at"),
+    errorCode: text("error_code"),
+    errorMessage: text("error_message"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    completedAt: text("completed_at")
+  },
+  (table) => [
+    uniqueIndex("decision_jobs_profile_revision_unique").on(
+      table.searchProfileId,
+      table.targetCorpusRevision
+    ),
+    index("decision_jobs_claim_idx").on(table.status, table.availableAt, table.createdAt),
+    check("decision_jobs_revision_nonnegative", sql`${table.targetCorpusRevision} >= 0`),
+    check(
+      "decision_jobs_trigger_allowed",
+      sql`${table.trigger} IN ('normalization', 'manual_recompute', 'seed')`
+    ),
+    check(
+      "decision_jobs_status_allowed",
+      sql`${table.status} IN ('queued', 'running', 'succeeded', 'retryable_failed', 'permanently_failed', 'cancelled')`
+    ),
+    check("decision_jobs_attempt_count_valid", sql`${table.attemptCount} BETWEEN 0 AND 100`),
+    check(
+      "decision_jobs_lease_pair",
+      sql`(${table.leaseOwner} IS NULL) = (${table.leaseExpiresAt} IS NULL)`
+    )
+  ]
+);
+
+export const decisionJobAttempts = sqliteTable(
+  "decision_job_attempts",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => decisionJobs.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    attemptNumber: integer("attempt_number").notNull(),
+    startedAt: text("started_at").notNull(),
+    finishedAt: text("finished_at"),
+    outcome: text("outcome"),
+    errorCode: text("error_code"),
+    durationMilliseconds: integer("duration_milliseconds")
+  },
+  (table) => [
+    uniqueIndex("decision_job_attempts_job_number_unique").on(table.jobId, table.attemptNumber),
+    index("decision_job_attempts_job_idx").on(table.jobId, table.attemptNumber),
+    check("decision_job_attempts_number_positive", sql`${table.attemptNumber} > 0`),
+    check(
+      "decision_job_attempts_outcome_allowed",
+      sql`${table.outcome} IS NULL OR ${table.outcome} IN ('succeeded', 'retryable_failed', 'permanently_failed', 'cancelled', 'lease_lost')`
+    )
+  ]
+);
+
+export const decisionRuns = sqliteTable(
+  "decision_runs",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id")
+      .notNull()
+      .references(() => decisionJobs.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    searchProfileId: text("search_profile_id")
+      .notNull()
+      .references(() => searchProfiles.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    corpusRevision: integer("corpus_revision").notNull(),
+    planVersion: text("plan_version").notNull(),
+    inputHash: text("input_hash").notNull(),
+    outputHash: text("output_hash").notNull(),
+    counts: text("counts_json", { mode: "json" }).$type<JsonObject>().notNull(),
+    createdAt: text("created_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("decision_runs_job_unique").on(table.jobId),
+    uniqueIndex("decision_runs_profile_revision_input_unique").on(
+      table.searchProfileId,
+      table.corpusRevision,
+      table.inputHash
+    ),
+    index("decision_runs_profile_revision_idx").on(table.searchProfileId, table.corpusRevision),
+    check("decision_runs_revision_nonnegative", sql`${table.corpusRevision} >= 0`)
+  ]
+);
+
+export const duplicatePairEvaluations = sqliteTable(
+  "duplicate_pair_evaluations",
+  {
+    id: text("id").primaryKey(),
+    decisionRunId: text("decision_run_id")
+      .notNull()
+      .references(() => decisionRuns.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    leftSourceRecordId: text("left_source_record_id")
+      .notNull()
+      .references(() => listingSourceRecords.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    rightSourceRecordId: text("right_source_record_id")
+      .notNull()
+      .references(() => listingSourceRecords.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    algorithmVersion: text("algorithm_version").notNull(),
+    inputHash: text("input_hash").notNull(),
+    decision: text("decision").notNull(),
+    scoreBasisPoints: integer("score_basis_points"),
+    automaticLinkThresholdBasisPoints: integer("automatic_link_threshold_basis_points").notNull(),
+    reviewThresholdBasisPoints: integer("review_threshold_basis_points").notNull(),
+    exactReasonCodes: text("exact_reason_codes", { mode: "json" })
+      .$type<DuplicatePairEvaluation["exactReasonCodes"]>()
+      .notNull(),
+    conflictReasonCodes: text("conflict_reason_codes", { mode: "json" })
+      .$type<DuplicatePairEvaluation["conflictReasonCodes"]>()
+      .notNull(),
+    contactMatched: integer("contact_matched", { mode: "boolean" }).notNull(),
+    features: text("features_json", { mode: "json" })
+      .$type<DuplicatePairEvaluation["features"]>()
+      .notNull(),
+    evaluatedAt: text("evaluated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("duplicate_pair_evaluations_run_pair_unique").on(
+      table.decisionRunId,
+      table.leftSourceRecordId,
+      table.rightSourceRecordId
+    ),
+    index("duplicate_pair_evaluations_pair_idx").on(
+      table.leftSourceRecordId,
+      table.rightSourceRecordId,
+      table.evaluatedAt
+    ),
+    check(
+      "duplicate_pair_evaluations_ordered_pair",
+      sql`${table.leftSourceRecordId} < ${table.rightSourceRecordId}`
+    ),
+    check(
+      "duplicate_pair_evaluations_decision_allowed",
+      sql`${table.decision} IN ('link', 'review', 'separate')`
+    )
+  ]
+);
+
+export const duplicateOverrides = sqliteTable(
+  "duplicate_overrides",
+  {
+    id: text("id").primaryKey(),
+    searchProfileId: text("search_profile_id")
+      .notNull()
+      .references(() => searchProfiles.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    kind: text("kind").notNull(),
+    sourceRecordIds: text("source_record_ids_json", { mode: "json" })
+      .$type<DuplicateOverride["sourceRecordIds"]>()
+      .notNull(),
+    survivorCanonicalId: text("survivor_canonical_id"),
+    reason: text("reason"),
+    createdBy: text("created_by").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    createdAt: text("created_at").notNull()
+  },
+  (table) => [
+    index("duplicate_overrides_profile_created_idx").on(table.searchProfileId, table.createdAt),
+    check("duplicate_overrides_kind_allowed", sql`${table.kind} IN ('force_merge', 'force_split')`),
+    check("duplicate_overrides_actor_allowed", sql`${table.createdBy} IN ('user', 'system')`)
+  ]
+);
+
+export const duplicateOverrideRevocations = sqliteTable(
+  "duplicate_override_revocations",
+  {
+    id: text("id").primaryKey(),
+    overrideId: text("override_id")
+      .notNull()
+      .references(() => duplicateOverrides.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    reason: text("reason"),
+    createdBy: text("created_by").notNull(),
+    createdAt: text("created_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("duplicate_override_revocations_override_unique").on(table.overrideId),
+    check(
+      "duplicate_override_revocations_actor_allowed",
+      sql`${table.createdBy} IN ('user', 'system')`
+    )
+  ]
+);
+
+export const canonicalDecisionRuns = sqliteTable(
+  "canonical_decision_runs",
+  {
+    id: text("id").primaryKey(),
+    decisionRunId: text("decision_run_id")
+      .notNull()
+      .references(() => decisionRuns.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    canonicalListingId: text("canonical_listing_id").notNull(),
+    clusterId: text("cluster_id"),
+    primarySourceRecordId: text("primary_source_record_id")
+      .notNull()
+      .references(() => listingSourceRecords.id, { onDelete: "restrict", onUpdate: "restrict" }),
+    stitchVersion: text("stitch_version").notNull(),
+    stitchInputHash: text("stitch_input_hash").notNull(),
+    memberSourceRecordIds: text("member_source_record_ids_json", { mode: "json" })
+      .$type<CanonicalListingPlan["memberSourceRecordIds"]>()
+      .notNull(),
+    selectedFields: text("selected_fields_json", { mode: "json" })
+      .$type<CanonicalListingPlan["selectedFields"]>()
+      .notNull(),
+    diagnostics: text("diagnostics_json", { mode: "json" }).$type<JsonValue>().notNull()
+  },
+  (table) => [
+    uniqueIndex("canonical_decision_runs_run_listing_unique").on(
+      table.decisionRunId,
+      table.canonicalListingId
+    ),
+    index("canonical_decision_runs_listing_idx").on(table.canonicalListingId, table.decisionRunId)
+  ]
+);
+
 export const duplicateClusters = sqliteTable(
   "duplicate_clusters",
   {
     id: text("id").primaryKey(),
     clusterKey: text("cluster_key").notNull(),
     algorithmVersion: text("algorithm_version").notNull(),
+    configVersion: text("config_version").notNull().default("legacy"),
+    projectionState: text("projection_state").notNull().default("active"),
+    updatedByDecisionRunId: text("updated_by_decision_run_id").references(() => decisionRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "restrict"
+    }),
     reasonCodes: text("reason_codes", { mode: "json" })
       .$type<DuplicateCluster["reasonCodes"]>()
       .notNull(),
     createdAt: text("created_at").notNull()
   },
-  (table) => [uniqueIndex("duplicate_clusters_key_unique").on(table.clusterKey)]
+  (table) => [
+    uniqueIndex("duplicate_clusters_key_unique").on(table.clusterKey),
+    index("duplicate_clusters_projection_idx").on(table.projectionState, table.id),
+    check(
+      "duplicate_clusters_projection_allowed",
+      sql`${table.projectionState} IN ('active', 'superseded')`
+    )
+  ]
 );
 
 export const canonicalListings = sqliteTable(
@@ -593,6 +875,14 @@ export const canonicalListings = sqliteTable(
     amenities: text("amenities", { mode: "json" }).$type<CanonicalListing["amenities"]>().notNull(),
     description: text("description"),
     lifecycleState: text("lifecycle_state").notNull(),
+    projectionState: text("projection_state").notNull().default("active"),
+    supersededById: text("superseded_by_id"),
+    stitchVersion: text("stitch_version"),
+    stitchInputHash: text("stitch_input_hash"),
+    updatedByDecisionRunId: text("updated_by_decision_run_id").references(() => decisionRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "restrict"
+    }),
     completenessBasisPoints: integer("completeness_basis_points").notNull(),
     freshestObservedAt: text("freshest_observed_at").notNull(),
     createdAt: text("created_at").notNull(),
@@ -600,6 +890,7 @@ export const canonicalListings = sqliteTable(
   },
   (table) => [
     uniqueIndex("canonical_listings_duplicate_cluster_unique").on(table.duplicateClusterId),
+    index("canonical_listings_projection_idx").on(table.projectionState, table.freshestObservedAt),
     check(
       "canonical_listings_lifecycle_allowed",
       sql`${table.lifecycleState} IN (
@@ -616,6 +907,19 @@ export const canonicalListings = sqliteTable(
       "canonical_listings_money_nonnegative",
       sql`(${table.monthlyRentCents} IS NULL OR ${table.monthlyRentCents} >= 0)
         AND (${table.recurringFeesCents} IS NULL OR ${table.recurringFeesCents} >= 0)`
+    ),
+    check(
+      "canonical_listings_projection_allowed",
+      sql`${table.projectionState} IN ('active', 'superseded')`
+    ),
+    check(
+      "canonical_listings_projection_redirect_consistency",
+      sql`(${table.projectionState} = 'active' AND ${table.supersededById} IS NULL)
+        OR (${table.projectionState} = 'superseded' AND ${table.supersededById} IS NOT NULL)`
+    ),
+    check(
+      "canonical_listings_stitch_pair",
+      sql`(${table.stitchVersion} IS NULL) = (${table.stitchInputHash} IS NULL)`
     )
   ]
 );
@@ -672,7 +976,23 @@ export const listingScores = sqliteTable(
     reasonCodes: text("reason_codes", { mode: "json" })
       .$type<ListingScore["reasonCodes"]>()
       .notNull(),
-    computedAt: text("computed_at").notNull()
+    computedAt: text("computed_at").notNull(),
+    schemaVersion: text("schema_version").notNull().default("listing-score.v1"),
+    decisionRunId: text("decision_run_id").references(() => decisionRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "restrict"
+    }),
+    eligible: integer("eligible", { mode: "boolean" }),
+    hardConstraintsV2: text("hard_constraints_v2", { mode: "json" }).$type<
+      ListingScoreV2["hardConstraints"] | null
+    >(),
+    factorsV2: text("factors_v2", { mode: "json" }).$type<ListingScoreV2["factors"] | null>(),
+    baseScoreBasisPoints: integer("base_score_basis_points"),
+    stalePenaltyBasisPoints: integer("stale_penalty_basis_points"),
+    lowConfidencePenaltyBasisPoints: integer("low_confidence_penalty_basis_points"),
+    riskPenaltyBasisPoints: integer("risk_penalty_basis_points"),
+    finalScoreBasisPoints: integer("final_score_basis_points"),
+    explanation: text("explanation")
   },
   (table) => [
     uniqueIndex("listing_scores_snapshot_unique").on(
@@ -681,9 +1001,18 @@ export const listingScores = sqliteTable(
       table.algorithmVersion,
       table.inputHash
     ),
+    index("listing_scores_current_run_idx").on(table.decisionRunId, table.canonicalListingId),
     check(
       "listing_scores_total_range",
       sql`${table.totalScoreBasisPoints} BETWEEN -10000 AND 10000`
+    ),
+    check(
+      "listing_scores_v2_ranges",
+      sql`(${table.baseScoreBasisPoints} IS NULL OR ${table.baseScoreBasisPoints} BETWEEN 0 AND 10000)
+        AND (${table.stalePenaltyBasisPoints} IS NULL OR ${table.stalePenaltyBasisPoints} BETWEEN 0 AND 10000)
+        AND (${table.lowConfidencePenaltyBasisPoints} IS NULL OR ${table.lowConfidencePenaltyBasisPoints} BETWEEN 0 AND 10000)
+        AND (${table.riskPenaltyBasisPoints} IS NULL OR ${table.riskPenaltyBasisPoints} BETWEEN 0 AND 10000)
+        AND (${table.finalScoreBasisPoints} IS NULL OR ${table.finalScoreBasisPoints} BETWEEN 0 AND 10000)`
     )
   ]
 );
@@ -702,10 +1031,23 @@ export const riskSignals = sqliteTable(
     verificationAction: text("verification_action").notNull(),
     status: text("status").notNull(),
     createdAt: text("created_at").notNull(),
-    updatedAt: text("updated_at").notNull()
+    updatedAt: text("updated_at").notNull(),
+    schemaVersion: text("schema_version").notNull().default("listing-risk.v1"),
+    decisionRunId: text("decision_run_id").references(() => decisionRuns.id, {
+      onDelete: "restrict",
+      onUpdate: "restrict"
+    }),
+    algorithmVersion: text("algorithm_version"),
+    inputHash: text("input_hash"),
+    idempotencyKey: text("idempotency_key"),
+    evidenceV2: text("evidence_v2", { mode: "json" }).$type<RiskSignalV2["evidence"] | null>(),
+    needsVerification: integer("needs_verification", { mode: "boolean" }).notNull().default(true),
+    evaluatedAt: text("evaluated_at")
   },
   (table) => [
-    uniqueIndex("risk_signals_listing_code_unique").on(table.canonicalListingId, table.code),
+    index("risk_signals_listing_code_idx").on(table.canonicalListingId, table.code),
+    uniqueIndex("risk_signals_idempotency_key_unique").on(table.idempotencyKey),
+    index("risk_signals_current_run_idx").on(table.decisionRunId, table.canonicalListingId),
     check("risk_signals_confidence_range", sql`${table.confidenceBasisPoints} BETWEEN 0 AND 10000`),
     check(
       "risk_signals_severity_allowed",
@@ -934,7 +1276,15 @@ export const schema = {
   canonicalListingSources,
   canonicalListings,
   contactWorkflows,
+  decisionCorpusState,
+  decisionJobAttempts,
+  decisionJobs,
+  decisionRuns,
+  canonicalDecisionRuns,
   duplicateClusters,
+  duplicateOverrideRevocations,
+  duplicateOverrides,
+  duplicatePairEvaluations,
   fieldProvenance,
   listingPhotos,
   listingExtractions,

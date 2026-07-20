@@ -145,6 +145,8 @@ export function mapListingSourceRecordRow(row: ListingSourceRecordRow): ListingS
     bedrooms: fromHalfUnits(row.bedroomsHalfUnits),
     bathrooms: fromHalfUnits(row.bathroomsHalfUnits),
     squareFeet: row.squareFeet,
+    latitude: fromMicrodegrees(row.latitude),
+    longitude: fromMicrodegrees(row.longitude),
     propertyType: row.propertyType,
     availableOn: row.availableOn,
     leaseTermMonths: row.leaseTermMonths,
@@ -200,7 +202,14 @@ export function mapDuplicateClusterRow(
   row: DuplicateClusterRow,
   memberSourceRecordIds: readonly string[]
 ): DuplicateCluster {
-  return DuplicateClusterSchema.parse({ ...row, memberSourceRecordIds });
+  return DuplicateClusterSchema.parse({
+    id: row.id,
+    clusterKey: row.clusterKey,
+    algorithmVersion: row.algorithmVersion,
+    reasonCodes: row.reasonCodes,
+    memberSourceRecordIds,
+    createdAt: row.createdAt
+  });
 }
 
 export function mapCanonicalListingRow(row: CanonicalListingRow): CanonicalListing {
@@ -229,6 +238,11 @@ export function mapCanonicalListingRow(row: CanonicalListingRow): CanonicalListi
     amenities: row.amenities,
     description: row.description,
     lifecycleState: row.lifecycleState,
+    projectionState: row.projectionState,
+    supersededById: row.supersededById,
+    stitchVersion: row.stitchVersion,
+    stitchInputHash: row.stitchInputHash,
+    updatedByDecisionRunId: row.updatedByDecisionRunId,
     completenessBasisPoints: row.completenessBasisPoints,
     freshestObservedAt: row.freshestObservedAt,
     createdAt: row.createdAt,
@@ -237,11 +251,32 @@ export function mapCanonicalListingRow(row: CanonicalListingRow): CanonicalListi
 }
 
 export function mapListingScoreRow(row: ListingScoreRow): ListingScore {
-  return ListingScoreSchema.parse(row);
+  return ListingScoreSchema.parse({
+    id: row.id,
+    canonicalListingId: row.canonicalListingId,
+    searchProfileId: row.searchProfileId,
+    algorithmVersion: row.algorithmVersion,
+    inputHash: row.inputHash,
+    totalScoreBasisPoints: row.totalScoreBasisPoints,
+    factors: row.factors,
+    reasonCodes: row.reasonCodes,
+    computedAt: row.computedAt
+  });
 }
 
 export function mapRiskSignalRow(row: RiskSignalRow): RiskSignal {
-  return RiskSignalSchema.parse(row);
+  return RiskSignalSchema.parse({
+    id: row.id,
+    canonicalListingId: row.canonicalListingId,
+    code: row.code,
+    severity: row.severity,
+    confidenceBasisPoints: row.confidenceBasisPoints,
+    evidence: row.evidence,
+    verificationAction: row.verificationAction,
+    status: row.status,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  });
 }
 
 export function mapContactWorkflowRow(row: ContactWorkflowRow): ContactWorkflow {

@@ -84,6 +84,7 @@ import {
   sourcePolicyManifests,
   viewings
 } from "./schema.ts";
+import { createSqliteDecisionRepositories } from "./sqlite-decision-repositories.ts";
 
 function toMicrodegrees(value: number | null): number | null {
   return value === null ? null : Math.round(value * 1_000_000);
@@ -267,6 +268,8 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           bedroomsHalfUnits: toHalfUnits(record.bedrooms),
           bathroomsHalfUnits: toHalfUnits(record.bathrooms),
           squareFeet: record.squareFeet,
+          latitude: toMicrodegrees(record.latitude),
+          longitude: toMicrodegrees(record.longitude),
           propertyType: record.propertyType,
           availableOn: record.availableOn,
           leaseTermMonths: record.leaseTermMonths,
@@ -921,6 +924,11 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           amenities: listing.amenities,
           description: listing.description,
           lifecycleState: listing.lifecycleState,
+          projectionState: listing.projectionState,
+          supersededById: listing.supersededById,
+          stitchVersion: listing.stitchVersion,
+          stitchInputHash: listing.stitchInputHash,
+          updatedByDecisionRunId: listing.updatedByDecisionRunId,
           completenessBasisPoints: listing.completenessBasisPoints,
           freshestObservedAt: listing.freshestObservedAt,
           createdAt: listing.createdAt,
@@ -1281,6 +1289,7 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
     }
   };
 
+  const decisionRepositories = createSqliteDecisionRepositories(connection, () => repositories);
   const repositories: VeraRepositories = {
     searchProfiles: searchProfileRepository,
     rawListings: rawListingRepository,
@@ -1301,6 +1310,7 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
     sourceJobAttempts: sourceJobAttemptRepository,
     browserNodes: browserNodeRepository,
     normalizationJobs: normalizationJobRepository,
+    ...decisionRepositories,
     transaction<T>(callback: (transactionRepositories: VeraRepositories) => T): T {
       const transaction = sqlite.transaction(() => {
         const result = callback(repositories);

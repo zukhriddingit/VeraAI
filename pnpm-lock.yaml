@@ -133,6 +133,12 @@ importers:
       '@types/better-sqlite3':
         specifier: 7.6.13
         version: 7.6.13
+      '@vera/scoring':
+        specifier: workspace:*
+        version: link:../scoring
+      '@vera/testing':
+        specifier: workspace:*
+        version: link:../testing
       drizzle-kit:
         specifier: 0.31.10
         version: 0.31.10
