@@ -110,6 +110,8 @@ export const SearchProfileSchema = z
   });
 
 export type SearchProfile = z.infer<typeof SearchProfileSchema>;
+export type SearchConstraint = z.infer<typeof SearchConstraintSchema>;
+export type WeightedPreference = z.infer<typeof WeightedPreferenceSchema>;
 export type UnknownPreferenceBehavior = z.infer<
   typeof WeightedPreferenceSchema.shape.unknownBehavior
 >;

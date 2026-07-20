@@ -54,6 +54,8 @@ const normalizedSource = {
   squareFeet: 680,
   availableOn: "2026-09-01",
   descriptionText: "Sanitized synthetic listing text.",
+  extractionConfidenceBasisPoints: 9_000,
+  completenessBasisPoints: 8_000,
   photoHashes: [
     {
       listingPhotoId: "photo-a",

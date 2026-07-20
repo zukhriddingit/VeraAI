@@ -183,6 +183,8 @@ export const NormalizedDecisionSourceSchema = z
     squareFeet: z.number().int().positive().max(1_000_000).nullable(),
     availableOn: IsoDateSchema.nullable(),
     descriptionText: z.string().max(20_000),
+    extractionConfidenceBasisPoints: ConfidenceBasisPointsSchema,
+    completenessBasisPoints: PercentageBasisPointsSchema,
     photoHashes: z.array(PhotoHashSchema).max(50),
     contactFingerprints: z
       .array(Sha256Schema)
@@ -494,7 +496,7 @@ export const HardConstraintCodeSchema = z.enum([
 export const HardConstraintEvaluationSchema = z
   .object({
     code: HardConstraintCodeSchema,
-    passed: z.boolean(),
+    status: z.enum(["passed", "failed", "unknown"]),
     observedValue: JsonValueSchema.nullable(),
     requiredValue: JsonValueSchema,
     provenanceIds: sortedUniqueEntityIds(0, 100),
@@ -912,6 +914,7 @@ export type DuplicatePairEvaluation = z.infer<typeof DuplicatePairEvaluationSche
 export type DuplicateOverrideKind = z.infer<typeof DuplicateOverrideKindSchema>;
 export type DuplicateOverride = z.infer<typeof DuplicateOverrideSchema>;
 export type DuplicateOverrideRevocation = z.infer<typeof DuplicateOverrideRevocationSchema>;
+export type BlockedDuplicateEdge = z.infer<typeof BlockedDuplicateEdgeSchema>;
 export type DuplicateClusterPlan = z.infer<typeof DuplicateClusterPlanSchema>;
 export type CanonicalFieldSelectionPlan = z.infer<typeof CanonicalFieldSelectionPlanSchema>;
 export type CanonicalListingPlan = z.infer<typeof CanonicalListingPlanSchema>;

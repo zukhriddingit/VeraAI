@@ -39,6 +39,8 @@ function source(
     squareFeet: null,
     availableOn: null,
     descriptionText: "",
+    extractionConfidenceBasisPoints: 0,
+    completenessBasisPoints: 0,
     photoHashes: [],
     contactFingerprints: [],
     fieldCandidates: [],

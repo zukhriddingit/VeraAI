@@ -40,6 +40,8 @@ function source(
     squareFeet: 680,
     availableOn: "2026-09-01",
     descriptionText: "Sunny synthetic home with laundry and bicycle storage.",
+    extractionConfidenceBasisPoints: 9_000,
+    completenessBasisPoints: 8_000,
     photoHashes: [],
     contactFingerprints: [],
     fieldCandidates: [],

@@ -179,6 +179,8 @@ export function normalizeDecisionSource(
     squareFeet: input.sourceRecord.squareFeet,
     availableOn,
     descriptionText: input.sourceRecord.description ?? "",
+    extractionConfidenceBasisPoints: input.sourceRecord.extractionConfidenceBasisPoints,
+    completenessBasisPoints: input.sourceRecord.completenessBasisPoints,
     photoHashes,
     contactFingerprints,
     fieldCandidates: candidates,
