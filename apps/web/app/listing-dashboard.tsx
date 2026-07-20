@@ -278,7 +278,7 @@ function ListingCard({
               role="group"
               aria-label={`Confirm dismissal of ${listing.title}`}
             >
-              <span>Remove permanently?</span>
+              <span>Move to Archived?</span>
               <button
                 type="button"
                 className="danger-button"
