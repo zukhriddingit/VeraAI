@@ -253,6 +253,7 @@ export async function hashPhotoBytes(
 export function toPhotoHash(listingPhotoId: string, metadata: HashedPhotoMetadata): PhotoHash {
   return {
     listingPhotoId,
+    byteHash: metadata.byteHash,
     hash: metadata.perceptualHash,
     version: metadata.perceptualHashVersion
   };

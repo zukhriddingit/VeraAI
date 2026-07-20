@@ -89,6 +89,7 @@ export const DecisionJobErrorCodeSchema = z.enum([
 export const PhotoHashSchema = z
   .object({
     listingPhotoId: EntityIdSchema,
+    byteHash: Sha256Schema.nullable().optional(),
     hash: z.string().regex(/^[a-f0-9]{16}$/u),
     version: PhotoHashVersionSchema
   })
@@ -167,6 +168,11 @@ export const NormalizedDecisionSourceSchema = z
     title: z.string().trim().min(1).max(300),
     normalizedAddress: z.string().trim().min(1).max(600).nullable(),
     normalizedUnit: z.string().trim().min(1).max(80).nullable(),
+    normalizedCity: z.string().trim().min(1).max(120).nullable(),
+    normalizedRegion: z.string().trim().min(1).max(80).nullable(),
+    normalizedPostalCode: z.string().trim().min(1).max(24).nullable(),
+    normalizedCountryCode: z.string().trim().length(2).nullable(),
+    addressMatchKey: z.string().trim().min(1).max(1_000).nullable(),
     latitude: z.number().finite().min(-90).max(90).nullable(),
     longitude: z.number().finite().min(-180).max(180).nullable(),
     canonicalUrl: z.string().url().max(2_048).nullable(),
@@ -898,6 +904,8 @@ export type NormalizationReasonCode = z.infer<typeof NormalizationReasonCodeSche
 export type ProvenancedFieldCandidate = z.infer<typeof ProvenancedFieldCandidateSchema>;
 export type NormalizedDecisionSource = z.infer<typeof NormalizedDecisionSourceSchema>;
 export type DuplicateDecision = z.infer<typeof DuplicateDecisionSchema>;
+export type DuplicateExactReasonCode = z.infer<typeof DuplicateExactReasonCodeSchema>;
+export type DuplicateConflictReasonCode = z.infer<typeof DuplicateConflictReasonCodeSchema>;
 export type DuplicatePairFeatureCode = z.infer<typeof DuplicatePairFeatureCodeSchema>;
 export type DuplicatePairFeature = z.infer<typeof DuplicatePairFeatureSchema>;
 export type DuplicatePairEvaluation = z.infer<typeof DuplicatePairEvaluationSchema>;
