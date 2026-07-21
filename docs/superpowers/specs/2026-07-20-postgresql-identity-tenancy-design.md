@@ -1,7 +1,7 @@
 # PostgreSQL Identity and Tenant Isolation Design
 
-Status: approved design awaiting written-spec review  
-Date: 2026-07-20  
+Status: approved
+Date: 2026-07-20
 Scope: prerequisite hosted persistence and Vera identity milestone before Gmail/Calendar Milestone 6
 
 ## Goal
