@@ -1,7 +1,11 @@
 # ADR 0002: SQLite, Drizzle, and a leased local worker queue
 
-- Status: Accepted
+- Status: Superseded by ADR 0009 for hosted environments
 - Date: 2026-07-17
+
+## Supersession note
+
+ADR 0009 replaces SQLite and the local leased queue with PostgreSQL for hosted development, staging, and production. This record remains authoritative for the explicitly isolated deterministic demo/offline composition root: its SQLite durability, append-only evidence, WAL/foreign-key initialization, and single local worker rationale are preserved there. The historical context and rejected alternatives below are retained rather than rewritten as if PostgreSQL had been the original MVP decision.
 
 ## Context
 
