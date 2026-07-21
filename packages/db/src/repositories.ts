@@ -34,6 +34,7 @@ import type {
   SourceJob,
   SourceJobStatus,
   SourcePolicyManifest,
+  VeraUserId,
   Viewing
 } from "@vera/domain";
 
@@ -341,7 +342,7 @@ export interface DecisionReconciliationRepository {
   }): AppliedDecisionRun;
 }
 
-export interface VeraRepositories {
+export interface SyncVeraRepositories {
   readonly searchProfiles: SearchProfileRepository;
   readonly rawListings: RawListingRepository;
   readonly sourceRecords: ListingSourceRecordRepository;
@@ -365,5 +366,86 @@ export interface VeraRepositories {
   readonly duplicateOverrides: DuplicateOverrideRepository;
   readonly decisionHistory: DecisionHistoryRepository;
   readonly decisionReconciliation: DecisionReconciliationRepository;
-  transaction<T>(callback: (repositories: VeraRepositories) => T): T;
+  transaction<T>(callback: (repositories: SyncVeraRepositories) => T): T;
 }
+
+/**
+ * Temporary compatibility name for the isolated SQLite adapter. Hosted code must use
+ * UserRepositories through UserRepositoryProvider. This alias is removed when the demo move lands.
+ */
+export type VeraRepositories = SyncVeraRepositories;
+
+type AsyncMethod<Method> = Method extends (...arguments_: infer Arguments) => infer Result
+  ? (...arguments_: Arguments) => Promise<Awaited<Result>>
+  : never;
+
+export type AsyncRepository<Repository> = {
+  readonly [Key in keyof Repository]: AsyncMethod<Repository[Key]>;
+};
+
+export type SourcePolicyManifestReader = AsyncRepository<
+  Pick<SourcePolicyManifestRepository, "get" | "list" | "listLatest">
+>;
+
+export interface UserRepositories {
+  readonly searchProfiles: AsyncRepository<SearchProfileRepository>;
+  readonly rawListings: AsyncRepository<RawListingRepository>;
+  readonly sourceRecords: AsyncRepository<ListingSourceRecordRepository>;
+  readonly listingPhotos: AsyncRepository<ListingPhotoRepository>;
+  readonly fieldProvenance: AsyncRepository<FieldProvenanceRepository>;
+  readonly listingExtractions: AsyncRepository<ListingExtractionRepository>;
+  readonly duplicateClusters: AsyncRepository<DuplicateClusterRepository>;
+  readonly canonicalListings: AsyncRepository<CanonicalListingRepository>;
+  readonly listingScores: AsyncRepository<ListingScoreRepository>;
+  readonly riskSignals: AsyncRepository<RiskSignalRepository>;
+  readonly contactWorkflows: AsyncRepository<ContactWorkflowRepository>;
+  readonly approvals: AsyncRepository<ApprovalRepository>;
+  readonly viewings: AsyncRepository<ViewingRepository>;
+  readonly activityEvents: AsyncRepository<ActivityEventRepository>;
+  readonly sourcePolicyManifests: SourcePolicyManifestReader;
+  readonly sourceJobs: AsyncRepository<SourceJobRepository>;
+  readonly sourceJobAttempts: AsyncRepository<SourceJobAttemptRepository>;
+  readonly browserNodes: AsyncRepository<BrowserNodeRepository>;
+  readonly normalizationJobs: AsyncRepository<NormalizationJobRepository>;
+  readonly decisionJobs: AsyncRepository<DecisionJobRepository>;
+  readonly duplicateOverrides: AsyncRepository<DuplicateOverrideRepository>;
+  readonly decisionHistory: AsyncRepository<DecisionHistoryRepository>;
+  readonly decisionReconciliation: AsyncRepository<DecisionReconciliationRepository>;
+}
+
+export interface UserRepositoryProvider {
+  forUser(userId: VeraUserId): UserRepositories;
+  transaction<T>(
+    userId: VeraUserId,
+    operation: (repositories: UserRepositories) => Promise<T>
+  ): Promise<T>;
+}
+
+export interface OwnedNormalizationJob {
+  readonly userId: VeraUserId;
+  readonly job: NormalizationJob;
+}
+
+export interface OwnedDecisionJob {
+  readonly userId: VeraUserId;
+  readonly job: DecisionJob;
+}
+
+export interface OwnedSourceJob {
+  readonly userId: VeraUserId;
+  readonly job: SourceJob;
+}
+
+export interface ClaimSourceJobInput {
+  readonly leaseOwner: string;
+  readonly now: string;
+  readonly leaseExpiresAt: string;
+}
+
+export interface SystemWorkerQueue {
+  claimNextNormalizationJob(input: ClaimNormalizationJob): Promise<OwnedNormalizationJob | null>;
+  claimNextDecisionJob(input: ClaimDecisionJobInput): Promise<OwnedDecisionJob | null>;
+  claimNextSourceJob(input: ClaimSourceJobInput): Promise<OwnedSourceJob | null>;
+}
+
+export type GlobalPolicyRepository = AsyncRepository<SourcePolicyManifestRepository>;
