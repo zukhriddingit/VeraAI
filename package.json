@@ -9,6 +9,9 @@
   },
   "scripts": {
     "dev": "pnpm -r --parallel --stream --filter @vera/web --filter @vera/worker run dev",
+    "postgres:up": "docker compose up -d postgres",
+    "postgres:down": "docker compose down",
+    "postgres:reset": "node --import tsx scripts/postgres-reset.ts",
     "demo:reset": "node --import tsx scripts/demo-reset.ts",
     "demo:seed": "node --import tsx scripts/demo-seed.ts",
     "demo": "node --import tsx scripts/demo-start.ts",
@@ -22,6 +25,7 @@
     "test": "pnpm run test:unit && pnpm run test:integration && pnpm run test:e2e",
     "test:unit": "vitest run --project unit",
     "test:integration": "vitest run --project integration",
+    "test:integration:postgres": "vitest run --project postgres-integration",
     "test:e2e": "playwright test",
     "db:generate": "pnpm --filter @vera/db run db:generate",
     "db:migrate": "pnpm --filter @vera/db run db:migrate",
@@ -32,9 +36,7 @@
     "worker:start": "pnpm --filter @vera/worker run start",
     "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures"
   },
-  "dependencies": {
-    "better-sqlite3": "12.11.1"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@playwright/test": "1.61.1",
     "@types/node": "24.13.3",

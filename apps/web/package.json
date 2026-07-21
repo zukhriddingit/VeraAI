@@ -15,6 +15,7 @@
     "@vera/db": "workspace:*",
     "@vera/domain": "workspace:*",
     "@vera/policy": "workspace:*",
+    "better-auth": "1.6.23",
     "next": "16.2.10",
     "react": "19.2.7",
     "react-dom": "19.2.7"
