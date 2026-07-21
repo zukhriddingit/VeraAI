@@ -1,4 +1,5 @@
 export * from "./connection.ts";
+export * from "./credentials.ts";
 export * from "./fixtures.ts";
 export * from "./hashing.ts";
 export * from "./migrations.ts";
