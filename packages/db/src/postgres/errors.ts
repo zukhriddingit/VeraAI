@@ -23,12 +23,14 @@ export class PostgresRepositoryError extends Error {
 
 interface DriverErrorShape {
   readonly code?: unknown;
+  readonly cause?: unknown;
 }
 
-function errorCode(error: unknown): string | null {
+function errorCode(error: unknown, depth = 0): string | null {
   if (typeof error !== "object" || error === null) return null;
-  const code = (error as DriverErrorShape).code;
-  return typeof code === "string" ? code : null;
+  const shaped = error as DriverErrorShape;
+  if (typeof shaped.code === "string") return shaped.code;
+  return depth < 4 ? errorCode(shaped.cause, depth + 1) : null;
 }
 
 export function mapPostgresError(error: unknown): PostgresRepositoryError {

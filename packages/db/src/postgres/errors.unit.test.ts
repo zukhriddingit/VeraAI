@@ -21,4 +21,17 @@ describe("PostgreSQL error mapping", () => {
     expect(mapped.message).not.toContain("synthetic-refresh-token");
     expect(safePostgresErrorFields(mapped)).toEqual({ category, retryable });
   });
+
+  it("unwraps driver errors without exposing their details", () => {
+    const mapped = mapPostgresError({
+      message: "query failed",
+      cause: {
+        code: "23503",
+        detail: "synthetic-refresh-token"
+      }
+    });
+
+    expect(mapped).toMatchObject({ category: "ownership_violation", retryable: false });
+    expect(mapped.message).not.toContain("synthetic-refresh-token");
+  });
 });
