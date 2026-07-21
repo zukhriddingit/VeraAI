@@ -7,14 +7,19 @@ import {
   ListingSourceRecordSchema,
   RawListingCaptureSchema,
   SearchProfileSchema,
+  VeraUserIdSchema,
   type VeraUserId
 } from "@vera/domain";
 import { and, asc, count, eq } from "drizzle-orm";
-import type { NodePgDatabase } from "drizzle-orm/node-postgres";
 
 import { computeRawContentHash, computeRawImportIdempotencyKey } from "../hashing.ts";
-import type { UserRepositories } from "../repositories.ts";
+import type { UserRepositories, UserRepositoryProvider } from "../repositories.ts";
+import type { PostgresConnection } from "./connection.ts";
+import { createPostgresDecisionReconciliation } from "./decision-reconciliation.ts";
+import { createPostgresDecisionRepositories } from "./decision-repositories.ts";
 import { mapPostgresError } from "./errors.ts";
+import { createPostgresIntegrationConnectionRepository } from "./integration-repository.ts";
+import { createPostgresPolicyReader } from "./policy-repository.ts";
 import {
   mapActivityEventRow,
   mapFieldProvenanceRow,
@@ -32,11 +37,10 @@ import {
   listingPhotos,
   listingSourceRecords,
   rawListings,
-  schema,
   searchProfiles
 } from "./schema.ts";
-
-type PostgresDatabase = NodePgDatabase<typeof schema>;
+import { createStandardPostgresRepositories } from "./standard-repositories.ts";
+import type { PostgresExecutor } from "./types.ts";
 
 export type CorePostgresRepositories = Pick<
   UserRepositories,
@@ -81,7 +85,7 @@ async function databaseOperation<Result>(operation: () => Promise<Result>): Prom
 }
 
 export function createCorePostgresRepositories(
-  db: PostgresDatabase,
+  db: PostgresExecutor,
   userId: VeraUserId
 ): CorePostgresRepositories {
   const searchProfileRepository: CorePostgresRepositories["searchProfiles"] = {
@@ -505,5 +509,40 @@ export function createCorePostgresRepositories(
     fieldProvenance: provenanceRepository,
     listingExtractions: extractionRepository,
     activityEvents: activityRepository
+  };
+}
+
+export function createPostgresUserRepositories(
+  db: PostgresExecutor,
+  userIdInput: VeraUserId
+): UserRepositories {
+  const userId = VeraUserIdSchema.parse(userIdInput);
+  const decision = createPostgresDecisionRepositories(db, userId);
+  const repositories = {
+    integrationConnections: createPostgresIntegrationConnectionRepository(db, userId),
+    ...createCorePostgresRepositories(db, userId),
+    ...createStandardPostgresRepositories(db, userId),
+    sourcePolicyManifests: createPostgresPolicyReader(db),
+    ...decision
+  };
+  return {
+    ...repositories,
+    decisionReconciliation: createPostgresDecisionReconciliation(db, userId, decision)
+  };
+}
+
+export function createPostgresRepositoryProvider(
+  connection: PostgresConnection
+): UserRepositoryProvider {
+  return {
+    forUser(userId) {
+      return createPostgresUserRepositories(connection.db, VeraUserIdSchema.parse(userId));
+    },
+    async transaction(userIdInput, operation) {
+      const userId = VeraUserIdSchema.parse(userIdInput);
+      return connection.db.transaction(async (transaction) =>
+        operation(createPostgresUserRepositories(transaction, userId))
+      );
+    }
   };
 }

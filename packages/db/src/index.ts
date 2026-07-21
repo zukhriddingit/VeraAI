@@ -12,6 +12,7 @@ export * from "./sqlite-decision-repositories.ts";
 export * from "./postgres/config.ts";
 export * from "./postgres/connection.ts";
 export * from "./postgres/decision-repositories.ts";
+export * from "./postgres/decision-reconciliation.ts";
 export * from "./postgres/errors.ts";
 export * from "./postgres/migrations.ts";
 export * from "./postgres/integration-repository.ts";

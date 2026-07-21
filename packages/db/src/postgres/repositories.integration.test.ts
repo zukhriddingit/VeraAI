@@ -1,8 +1,12 @@
 import type { VeraUserId } from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
+import { sha256Text } from "../hashing.ts";
 import { DEMO_SEARCH_PROFILE, SOURCE_FIXTURES } from "../fixtures.ts";
-import { createCorePostgresRepositories } from "./repositories.ts";
+import {
+  createCorePostgresRepositories,
+  createPostgresRepositoryProvider
+} from "./repositories.ts";
 import { users } from "./schema.ts";
 import { withPostgresTestDatabase } from "./testing.ts";
 
@@ -82,6 +86,39 @@ describe("tenant-scoped PostgreSQL core repositories", () => {
 
       expect(inserted.createdAt).toBe(DEMO_SEARCH_PROFILE.createdAt);
       await expect(repositories.searchProfiles.getById(inserted.id)).resolves.toEqual(inserted);
+    });
+  });
+
+  it("rolls back an entire user-scoped unit of work", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await insertUsers(db);
+      const provider = createPostgresRepositoryProvider(connection);
+      const fixture = SOURCE_FIXTURES[0];
+
+      await expect(
+        provider.transaction(aliceId, async (repositories) => {
+          await repositories.rawListings.import(fixture.capture);
+          await repositories.activityEvents.append({
+            id: "event-rollback",
+            correlationId: "correlation-rollback",
+            causationId: null,
+            actor: "system",
+            action: "transaction.rollback.test",
+            targetType: "raw_listing",
+            targetId: fixture.capture.id,
+            policyDecision: "authorized",
+            approvalId: "missing-approval",
+            payloadHash: sha256Text("rollback"),
+            outcome: "succeeded",
+            errorCategory: null,
+            metadata: { sanitized: true },
+            occurredAt: fixture.capture.observedAt
+          });
+        })
+      ).rejects.toMatchObject({ category: "ownership_violation" });
+
+      await expect(provider.forUser(aliceId).rawListings.count()).resolves.toBe(0);
+      await expect(provider.forUser(aliceId).activityEvents.count()).resolves.toBe(0);
     });
   });
 });

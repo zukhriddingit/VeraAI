@@ -46,6 +46,7 @@ import type {
   DuplicateOverrideRepository,
   VeraRepositories
 } from "./repositories.ts";
+import { DecisionIdempotencyConflictError, StaleCorpusRevisionError } from "./repositories.ts";
 import {
   activityEvents,
   canonicalDecisionRuns,
@@ -68,25 +69,6 @@ import {
   riskSignals,
   searchProfiles
 } from "./schema.ts";
-
-export class StaleCorpusRevisionError extends Error {
-  readonly expectedRevision: number;
-  readonly actualRevision: number;
-
-  constructor(expectedRevision: number, actualRevision: number) {
-    super("Decision plan was computed from a stale corpus revision.");
-    this.name = "StaleCorpusRevisionError";
-    this.expectedRevision = expectedRevision;
-    this.actualRevision = actualRevision;
-  }
-}
-
-export class DecisionIdempotencyConflictError extends Error {
-  constructor() {
-    super("Decision job already has a different immutable result.");
-    this.name = "DecisionIdempotencyConflictError";
-  }
-}
 
 interface DecisionRepositorySet {
   readonly decisionJobs: DecisionJobRepository;
