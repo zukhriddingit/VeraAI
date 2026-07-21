@@ -5,6 +5,7 @@ import {
   CanonicalListingSchema,
   ContactWorkflowSchema,
   DuplicateClusterSchema,
+  DecisionJobSchema,
   FieldProvenanceSchema,
   JobAttemptSchema,
   ListingPhotoSchema,
@@ -24,6 +25,7 @@ import {
   type CanonicalListing,
   type ContactWorkflow,
   type DuplicateCluster,
+  type DecisionJob,
   type FieldProvenance,
   type JobAttempt,
   type ListingPhoto,
@@ -46,6 +48,7 @@ import type {
   canonicalListings,
   contactWorkflows,
   duplicateClusters,
+  decisionJobs,
   fieldProvenance,
   listingPhotos,
   listingExtractions,
@@ -69,6 +72,7 @@ type ListingPhotoRow = typeof listingPhotos.$inferSelect;
 type ListingExtractionRow = typeof listingExtractions.$inferSelect;
 type FieldProvenanceRow = typeof fieldProvenance.$inferSelect;
 type DuplicateClusterRow = typeof duplicateClusters.$inferSelect;
+type DecisionJobRow = typeof decisionJobs.$inferSelect;
 type CanonicalListingRow = typeof canonicalListings.$inferSelect;
 type ListingScoreRow = typeof listingScores.$inferSelect;
 type RiskSignalRow = typeof riskSignals.$inferSelect;
@@ -219,6 +223,10 @@ export function mapNormalizationJobRow(row: NormalizationJobRow): NormalizationJ
   return NormalizationJobSchema.parse(normalizeTenantRow(row));
 }
 
+export function mapDecisionJobRow(row: DecisionJobRow): DecisionJob {
+  return DecisionJobSchema.parse(normalizeTenantRow(row));
+}
+
 export function mapDuplicateClusterRow(
   row: DuplicateClusterRow,
   memberSourceRecordIds: readonly string[]
@@ -321,7 +329,14 @@ export function mapSourcePolicyManifestRow(row: SourcePolicyManifestRow): Source
 }
 
 export function mapSourceJobRow(row: SourceJobRow): SourceJob {
-  return SourceJobSchema.parse(normalizeTenantRow(row));
+  const {
+    userId: _userId,
+    availableAt: _availableAt,
+    leaseOwner: _leaseOwner,
+    leaseExpiresAt: _leaseExpiresAt,
+    ...value
+  } = row;
+  return SourceJobSchema.parse(normalizeDates(value));
 }
 
 export function mapSourceJobAttemptRow(row: SourceJobAttemptRow): JobAttempt {

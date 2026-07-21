@@ -18,6 +18,8 @@ import type {
   DuplicateOverrideRevocation,
   DuplicatePairEvaluation,
   FieldProvenance,
+  IntegrationConnection,
+  IntegrationProvider,
   ListingExtractionRun,
   ListingLifecycleState,
   ListingPhoto,
@@ -116,6 +118,17 @@ export interface SearchProfileRepository {
   getById(id: string): SearchProfile | null;
   list(): readonly SearchProfile[];
   count(): number;
+}
+
+export interface IntegrationConnectionRepository {
+  upsert(connection: IntegrationConnection): IntegrationConnection;
+  getById(id: string): IntegrationConnection | null;
+  getByProviderSubjectId(
+    provider: IntegrationProvider,
+    providerSubjectId: string
+  ): IntegrationConnection | null;
+  list(): readonly IntegrationConnection[];
+  delete(id: string): boolean;
 }
 
 export interface RawListingRepository {
@@ -388,6 +401,7 @@ export type SourcePolicyManifestReader = AsyncRepository<
 >;
 
 export interface UserRepositories {
+  readonly integrationConnections: AsyncRepository<IntegrationConnectionRepository>;
   readonly searchProfiles: AsyncRepository<SearchProfileRepository>;
   readonly rawListings: AsyncRepository<RawListingRepository>;
   readonly sourceRecords: AsyncRepository<ListingSourceRecordRepository>;
