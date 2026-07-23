@@ -5,6 +5,8 @@ import Link from "next/link";
 import { AtlasHero } from "./atlas-hero";
 import styles from "./landing-page.module.css";
 
+const liveDemoUrl = "https://vera-production-f19c.up.railway.app/";
+
 export const metadata: Metadata = {
   title: "Vera | Find fast. Rent safely.",
   description:
@@ -93,9 +95,9 @@ export default function LandingPage() {
             <a href="#safety">Safety</a>
             <a href="#veramove">VeraMove</a>
           </div>
-          <Link className={`${styles.primaryAction} ${styles.navAction}`} href="/demo">
+          <a className={`${styles.primaryAction} ${styles.navAction}`} href={liveDemoUrl}>
             Open demo
-          </Link>
+          </a>
         </nav>
 
         <div className={styles.heroInner}>
@@ -109,9 +111,9 @@ export default function LandingPage() {
               fit, missing facts, and risk before taking action.
             </p>
             <div className={styles.actions}>
-              <Link className={styles.primaryAction} href="/demo">
+              <a className={styles.primaryAction} href={liveDemoUrl}>
                 Explore the live demo
-              </Link>
+              </a>
               <a className={styles.textAction} href="#how-it-works">
                 See how Vera works
                 <span aria-hidden="true"> ↘</span>
@@ -340,9 +342,9 @@ export default function LandingPage() {
             See how Vera turns a bounded set of sanitized source records into inspectable,
             explainable housing decisions.
           </p>
-          <Link className={styles.primaryAction} href="/demo">
+          <a className={styles.primaryAction} href={liveDemoUrl}>
             Explore the live demo
-          </Link>
+          </a>
         </div>
       </section>
 

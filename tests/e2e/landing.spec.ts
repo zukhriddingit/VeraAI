@@ -8,7 +8,7 @@ test("public landing page presents the atlas promise without loading the cockpit
   await expect(page.getByRole("heading", { name: "Find a great home faster." })).toBeVisible();
   await expect(page.getByRole("link", { name: "Explore the live demo" }).first()).toHaveAttribute(
     "href",
-    "/demo"
+    "https://vera-production-f19c.up.railway.app/"
   );
   await expect(page.getByTestId("atlas-globe")).toBeVisible();
   await expect(
