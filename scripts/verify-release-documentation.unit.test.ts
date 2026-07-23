@@ -1,7 +1,10 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
   RELEASE_DEPLOYMENT_DOCUMENTS,
+  findFounderCoreRunbookViolations,
   findReleaseDocumentationViolations
 } from "./verify-release-documentation.ts";
 
@@ -35,5 +38,33 @@ describe("release deployment documentation", () => {
         )
       ).toEqual(expect.arrayContaining([expect.stringContaining("image@sha256:<digest>")]));
     }
+  });
+});
+
+describe("founder-core staging runbook", () => {
+  const runbook = readFileSync(
+    new URL("../docs/FOUNDER_CORE_STAGING_RUNBOOK.md", import.meta.url),
+    "utf8"
+  );
+
+  it("contains the profile, evidence, artifact, classification, and landing-page boundaries", () => {
+    expect(findFounderCoreRunbookViolations(runbook)).toEqual([]);
+  });
+
+  it.each([
+    [
+      "Deploy a public OpenClaw gateway",
+      "Founder-core runbook must not permit a public OpenClaw gateway."
+    ],
+    [
+      "The landing page is accepted staging evidence",
+      "Founder-core runbook must not treat the landing page as staging evidence."
+    ],
+    [
+      "ADR 0012 blocks founder_core",
+      "Founder-core runbook must not make ADR 0012 a founder-core blocker."
+    ]
+  ])("rejects %s", (unsafe, expected) => {
+    expect(findFounderCoreRunbookViolations(`${runbook}\n${unsafe}\n`)).toContain(expected);
   });
 });

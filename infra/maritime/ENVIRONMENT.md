@@ -2,6 +2,12 @@
 
 Values live in environment-specific secret stores, never in Git. Development, staging, and production use separate credentials. The web application retains its own hosted secret configuration; this table covers Maritime services.
 
+For `founder_core`, set `VERA_BROWSER_DISABLED=1` and do not define
+`VERA_MARITIME_GATEWAY_AGENT_ID`, `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`, or
+`VERA_BROWSER_FOUNDER_USER_IDS`. The worker agent ID and scoped API key form the complete Maritime
+control-plane tuple for core. OpenClaw variables below apply only to
+`founder_browser_experimental`, which remains `no_go`.
+
 ## Vera worker
 
 | Name                                    | Secret | Purpose                                                            |
@@ -13,7 +19,7 @@ Values live in environment-specific secret stores, never in Git. Development, st
 | `VERA_DB_LOCK_TIMEOUT_MS`               | no     | Lock timeout.                                                      |
 | `VERA_DB_IDLE_TRANSACTION_TIMEOUT_MS`   | no     | Idle transaction timeout.                                          |
 | `VERA_MARITIME_WORKER_AGENT_ID`         | no     | Exact worker audience and deployment identifier.                   |
-| `VERA_MARITIME_GATEWAY_AGENT_ID`        | no     | Exact founder gateway deployment identifier.                       |
+| `VERA_MARITIME_GATEWAY_AGENT_ID`        | no     | Browser-experimental gateway ID; forbidden for founder core.       |
 | `VERA_MARITIME_ENVIRONMENT`             | no     | `development`, `staging`, or `production`.                         |
 | `MARITIME_API_KEY`                      | yes    | Narrow server runtime key for worker/gateway wake and status.      |
 | `MARITIME_API_URL`                      | no     | Reviewed Maritime API base URL.                                    |
@@ -23,10 +29,10 @@ Values live in environment-specific secret stores, never in Git. Development, st
 | `VERA_GOOGLE_INTEGRATION_CLIENT_SECRET` | yes    | Google integration client secret.                                  |
 | `VERA_GMAIL_ALERTS_DISABLED`            | no     | Gmail ingestion kill switch; missing or `1` denies execution.      |
 | `VERA_INTEGRATIONS_DISABLED`            | no     | Global integration kill switch.                                    |
-| `OPENCLAW_GATEWAY_URL`                  | no     | Exact TLS `wss` endpoint for the pinned gateway.                   |
-| `OPENCLAW_GATEWAY_TOKEN`                | yes    | Gateway authentication token, server-side only.                    |
+| `OPENCLAW_GATEWAY_URL`                  | no     | Browser-experimental TLS endpoint; forbidden for founder core.     |
+| `OPENCLAW_GATEWAY_TOKEN`                | yes    | Browser-experimental token; forbidden for founder core.            |
 | `VERA_OPENCLAW_EXECUTABLE`              | no     | Absolute lockfile-installed CLI path in hosted workers.            |
-| `VERA_BROWSER_FOUNDER_USER_IDS`         | no     | Exact founder UUID allowlist; missing or malformed denies.         |
+| `VERA_BROWSER_FOUNDER_USER_IDS`         | no     | Browser-experimental allowlist; forbidden for founder core.        |
 | `VERA_BROWSER_DISABLED`                 | no     | Global browser kill switch; disabled is the default release state. |
 | `NEXT_PUBLIC_VERA_VAPID_PUBLIC_KEY`     | no     | Public Web Push application key.                                   |
 | `VERA_VAPID_PRIVATE_KEY`                | yes    | Web Push signing key.                                              |

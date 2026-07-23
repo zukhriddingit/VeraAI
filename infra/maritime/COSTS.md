@@ -1,16 +1,26 @@
 # Founder-release resource assumptions
 
-The release intentionally optimizes for operational simplicity rather than horizontal scale:
+The active `founder_core` profile intentionally optimizes for operational simplicity:
 
-- one externally hosted Vera web instance;
+- one externally hosted authenticated Vera staging instance;
 - one managed PostgreSQL database in the same selected region when providers permit;
-- one private serverless Maritime Vera worker with a 120-second idle window and a five-minute reconciliation trigger;
-- one always-on Maritime OpenClaw gateway for the founder;
-- one local founder browser node/profile;
+- one private serverless Maritime Vera worker with a 120-second idle window and a five-minute
+  reconciliation trigger;
+- no OpenClaw gateway compute;
+- no local browser-node connection;
+- no browser monitoring schedule; and
 - no Redis, replica, sharding, Kubernetes, or multi-region failover.
 
-The always-on gateway is the dominant Maritime compute assumption; the worker should sleep when no trigger or explicit dispatch is active. Gmail polling is five-minute and bounded. Browser work is not scheduled. Web Push payloads are small and generic.
+The worker should sleep when no trigger or explicit non-browser dispatch is active. Gmail polling is
+five-minute and bounded. Web Push payloads are small and generic. Browser work remains disabled.
 
-Before each release, record current Maritime compute/credit pricing, managed PostgreSQL storage/backup pricing, hosted web pricing, and Web Push provider limits in the operator change ticket. Do not encode a dollar estimate here because platform rates are external and can change independently of the repository.
+`founder_browser_experimental` would add gateway and node costs, but it is `no_go`; do not provision
+or budget that runtime as part of core.
 
-Set billing alerts and a hard founder budget in the provider dashboards. A cost alarm must stop optional schedules and browser experiments before it weakens persistence, audit, or kill-switch enforcement.
+Before each release, record current Maritime compute/credit pricing, managed PostgreSQL
+storage/backup pricing, hosted web pricing, and Web Push provider limits in the operator change
+ticket. Do not encode a dollar estimate here because platform rates are external and can change
+independently of the repository.
+
+Set billing alerts and a hard founder budget in the provider dashboards. A cost alarm must stop
+optional schedules before it weakens persistence, audit, or kill-switch enforcement.

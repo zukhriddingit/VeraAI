@@ -4,9 +4,20 @@ Date: 2026-07-23
 
 Current decision: **no-go for founder staging release**. Local application, PostgreSQL, policy,
 build, image, offline staging gates, and read-only Maritime inventory pass, but no private live
-evidence bundle has completed the mandatory release matrix. Browser capture is explicitly blocked by
-ADR 0012 until a reviewed ingress topology exists; a blocked mandatory phase cannot produce a
-release pass. Promotion and founder beta are not approved.
+evidence bundle has completed a profile-specific mandatory release matrix. Promotion and founder
+beta are not approved.
+
+The release gate has two explicit profiles. `founder_core` keeps browser capture disabled while
+direct capture, Gmail alerts, Calendar, Web Push, and the private Maritime worker remain in scope.
+It replaces browser-positive checks with mandatory proof that browser controls, dispatch, ingress,
+scheduling, and UI/API activation are disabled. ADR 0012 does not block that profile when those
+phases pass. `founder_browser_experimental` retains all browser-live phases and remains `no_go`
+until ADR 0012 is superseded.
+
+For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
+external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A
+mandatory phase, invalid/stale/mismatched evidence, missing phase, implementation gap, policy gap,
+schema gap, test failure, unresolved security finding, or design decision produces `no_go`.
 
 ## Verified locally
 
@@ -84,14 +95,15 @@ Capability truth for this release:
    backward-schema compatibility lacks accepted evidence. The workflow never deploys anything.
 2. Create one deploy-scoped Maritime API key in protected operator storage. Read-only inventory
    found no existing long-lived key. Never paste its raw value into Codex, Git, or logs.
-3. Keep browser capture and gateway adoption disabled for Maritime staging under ADR 0012. Do not
-   expose, pair, or upgrade an OpenClaw browser gateway until a documented ingress decision is
-   reviewed. The Telegram-enabled agent remains outside Vera's scope.
+3. Select `founder_core`, keep browser capture disabled, and keep gateway adoption absent. Prove the
+   seven mandatory browser-disabled phases. ADR 0012 remains a blocker only for
+   `founder_browser_experimental`. The Telegram-enabled agent remains outside Vera's scope.
 4. If separately authorized after this gate, deploy one Vera worker only by candidate immutable
    digest. The read-only inventory found no existing Vera worker deployment.
-5. Run the unified non-browser staging matrix, including dispatch, replay, kill-switch, provider
-   failure, notification idempotency, Gmail readonly, Calendar hold, PostgreSQL restore, and worker
-   rollback paths. Browser phases remain visibly blocked, not skipped.
+5. Run the founder-core matrix in `FOUNDER_CORE_STAGING_RUNBOOK.md`, including dispatch, replay,
+   restart, emergency disable, provider failure, notification idempotency, Gmail readonly, Calendar
+   hold, PostgreSQL restore, worker rollback, and mandatory browser-disabled enforcement. Browser
+   requirements are replaced by profile selection, never skipped or marked N/A.
 6. Obtain explicit operator approval before every Maritime create, deploy, start, restart, stop,
    environment mutation, file upload, pairing, trigger mutation, or rollback action.
 
@@ -137,8 +149,9 @@ pnpm verify:worker-release-promotion -- \
 
 GitHub accepts `workflow_dispatch` only after the workflow exists on the default branch. The
 downloaded evidence is not a deployment authorization and does not satisfy the separate rollback
-or live Google/restore evidence requirements. Browser gateway adoption remains blocked by ADR 0012;
-Vera must not create a duplicate gateway.
+or live Google/restore evidence requirements. Founder core requires no gateway. Browser gateway
+adoption remains blocked for `founder_browser_experimental` by ADR 0012; Vera must not create a
+duplicate gateway.
 
 ## Evidence caveats
 

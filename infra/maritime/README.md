@@ -4,6 +4,20 @@ Status: operator-controlled; no automatic deployment
 
 Maritime is Vera's primary production execution and scheduling plane. PostgreSQL remains canonical for users, policy, jobs, dispatch attempts, schedules, results, notification deliveries, and audit events. Maritime receives only an agent identifier when Vera wakes the worker; the worker claims accepted work from PostgreSQL.
 
+## Active founder-core profile
+
+The current staging target is `founder_core`: one private Vera worker, no OpenClaw gateway
+deployment, no browser node connection, no public browser endpoint, and no browser schedule. Set
+`VERA_BROWSER_DISABLED=1`; omit `VERA_MARITIME_GATEWAY_AGENT_ID`, `OPENCLAW_GATEWAY_URL`,
+`OPENCLAW_GATEWAY_TOKEN`, and founder browser IDs. Worker serve mode requires only the exact worker
+agent ID plus the scoped Maritime API key.
+
+Any OpenClaw inventory, adoption, upload, deploy, trigger, restart, or rollback material later in
+this document applies only to the release-ineligible `founder_browser_experimental` profile. It is
+not part of founder-core and remains blocked by ADR 0012. Use
+[`docs/FOUNDER_CORE_STAGING_RUNBOOK.md`](../../docs/FOUNDER_CORE_STAGING_RUNBOOK.md) for the active
+sequence.
+
 ## Supported versions
 
 - Maritime CLI: `maritime-cli@1.7.0` (verified against npm and the current machine-readable CLI
@@ -114,9 +128,9 @@ only; it does not authorize a Maritime mutation.
    digest as `rollback.reviewedWorkerImage` in the private release manifest.
 2. Dispatch the same default-branch workflow with the merged candidate's full SHA and independently
    verify its evidence. Record its digest as `worker.image`.
-3. Record the reviewed candidate OpenClaw image and reviewed rollback OpenClaw image under
-   `openclaw.image` and `rollback.reviewedOpenclawImage`. The same reviewed digest is allowed when
-   no OpenClaw image or configuration change is proposed.
+3. For `founder_core`, set `openclaw` and `rollback.reviewedOpenclawImage` to null. Only the
+   separately blocked `founder_browser_experimental` profile records reviewed candidate and
+   rollback OpenClaw images.
 4. Set `rollback.workerSchemaCompatible` only after the earlier worker was tested against the migrated
    schema and record a hash of that test evidence. If compatibility fails or is unknown, image rollback
    is unavailable; use the managed PostgreSQL restore procedure instead.

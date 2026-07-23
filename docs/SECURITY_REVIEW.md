@@ -4,7 +4,11 @@ Date: 2026-07-23
 
 Review status: Local founder-release controls verified; live Maritime inventory and release evidence pending
 
-Initial release outcome: **conditional go for founder-only staging**. Vera is **not approved for multi-user beta**. Founder staging remains conditional until every release-blocking finding below is resolved and the local, PostgreSQL, supply-chain, Maritime, OpenClaw, and live failure-path evidence is recorded in this document.
+Initial release outcome: **no-go** because no complete, current private evidence bundle exists. Vera
+is **not approved for multi-user beta**. The `founder_core` profile may become
+`conditional_go_founder_only_staging` only when every completed mandatory phase passes and every
+remaining phase has a valid external configuration blocker that needs no code or design change. It
+may become `go_founder_only_core_beta` only when every mandatory phase passes.
 
 ## Scope and method
 
@@ -37,7 +41,10 @@ The review used source inspection, targeted searches, schema and migration inspe
 2. **Vera web/worker to PostgreSQL.** PostgreSQL is canonical. All private access is scoped by a server-derived Vera user ID. Database constraints remain an independent enforcement layer.
 3. **Vera to Google.** OAuth state, authorization-code exchange, scope verification, token refresh, Gmail results, and provider failures cross an external boundary. Tokens and message contents must not enter logs or browser persistence.
 4. **Vera to Maritime.** Maritime execution state is evidence, not canonical job state. Wake and status APIs receive only minimum identifiers and authenticated, replay-resistant payloads.
-5. **Maritime-hosted OpenClaw gateway to local node.** Browser capture is disabled in Maritime staging because no documented authenticated, allowlisted WSS ingress is approved. No gateway/node transport or pairing is a staging trust boundary until ADR 0012 is superseded.
+5. **Profile-scoped browser boundary.** Founder core requires no OpenClaw gateway and must prove
+   browser dispatch, ingress, scheduling, and activation are disabled. Browser experimental remains
+   blocked because no documented authenticated, allowlisted WSS ingress is approved. No gateway/node
+   transport or pairing is a staging trust boundary until ADR 0012 is superseded.
 6. **Local browser profile to captured page.** Page content is adversarial. It cannot change source policy, domain allowlists, selected user/node/profile, action capability, job payload, secrets, filesystem access, or audit behavior.
 7. **Vera to notification provider.** Endpoints and provider responses are untrusted. Payloads must remain generic and idempotent, and encrypted subscription material must remain bounded.
 8. **Production to deterministic demo.** Hosted entry points may use PostgreSQL only. SQLite and fixtures are available solely through the explicit `@vera/db/demo` composition root and cannot dispatch Maritime or OpenClaw work.
@@ -61,7 +68,7 @@ The review used source inspection, targeted searches, schema and migration inspe
 | ID | Boundary / threat | Severity | Evidence | Exploit or failure path | Required fix | Owner | Release blocker | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SEC-001 | Non-founder browser execution | High | `packages/domain/src/founder-browser-access.ts`; creation, dispatch, and worker tests listed below | Ordinary tenant ownership is enforced, but an authenticated user can reach the single founder gateway whenever browser controls are enabled because there is no independent founder UUID allowlist. | Enforce one server-only founder UUID allowlist at job creation, dispatch, and immediately before worker provider invocation. Missing or malformed configuration must deny. | Application | Yes | Resolved |
-| SEC-002 | OpenClaw capability and ingress | High | ADR 0012, reviewed configs/verifier, sanitized read-only inventory | OpenClaw 2026.6.33 provides no path-level allowlist inside `browser.proxy`, and Maritime does not document the required authenticated, allowlisted WSS topology. | Keep browser capture disabled in staging; require a documented ingress decision plus a narrow node-side command before any founder browser enablement or multi-user beta. | Infrastructure | Yes | Browser staging explicitly blocked |
+| SEC-002 | OpenClaw capability and ingress | High | ADR 0012, reviewed configs/verifier, sanitized read-only inventory | OpenClaw 2026.6.33 provides no path-level allowlist inside `browser.proxy`, and Maritime does not document the required authenticated, allowlisted WSS topology. | Keep browser capture disabled and the gateway absent for `founder_core`; require a documented ingress decision plus a narrow node-side command before `founder_browser_experimental` or any multi-user browser beta. | Infrastructure | No for core; yes for browser experimental | Browser experimental explicitly blocked |
 | SEC-003 | Mutable release identity | High | immutable Node/OpenClaw digests, exact OpenClaw package, SHA-pinned CI actions, production-only worker deploy, local image/SBOM evidence below | The local candidate is identified and inventoried, but a registry digest, provenance/signature, approved advisory review, and rollback worker digest are not yet recorded. | Produce and verify those artifacts for the release candidate and deploy by digest. | Release | Yes | Locally mitigated; promotion evidence open |
 | SEC-004 | Public worker ingress | Medium | runbook requires agent-local worker port; read-only Maritime inventory found no Vera worker deployment | A worker that needs only Maritime wake/status and PostgreSQL claims must not expose a public application URL. Maritime may still provide a secret invoke webhook, which is not a Vera authorization surface. | Deploy one worker by immutable digest without public application ingress and verify its readiness/diagnostic boundary. | Infrastructure | Yes | Desired state fixed; deployment evidence open |
 | SEC-005 | Mutation exhaustion and CSRF inconsistency | Medium | `apps/web/lib/server/request-security.ts`; `scripts/verify-web-mutation-boundaries.ts`; route and parser tests listed below | An unauthenticated or cross-origin request can be buffered before rejection, and inconsistent parsing can bypass the intended body-size/content-type policy. | Authenticate, require the exact configured same origin, stream a bounded JSON body in UTF-8 bytes, then schema-validate in every mutation route. Add a static regression gate. | Web | Yes | Resolved |

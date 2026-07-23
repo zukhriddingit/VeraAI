@@ -24,9 +24,13 @@ confirm the residual trust boundary.
 ## Decision
 
 Select **option C**: browser capture remains disabled in Maritime founder staging. Non-browser
-Maritime worker jobs can be staged separately. The staging harness records the browser positive-capture
-phase as `blocked_missing_configuration` with `openclaw_ingress_unreviewed`; it cannot be converted to
-a manual pass by an arbitrary evidence record.
+Maritime worker jobs can be staged under the explicit `founder_core` release profile. That profile
+does not mark browser-live requirements N/A; it replaces them before evaluation with mandatory
+positive proof that browser capture, dispatch, ingress, scheduling, and activation are disabled.
+
+The separate `founder_browser_experimental` profile retains all browser-live phases and remains
+release-ineligible with `openclaw_ingress_adr_unresolved`. An arbitrary evidence record cannot
+override that profile-level blocker.
 
 | Boundary | Founder-staging decision |
 | --- | --- |
@@ -40,12 +44,13 @@ a manual pass by an arbitrary evidence record.
 
 ## Consequences
 
-- Vera can collect isolated non-browser staging evidence, but it cannot produce a founder-staging
-  release pass or founder beta go while this mandatory browser phase remains blocked.
+- Vera can produce `conditional_go_founder_only_staging` or `go_founder_only_core_beta` only for
+  `founder_core` after all mandatory core and browser-disabled phases satisfy the release gate.
+- The unresolved ingress decision does not block `founder_core`.
 - Gmail read-only ingestion, calendar evidence, PostgreSQL recovery, notification, and worker paths
   remain eligible for isolated staging evidence.
-- The gateway, node, WSS, and browser positive-capture phases remain explicit live blockers rather
-  than being hidden behind a skip.
+- The gateway, node, WSS, and browser positive-capture phases remain explicit mandatory requirements
+  for `founder_browser_experimental`, never hidden behind a skip or N/A record.
 
 ## Reconsideration requirements
 
