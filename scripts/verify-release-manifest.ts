@@ -2,6 +2,8 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+import { capabilitiesMatchProfile, isReleaseProfileId } from "./staging/release-profiles.ts";
+
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee";
 const OPENCLAW_VERSION = "2026.6.33";
@@ -137,12 +139,30 @@ export function validateReleaseManifest(input: unknown): string[] {
   const manifest = requireClosedObject(
     input,
     "manifest",
-    ["schemaVersion", "releaseCommit", "createdAt", "worker", "openclaw", "rollback"],
+    [
+      "schemaVersion",
+      "releaseProfile",
+      "capabilities",
+      "releaseCommit",
+      "createdAt",
+      "worker",
+      "openclaw",
+      "rollback"
+    ],
     violations
   );
   if (!manifest) return violations;
 
-  if (manifest.schemaVersion !== 1) violations.push("manifest.schemaVersion must be 1.");
+  if (manifest.schemaVersion !== 2) violations.push("manifest.schemaVersion must be 2.");
+  const releaseProfile = isReleaseProfileId(manifest.releaseProfile)
+    ? manifest.releaseProfile
+    : null;
+  if (!releaseProfile) {
+    violations.push("manifest.releaseProfile must be an approved founder release profile.");
+  }
+  if (!releaseProfile || !capabilitiesMatchProfile(releaseProfile, manifest.capabilities)) {
+    violations.push("manifest.capabilities must exactly match manifest.releaseProfile.");
+  }
   if (typeof manifest.releaseCommit !== "string" || !GIT_COMMIT.test(manifest.releaseCommit)) {
     violations.push("manifest.releaseCommit must be a lowercase 40-character Git commit.");
   }
@@ -179,37 +199,43 @@ export function validateReleaseManifest(input: unknown): string[] {
     violations.push("worker digest, SBOM, provenance, signature, and scan evidence are required.");
   }
 
-  const openclaw = requireClosedObject(
-    manifest.openclaw,
-    "openclaw",
-    [
-      "image",
-      "version",
-      "upstreamCommit",
-      "sbomSha256",
-      "provenanceVerified",
-      "signatureVerified",
-      "vulnerabilityReview"
-    ],
-    violations
-  );
   let openclawImage: ImageIdentity | null = null;
-  if (openclaw) {
-    openclawImage = imageIdentity(openclaw.image);
-    if (openclaw.image !== OPENCLAW_IMAGE) {
-      violations.push(`OpenClaw digest must be exactly ${OPENCLAW_IMAGE}.`);
+  if (releaseProfile === "founder_core") {
+    if (manifest.openclaw !== null) {
+      violations.push("manifest.openclaw must be null for founder_core.");
     }
-    if (openclaw.version !== OPENCLAW_VERSION) {
-      violations.push(`OpenClaw version must be exactly ${OPENCLAW_VERSION}.`);
-    }
-    if (openclaw.upstreamCommit !== OPENCLAW_COMMIT) {
-      violations.push(`OpenClaw upstream commit must be exactly ${OPENCLAW_COMMIT}.`);
-    }
-    validateEvidence(openclaw, "OpenClaw", violations);
-  } else {
-    violations.push(
-      "OpenClaw digest, SBOM, provenance, signature, and scan evidence are required."
+  } else if (releaseProfile === "founder_browser_experimental") {
+    const openclaw = requireClosedObject(
+      manifest.openclaw,
+      "openclaw",
+      [
+        "image",
+        "version",
+        "upstreamCommit",
+        "sbomSha256",
+        "provenanceVerified",
+        "signatureVerified",
+        "vulnerabilityReview"
+      ],
+      violations
     );
+    if (openclaw) {
+      openclawImage = imageIdentity(openclaw.image);
+      if (openclaw.image !== OPENCLAW_IMAGE) {
+        violations.push(`OpenClaw digest must be exactly ${OPENCLAW_IMAGE}.`);
+      }
+      if (openclaw.version !== OPENCLAW_VERSION) {
+        violations.push(`OpenClaw version must be exactly ${OPENCLAW_VERSION}.`);
+      }
+      if (openclaw.upstreamCommit !== OPENCLAW_COMMIT) {
+        violations.push(`OpenClaw upstream commit must be exactly ${OPENCLAW_COMMIT}.`);
+      }
+      validateEvidence(openclaw, "OpenClaw", violations);
+    } else {
+      violations.push(
+        "OpenClaw digest, SBOM, provenance, signature, and scan evidence are required for founder_browser_experimental."
+      );
+    }
   }
 
   const rollback = requireClosedObject(
@@ -225,21 +251,31 @@ export function validateReleaseManifest(input: unknown): string[] {
   );
   if (rollback) {
     const rollbackWorkerImage = imageIdentity(rollback.reviewedWorkerImage);
-    const rollbackOpenClawImage = imageIdentity(rollback.reviewedOpenclawImage);
+    const rollbackOpenClawImage =
+      rollback.reviewedOpenclawImage === null
+        ? null
+        : imageIdentity(rollback.reviewedOpenclawImage);
     if (!rollbackWorkerImage) {
       violations.push(
         "rollback.reviewedWorkerImage must be a non-placeholder digest-qualified image."
       );
     }
-    if (!rollbackOpenClawImage) {
+    if (releaseProfile === "founder_browser_experimental" && !rollbackOpenClawImage) {
       violations.push(
         "rollback.reviewedOpenclawImage must be a non-placeholder digest-qualified image."
       );
     }
+    if (releaseProfile === "founder_core" && rollback.reviewedOpenclawImage !== null) {
+      violations.push("rollback.reviewedOpenclawImage must be null for founder_core.");
+    }
     if (workerImage && rollbackWorkerImage?.repository !== workerImage.repository) {
       violations.push("rollback.reviewedWorkerImage must use the active worker image repository.");
     }
-    if (openclawImage && rollbackOpenClawImage?.repository !== openclawImage.repository) {
+    if (
+      releaseProfile === "founder_browser_experimental" &&
+      openclawImage &&
+      rollbackOpenClawImage?.repository !== openclawImage.repository
+    ) {
       violations.push(
         "rollback.reviewedOpenclawImage must use the active OpenClaw image repository."
       );
@@ -259,7 +295,11 @@ export function validateReleaseManifest(input: unknown): string[] {
       "rollback worker compatibility evidence",
       violations
     );
-    if (rollbackWorkerImage && rollbackWorkerImage.digest === rollbackOpenClawImage?.digest) {
+    if (
+      rollbackWorkerImage &&
+      rollbackOpenClawImage &&
+      rollbackWorkerImage.digest === rollbackOpenClawImage.digest
+    ) {
       violations.push("Rollback worker and OpenClaw images must identify distinct artifacts.");
     }
   }

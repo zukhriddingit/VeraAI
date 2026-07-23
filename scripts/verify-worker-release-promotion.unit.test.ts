@@ -6,6 +6,7 @@ import {
   buildPromotionVerificationCommands,
   verifyWorkerReleasePromotion
 } from "./verify-worker-release-promotion";
+import { RELEASE_PROFILES } from "./staging/release-profiles.ts";
 
 const digest = "1".repeat(64);
 const sourceCommit = "a".repeat(40);
@@ -28,7 +29,9 @@ function vulnerabilityReview() {
 function input() {
   return {
     manifest: {
-      schemaVersion: 1,
+      schemaVersion: 2,
+      releaseProfile: "founder_core",
+      capabilities: RELEASE_PROFILES.founder_core.capabilities,
       releaseCommit: sourceCommit,
       createdAt: "2026-07-22T12:10:00Z",
       worker: {
@@ -39,19 +42,10 @@ function input() {
         signatureVerified: true,
         vulnerabilityReview: vulnerabilityReview()
       },
-      openclaw: {
-        image:
-          "ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee",
-        version: "2026.6.33",
-        upstreamCommit: "7af0cfc",
-        sbomSha256: "2".repeat(64),
-        provenanceVerified: true,
-        signatureVerified: true,
-        vulnerabilityReview: vulnerabilityReview()
-      },
+      openclaw: null,
       rollback: {
         reviewedWorkerImage: `ghcr.io/zukhriddingit/vera-worker@sha256:${"3".repeat(64)}`,
-        reviewedOpenclawImage: `ghcr.io/openclaw/openclaw@sha256:${"4".repeat(64)}`,
+        reviewedOpenclawImage: null,
         workerSchemaCompatible: true,
         workerCompatibilityEvidenceSha256: "5".repeat(64)
       }

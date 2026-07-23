@@ -1,20 +1,167 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://vera.example/schemas/maritime-release-manifest-v1.json",
+  "$id": "https://vera.example/schemas/maritime-release-manifest-v2.json",
   "title": "Vera founder release manifest",
-  "description": "Immutable supply-chain evidence required before a Vera founder release may be deployed.",
+  "description": "Profile-bound immutable supply-chain evidence required before a Vera founder release may be deployed.",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion", "releaseCommit", "createdAt", "worker", "openclaw", "rollback"],
+  "required": [
+    "schemaVersion",
+    "releaseProfile",
+    "capabilities",
+    "releaseCommit",
+    "createdAt",
+    "worker",
+    "openclaw",
+    "rollback"
+  ],
   "properties": {
     "schemaVersion": {
-      "const": 1
+      "const": 2
+    },
+    "releaseProfile": {
+      "enum": ["founder_core", "founder_browser_experimental"]
+    },
+    "capabilities": {
+      "$ref": "#/$defs/capabilities"
     },
     "releaseCommit": {
       "$ref": "#/$defs/gitCommit"
     },
     "createdAt": {
       "$ref": "#/$defs/instant"
+    },
+    "worker": {
+      "$ref": "#/$defs/worker"
+    },
+    "openclaw": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "$ref": "#/$defs/openclaw"
+        }
+      ]
+    },
+    "rollback": {
+      "$ref": "#/$defs/rollback"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "releaseProfile": {
+            "const": "founder_core"
+          }
+        },
+        "required": ["releaseProfile"]
+      },
+      "then": {
+        "properties": {
+          "capabilities": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/capabilities"
+              },
+              {
+                "properties": {
+                  "browserCapture": {
+                    "const": false
+                  }
+                }
+              }
+            ]
+          },
+          "openclaw": {
+            "type": "null"
+          },
+          "rollback": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/rollback"
+              },
+              {
+                "properties": {
+                  "reviewedOpenclawImage": {
+                    "type": "null"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "capabilities": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/capabilities"
+              },
+              {
+                "properties": {
+                  "browserCapture": {
+                    "const": true
+                  }
+                }
+              }
+            ]
+          },
+          "openclaw": {
+            "$ref": "#/$defs/openclaw"
+          },
+          "rollback": {
+            "allOf": [
+              {
+                "$ref": "#/$defs/rollback"
+              },
+              {
+                "properties": {
+                  "reviewedOpenclawImage": {
+                    "$ref": "#/$defs/imageDigest"
+                  }
+                }
+              }
+            ]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "capabilities": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "browserCapture",
+        "directCapture",
+        "gmailAlerts",
+        "calendar",
+        "webPush",
+        "maritimeWorker"
+      ],
+      "properties": {
+        "browserCapture": {
+          "type": "boolean"
+        },
+        "directCapture": {
+          "const": true
+        },
+        "gmailAlerts": {
+          "const": true
+        },
+        "calendar": {
+          "const": true
+        },
+        "webPush": {
+          "const": true
+        },
+        "maritimeWorker": {
+          "const": true
+        }
+      }
     },
     "worker": {
       "type": "object",
@@ -98,7 +245,14 @@
           "$ref": "#/$defs/imageDigest"
         },
         "reviewedOpenclawImage": {
-          "$ref": "#/$defs/imageDigest"
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "$ref": "#/$defs/imageDigest"
+            }
+          ]
         },
         "workerSchemaCompatible": {
           "const": true
@@ -107,9 +261,7 @@
           "$ref": "#/$defs/sha256"
         }
       }
-    }
-  },
-  "$defs": {
+    },
     "gitCommit": {
       "type": "string",
       "pattern": "^[a-f0-9]{40}$"

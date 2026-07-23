@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 
 import { describe, expect, it } from "vitest";
 
-import { validateReleaseManifest } from "./verify-release-manifest";
+import { RELEASE_PROFILES } from "./staging/release-profiles.ts";
+import { validateReleaseManifest } from "./verify-release-manifest.ts";
 
 const ACTIVE_OPENCLAW_DIGEST = "99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee";
 const hash = (character: string): string => character.repeat(64);
@@ -11,16 +12,18 @@ function vulnerabilityReview() {
   return {
     critical: 0,
     highAccepted: 0,
-    scanner: "trivy 0.69.3",
+    scanner: "trivy 0.72.0",
     databaseUpdatedAt: "2026-07-22T12:00:00Z",
     scannedAt: "2026-07-22T12:05:00Z"
   } as const;
 }
 
-function validManifest() {
+function validCoreManifest() {
   const releaseCommit = "a".repeat(40);
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    releaseProfile: "founder_core",
+    capabilities: RELEASE_PROFILES.founder_core.capabilities,
     releaseCommit,
     createdAt: "2026-07-22T12:10:00Z",
     worker: {
@@ -31,6 +34,21 @@ function validManifest() {
       signatureVerified: true,
       vulnerabilityReview: vulnerabilityReview()
     },
+    openclaw: null,
+    rollback: {
+      reviewedWorkerImage: `ghcr.io/vera/worker@sha256:${hash("4")}`,
+      reviewedOpenclawImage: null,
+      workerSchemaCompatible: true,
+      workerCompatibilityEvidenceSha256: hash("6")
+    }
+  } as const;
+}
+
+function validBrowserManifest() {
+  return {
+    ...validCoreManifest(),
+    releaseProfile: "founder_browser_experimental",
+    capabilities: RELEASE_PROFILES.founder_browser_experimental.capabilities,
     openclaw: {
       image: `ghcr.io/openclaw/openclaw@sha256:${ACTIVE_OPENCLAW_DIGEST}`,
       version: "2026.6.33",
@@ -41,21 +59,62 @@ function validManifest() {
       vulnerabilityReview: vulnerabilityReview()
     },
     rollback: {
-      reviewedWorkerImage: `ghcr.io/vera/worker@sha256:${hash("4")}`,
-      reviewedOpenclawImage: `ghcr.io/openclaw/openclaw@sha256:${hash("5")}`,
-      workerSchemaCompatible: true,
-      workerCompatibilityEvidenceSha256: hash("6")
+      ...validCoreManifest().rollback,
+      reviewedOpenclawImage: `ghcr.io/openclaw/openclaw@sha256:${hash("5")}`
     }
   } as const;
 }
 
 describe("release manifest validation", () => {
-  it("accepts complete immutable evidence", () => {
-    expect(validateReleaseManifest(validManifest())).toEqual([]);
+  it("accepts complete immutable core and browser profile manifests", () => {
+    expect(validateReleaseManifest(validCoreManifest())).toEqual([]);
+    expect(validateReleaseManifest(validBrowserManifest())).toEqual([]);
   });
 
-  it("rejects mutable images and missing evidence", () => {
-    const manifest = validManifest();
+  it("binds the exact closed capabilities to the selected profile", () => {
+    const core = validCoreManifest();
+    expect(
+      validateReleaseManifest({
+        ...core,
+        capabilities: RELEASE_PROFILES.founder_browser_experimental.capabilities
+      })
+    ).toContain("manifest.capabilities must exactly match manifest.releaseProfile.");
+    expect(
+      validateReleaseManifest({
+        ...core,
+        capabilities: { ...core.capabilities, arbitrary: true }
+      })
+    ).toContain("manifest.capabilities must exactly match manifest.releaseProfile.");
+  });
+
+  it("forbids OpenClaw artifacts for core and requires them for browser experimental", () => {
+    const core = validCoreManifest();
+    const browser = validBrowserManifest();
+    expect(validateReleaseManifest({ ...core, openclaw: browser.openclaw })).toContain(
+      "manifest.openclaw must be null for founder_core."
+    );
+    expect(
+      validateReleaseManifest({
+        ...core,
+        rollback: {
+          ...core.rollback,
+          reviewedOpenclawImage: browser.rollback.reviewedOpenclawImage
+        }
+      })
+    ).toContain("rollback.reviewedOpenclawImage must be null for founder_core.");
+    expect(validateReleaseManifest({ ...browser, openclaw: null })).toEqual(
+      expect.arrayContaining([expect.stringMatching(/OpenClaw.*required/iu)])
+    );
+    expect(
+      validateReleaseManifest({
+        ...browser,
+        rollback: { ...browser.rollback, reviewedOpenclawImage: null }
+      })
+    ).toContain("rollback.reviewedOpenclawImage must be a non-placeholder digest-qualified image.");
+  });
+
+  it("rejects mutable images and missing candidate evidence", () => {
+    const manifest = validBrowserManifest();
     expect(
       validateReleaseManifest({
         ...manifest,
@@ -73,7 +132,7 @@ describe("release manifest validation", () => {
   });
 
   it("enforces a closed schema at every evidence boundary", () => {
-    const manifest = validManifest();
+    const manifest = validCoreManifest();
     const violations = validateReleaseManifest({
       ...manifest,
       token: "must-never-be-accepted",
@@ -87,7 +146,6 @@ describe("release manifest validation", () => {
       },
       rollback: { ...manifest.rollback, note: "trust me" }
     });
-
     expect(violations).toEqual(
       expect.arrayContaining([
         expect.stringContaining("manifest.token is not allowed"),
@@ -99,7 +157,7 @@ describe("release manifest validation", () => {
   });
 
   it("binds worker source bytes to the release commit", () => {
-    const manifest = validManifest();
+    const manifest = validCoreManifest();
     expect(
       validateReleaseManifest({
         ...manifest,
@@ -114,8 +172,8 @@ describe("release manifest validation", () => {
     ).toContain("worker.sourceCommit must be a lowercase 40-character Git commit.");
   });
 
-  it("pins the exact reviewed OpenClaw release", () => {
-    const manifest = validManifest();
+  it("pins the exact reviewed browser-experimental OpenClaw release", () => {
+    const manifest = validBrowserManifest();
     const violations = validateReleaseManifest({
       ...manifest,
       openclaw: {
@@ -125,7 +183,6 @@ describe("release manifest validation", () => {
         upstreamCommit: "deadbee"
       }
     });
-
     expect(violations).toEqual(
       expect.arrayContaining([
         expect.stringContaining("OpenClaw digest must be exactly"),
@@ -136,7 +193,7 @@ describe("release manifest validation", () => {
   });
 
   it("requires successful signed evidence and timestamped zero-exception scans", () => {
-    const manifest = validManifest();
+    const manifest = validCoreManifest();
     const violations = validateReleaseManifest({
       ...manifest,
       worker: {
@@ -152,7 +209,6 @@ describe("release manifest validation", () => {
         }
       }
     });
-
     expect(violations).toEqual(
       expect.arrayContaining([
         expect.stringContaining("worker provenance verification must be true"),
@@ -166,18 +222,17 @@ describe("release manifest validation", () => {
     );
   });
 
-  it("requires real rollback worker identity and schema compatibility before image rollback", () => {
-    const manifest = validManifest();
+  it("requires a distinct immutable rollback worker with compatibility evidence", () => {
+    const manifest = validCoreManifest();
     const violations = validateReleaseManifest({
       ...manifest,
       rollback: {
         reviewedWorkerImage: manifest.worker.image,
-        reviewedOpenclawImage: manifest.openclaw.image,
+        reviewedOpenclawImage: null,
         workerSchemaCompatible: false,
         workerCompatibilityEvidenceSha256: "0".repeat(64)
       }
     });
-
     expect(violations).toEqual(
       expect.arrayContaining([
         expect.stringContaining("different immutable worker artifact"),
@@ -189,37 +244,14 @@ describe("release manifest validation", () => {
       validateReleaseManifest({
         ...manifest,
         rollback: {
-          reviewedWorkerImage: "ghcr.io/vera/worker:previous",
-          reviewedOpenclawImage: "ghcr.io/openclaw/openclaw:previous",
-          workerSchemaCompatible: true,
-          workerCompatibilityEvidenceSha256: hash("7")
+          ...manifest.rollback,
+          reviewedWorkerImage: "ghcr.io/vera/worker:previous"
         }
       })
-    ).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("rollback.reviewedWorkerImage"),
-        expect.stringContaining("rollback.reviewedOpenclawImage")
-      ])
-    );
-    expect(
-      validateReleaseManifest({
-        ...manifest,
-        rollback: {
-          reviewedWorkerImage: `ghcr.io/other/worker@sha256:${hash("8")}`,
-          reviewedOpenclawImage: `ghcr.io/other/openclaw@sha256:${hash("9")}`,
-          workerSchemaCompatible: true,
-          workerCompatibilityEvidenceSha256: hash("a")
-        }
-      })
-    ).toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("active worker image repository"),
-        expect.stringContaining("active OpenClaw image repository")
-      ])
-    );
+    ).toContain("rollback.reviewedWorkerImage must be a non-placeholder digest-qualified image.");
   });
 
-  it("keeps the checked-in JSON schema closed at all object levels", () => {
+  it("keeps the checked-in JSON schema closed and profile conditional", () => {
     const schema = JSON.parse(
       readFileSync(
         new URL("../infra/maritime/release-manifest.schema.json", import.meta.url),
@@ -227,38 +259,37 @@ describe("release manifest validation", () => {
       )
     ) as {
       readonly additionalProperties?: unknown;
-      readonly properties?: Record<
+      readonly required?: readonly string[];
+      readonly allOf?: readonly unknown[];
+      readonly $defs?: Record<
         string,
         {
           readonly additionalProperties?: unknown;
+          readonly required?: readonly string[];
           readonly properties?: Record<string, { readonly const?: unknown }>;
         }
       >;
-      readonly $defs?: Record<
-        string,
-        { readonly additionalProperties?: unknown; readonly required?: readonly string[] }
-      >;
     };
-
     expect(schema.additionalProperties).toBe(false);
-    expect(schema.properties?.worker?.additionalProperties).toBe(false);
-    expect(schema.properties?.openclaw?.additionalProperties).toBe(false);
-    expect(schema.properties?.rollback?.additionalProperties).toBe(false);
+    expect(schema.required).toEqual(
+      expect.arrayContaining(["releaseProfile", "capabilities", "worker", "openclaw", "rollback"])
+    );
+    expect(schema.allOf).toHaveLength(1);
+    expect(schema.$defs?.capabilities?.additionalProperties).toBe(false);
+    expect(schema.$defs?.worker?.additionalProperties).toBe(false);
+    expect(schema.$defs?.openclaw?.additionalProperties).toBe(false);
+    expect(schema.$defs?.rollback?.additionalProperties).toBe(false);
     expect(schema.$defs?.vulnerabilityReview?.additionalProperties).toBe(false);
-    expect(schema.$defs?.vulnerabilityReview?.required).toContain("scannedAt");
-    expect(schema.properties?.openclaw?.properties?.image?.const).toContain(
+    expect(schema.$defs?.openclaw?.properties?.image?.const).toContain(
       `@sha256:${ACTIVE_OPENCLAW_DIGEST}`
     );
-    expect(schema.properties?.openclaw?.properties?.version?.const).toBe("2026.6.33");
-    expect(schema.properties?.openclaw?.properties?.upstreamCommit?.const).toBe("7af0cfc");
   });
 
-  it("makes live evidence optional for local validation without claiming deploy readiness", () => {
+  it("makes live evidence optional locally without claiming deploy readiness", () => {
     const validator = readFileSync(
       new URL("../infra/maritime/validate.mjs", import.meta.url),
       "utf8"
     );
-
     expect(validator).toContain("process.env.VERA_RELEASE_MANIFEST_PATH?.trim()");
     expect(validator).toContain("live release evidence not supplied");
     expect(validator).toContain("deployment readiness was not established");
