@@ -1,8 +1,13 @@
 import { describe, expect, it } from "vitest";
-import type { BrowserNodeStatus, ManualActionBlocker } from "@vera/domain";
+import {
+  BrowserNodeStatusSchema,
+  type BrowserNodeStatus,
+  type ManualActionBlocker
+} from "@vera/domain";
 
 import {
   BrowserCaptureRequestSchema,
+  BrowserCurrentTabCaptureResultSchema,
   BrowserExecutionResultSchema,
   BrowserHeartbeatRequestSchema,
   BrowserNavigationRequestSchema,
@@ -24,20 +29,31 @@ const LIMITS = {
   maxConcurrency: 1
 } as const;
 
-const onlineNode: BrowserNodeStatus = {
+const onlineNode: BrowserNodeStatus = BrowserNodeStatusSchema.parse({
   nodeId: "node-local-1",
   providerId: "mock-openclaw",
+  nodeName: "Founder Mac",
   status: "online",
+  pairingState: "paired",
+  capabilityApprovalState: "approved",
+  selectedProfileId: "vera-zillow",
+  allowedProfileIds: ["vera-zillow"],
+  reportedOpenClawVersion: "2026.6.33",
+  expectedOpenClawVersion: "2026.6.33",
+  versionCompatibility: "compatible",
   lastHeartbeatAt: NOW,
   heartbeatExpiresAt: LATER,
+  lastSuccessfulCaptureAt: null,
+  disabledAt: null,
   contractVersion: 1,
   capabilities: {
     navigation: true,
     capture: true,
     cancellation: true
   },
+  createdAt: NOW,
   updatedAt: NOW
-};
+});
 
 const validNavigation: BrowserNavigationRequest = {
   nodeId: onlineNode.nodeId,
@@ -217,13 +233,25 @@ describe("MockBrowserExecutionProvider", () => {
   });
 
   it.each([
-    "login",
-    "reauthentication",
-    "two_factor_authentication",
-    "captcha",
-    "consent",
-    "camera_permission",
-    "microphone_permission"
+    "login_required",
+    "two_factor_required",
+    "captcha_required",
+    "consent_required",
+    "rate_or_bot_challenge",
+    "unexpected_redirect",
+    "active_url_mismatch",
+    "stale_snapshot",
+    "layout_incompatible",
+    "unsupported_page",
+    "browser_profile_unavailable",
+    "node_pairing_required",
+    "capability_approval_required",
+    "node_offline",
+    "version_incompatible",
+    "download_or_upload_requested",
+    "camera_or_microphone_requested",
+    "policy_uncertain",
+    "user_intervention_required"
   ] satisfies readonly ManualActionBlocker[])(
     "returns a typed manual-action result for %s without evidence or cursor advancement",
     async (blocker) => {
@@ -393,7 +421,7 @@ describe("MockBrowserExecutionProvider", () => {
         {
           operation: "capture",
           status: "manual_action_required",
-          blocker: "captcha",
+          blocker: "captcha_required",
           instruction: "Complete the challenge manually.",
           completedAt: NOW
         }
@@ -450,6 +478,59 @@ describe("MockBrowserExecutionProvider", () => {
     ).resolves.toMatchObject({
       correlationId: "correlation-heartbeat-3",
       node: { status: "stale" }
+    });
+  });
+
+  it("captures one exact current tab without exposing a navigation request", async () => {
+    const currentUrl = "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/";
+    const provider = new MockBrowserExecutionProvider([], {
+      nodes: [onlineNode],
+      now: () => new Date(NOW),
+      currentTabOutcomes: [
+        {
+          status: "completed",
+          completedAt: NOW,
+          evidence: {
+            captureId: "capture-current-tab-1",
+            activeUrl: currentUrl,
+            canonicalUrl: currentUrl,
+            pageTitle: "12 Cedar Street",
+            renderedText: "$2,400/mo 2 beds 1 bath",
+            structuredMetadata: { source: "zillow" },
+            imageUrls: [],
+            observedAt: NOW,
+            nodeId: onlineNode.nodeId,
+            profileId: "vera-zillow",
+            contentHash: "c".repeat(64)
+          }
+        }
+      ]
+    });
+
+    const result = await provider.captureCurrentTab({
+      nodeId: onlineNode.nodeId,
+      profileId: "vera-zillow",
+      executionId: "browser-execution-current-1",
+      correlationId: "correlation-current-1",
+      expectedUrl: currentUrl,
+      canonicalUrl: currentUrl,
+      invocationIdempotencyKey: "d".repeat(64),
+      requestedAt: NOW,
+      limits: {
+        maxPages: 1,
+        maxRecords: 1,
+        maxBytes: 250_000,
+        maxDurationMilliseconds: 30_000,
+        maxConcurrency: 1
+      }
+    });
+
+    expect(BrowserCurrentTabCaptureResultSchema.parse(result)).toEqual(result);
+    expect(result).toMatchObject({
+      status: "completed",
+      nodeId: onlineNode.nodeId,
+      profileId: "vera-zillow",
+      evidence: { canonicalUrl: currentUrl }
     });
   });
 });

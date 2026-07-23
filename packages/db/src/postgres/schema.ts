@@ -1,6 +1,9 @@
 import type {
   ActivityEvent,
+  AvailabilityCheck,
+  AvailabilityRuleSet,
   BrowserNodeStatus,
+  CalendarOAuthState,
   CanonicalListing,
   CanonicalListingPlan,
   ContactWorkflow,
@@ -13,6 +16,7 @@ import type {
   ListingExtractionRun,
   ListingScore,
   ListingScoreV2,
+  NotificationPayload,
   RiskSignal,
   RiskSignalV2,
   SearchProfile,
@@ -152,6 +156,7 @@ export const integrationConnections = pgTable(
       table.provider,
       table.providerSubjectId
     ),
+    uniqueIndex("integration_connections_user_provider_unique").on(table.userId, table.provider),
     check("integration_connections_provider_allowed", sql`${table.provider} IN ('google')`),
     check(
       "integration_connections_status_allowed",
@@ -164,6 +169,246 @@ export const integrationConnections = pgTable(
     check(
       "integration_connections_disconnected_no_credential",
       sql`${table.status} <> 'disconnected' OR ${table.credentialCiphertext} IS NULL`
+    )
+  ]
+);
+
+export const integrationRefreshLeases = pgTable(
+  "integration_refresh_leases",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    integrationId: uuid("integration_id").notNull(),
+    leaseOwner: text("lease_owner").notNull(),
+    leaseExpiresAt: instant("lease_expires_at").notNull(),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.integrationId] }),
+    foreignKey({
+      name: "integration_refresh_leases_connection_tenant_fk",
+      columns: [table.userId, table.integrationId],
+      foreignColumns: [integrationConnections.userId, integrationConnections.id]
+    })
+      .onDelete("cascade")
+      .onUpdate("restrict"),
+    index("integration_refresh_leases_expiry_idx").on(
+      table.leaseExpiresAt,
+      table.userId,
+      table.integrationId
+    ),
+    check(
+      "integration_refresh_leases_owner_valid",
+      sql`${table.leaseOwner} ~ '^[A-Za-z0-9._:-]{1,160}$'`
+    ),
+    check(
+      "integration_refresh_leases_expiry_order",
+      sql`${table.leaseExpiresAt} > ${table.updatedAt}`
+    )
+  ]
+);
+
+export const availabilityRuleSets = pgTable(
+  "availability_rule_sets",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    timeZone: text("time_zone").notNull(),
+    weeklyIntervals: jsonb("weekly_intervals")
+      .$type<AvailabilityRuleSet["weeklyIntervals"]>()
+      .notNull(),
+    durationMinutes: integer("duration_minutes").notNull(),
+    minimumNoticeMinutes: integer("minimum_notice_minutes").notNull(),
+    travelMinutes: integer("travel_minutes").notNull(),
+    bufferMinutes: integer("buffer_minutes").notNull(),
+    remindersMinutesBeforeStart: jsonb("reminders_minutes_before_start")
+      .$type<AvailabilityRuleSet["remindersMinutesBeforeStart"]>()
+      .notNull(),
+    conflictCheckingEnabled: boolean("conflict_checking_enabled").notNull(),
+    selectedCalendarIds: jsonb("selected_calendar_ids")
+      .$type<AvailabilityRuleSet["calendarIds"]>()
+      .notNull(),
+    schemaVersion: integer("schema_version").notNull().default(1),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("availability_rule_sets_user_unique").on(table.userId),
+    check("availability_rule_sets_schema_version", sql`${table.schemaVersion} = 1`),
+    check(
+      "availability_rule_sets_duration_range",
+      sql`${table.durationMinutes} BETWEEN 15 AND 240`
+    ),
+    check(
+      "availability_rule_sets_notice_range",
+      sql`${table.minimumNoticeMinutes} BETWEEN 0 AND 10080`
+    ),
+    check("availability_rule_sets_travel_range", sql`${table.travelMinutes} BETWEEN 0 AND 240`),
+    check("availability_rule_sets_buffer_range", sql`${table.bufferMinutes} BETWEEN 0 AND 240`),
+    check(
+      "availability_rule_sets_weekly_intervals_object",
+      sql`jsonb_typeof(${table.weeklyIntervals}) = 'object'`
+    ),
+    check(
+      "availability_rule_sets_reminders_array",
+      sql`jsonb_typeof(${table.remindersMinutesBeforeStart}) = 'array'
+        AND jsonb_array_length(${table.remindersMinutesBeforeStart}) <= 5`
+    ),
+    check(
+      "availability_rule_sets_calendar_ids_consistency",
+      sql`jsonb_typeof(${table.selectedCalendarIds}) = 'array'
+        AND ((${table.conflictCheckingEnabled} = true
+              AND ${table.selectedCalendarIds} = '["primary"]'::jsonb)
+          OR (${table.conflictCheckingEnabled} = false
+              AND ${table.selectedCalendarIds} = '[]'::jsonb))`
+    ),
+    check("availability_rule_sets_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const calendarOauthStates = pgTable(
+  "calendar_oauth_states",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: uuid("id").notNull().defaultRandom(),
+    stateHash: text("state_hash").notNull(),
+    capability: text("capability").notNull(),
+    requestedCalendarScopes: jsonb("requested_calendar_scopes")
+      .$type<CalendarOAuthState["requestedCalendarScopes"]>()
+      .notNull(),
+    credentialVersion: integer("credential_version"),
+    credentialAlgorithm: text("credential_algorithm"),
+    credentialKeyId: text("credential_key_id"),
+    credentialNonce: bytea("credential_nonce"),
+    credentialCiphertext: bytea("credential_ciphertext"),
+    credentialAuthenticationTag: bytea("credential_authentication_tag"),
+    redirectUriHash: text("redirect_uri_hash").notNull(),
+    returnTo: text("return_to").notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    consumedAt: instant("consumed_at"),
+    createdAt: instant("created_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("calendar_oauth_states_state_hash_unique").on(table.stateHash),
+    check(
+      "calendar_oauth_states_capability_allowed",
+      sql`${table.capability} IN ('calendar_conflict_checking', 'calendar_hold_creation')`
+    ),
+    check(
+      "calendar_oauth_states_scope_consistency",
+      sql`(${table.capability} = 'calendar_conflict_checking'
+            AND ${table.requestedCalendarScopes} = '["https://www.googleapis.com/auth/calendar.freebusy"]'::jsonb)
+        OR (${table.capability} = 'calendar_hold_creation'
+            AND ${table.requestedCalendarScopes} = '["https://www.googleapis.com/auth/calendar.events.owned"]'::jsonb)`
+    ),
+    check(
+      "calendar_oauth_states_verifier_all_or_none",
+      sql`num_nonnulls(${table.credentialVersion}, ${table.credentialAlgorithm}, ${table.credentialKeyId}, ${table.credentialNonce}, ${table.credentialCiphertext}, ${table.credentialAuthenticationTag}) IN (0, 6)`
+    ),
+    check(
+      "calendar_oauth_states_encrypted_verifier_required",
+      sql`${table.credentialCiphertext} IS NOT NULL`
+    ),
+    check("calendar_oauth_states_state_hash_valid", sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`),
+    check(
+      "calendar_oauth_states_redirect_hash_valid",
+      sql`${table.redirectUriHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "calendar_oauth_states_timestamp_order",
+      sql`${table.expiresAt} > ${table.createdAt}
+        AND (${table.consumedAt} IS NULL
+          OR (${table.consumedAt} >= ${table.createdAt} AND ${table.consumedAt} <= ${table.expiresAt}))`
+    )
+  ]
+);
+
+export const availabilityChecks = pgTable(
+  "availability_checks",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    availabilityRuleSetId: text("availability_rule_set_id").notNull(),
+    integrationConnectionId: uuid("integration_connection_id"),
+    state: text("state").notNull(),
+    rangeStartsAt: instant("range_starts_at").notNull(),
+    rangeEndsAt: instant("range_ends_at").notNull(),
+    calendarIdsAttempted: jsonb("calendar_ids_attempted")
+      .$type<AvailabilityCheck["calendarIdsAttempted"]>()
+      .notNull(),
+    calendarsChecked: jsonb("calendars_checked")
+      .$type<AvailabilityCheck["calendarsChecked"]>()
+      .notNull(),
+    checkedAt: instant("checked_at"),
+    responseHash: text("response_hash"),
+    busyIntervalCount: integer("busy_interval_count"),
+    safeProviderErrorCode: text("safe_provider_error_code"),
+    correlationId: text("correlation_id").notNull(),
+    createdAt: instant("created_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "availability_checks_rule_set_tenant_fk",
+      columns: [table.userId, table.availabilityRuleSetId],
+      foreignColumns: [availabilityRuleSets.userId, availabilityRuleSets.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "availability_checks_integration_tenant_fk",
+      columns: [table.userId, table.integrationConnectionId],
+      foreignColumns: [integrationConnections.userId, integrationConnections.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    index("availability_checks_user_created_idx").on(table.userId, table.createdAt),
+    check(
+      "availability_checks_state_allowed",
+      sql`${table.state} IN ('checked', 'scope_not_granted', 'google_disconnected', 'google_temporarily_unavailable', 'vera_rules_only')`
+    ),
+    check("availability_checks_range_order", sql`${table.rangeEndsAt} > ${table.rangeStartsAt}`),
+    check(
+      "availability_checks_busy_count_nonnegative",
+      sql`${table.busyIntervalCount} IS NULL OR ${table.busyIntervalCount} >= 0`
+    ),
+    check(
+      "availability_checks_response_hash_valid",
+      sql`${table.responseHash} IS NULL OR ${table.responseHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "availability_checks_state_matrix",
+      sql`(${table.state} = 'checked'
+          AND ${table.calendarIdsAttempted} = '["primary"]'::jsonb
+          AND ${table.calendarsChecked} = '["primary"]'::jsonb
+          AND ${table.checkedAt} IS NOT NULL
+          AND ${table.responseHash} IS NOT NULL
+          AND ${table.busyIntervalCount} IS NOT NULL
+          AND ${table.safeProviderErrorCode} IS NULL)
+        OR (${table.state} = 'google_temporarily_unavailable'
+          AND ${table.calendarIdsAttempted} IN ('[]'::jsonb, '["primary"]'::jsonb)
+          AND ${table.calendarsChecked} = '[]'::jsonb
+          AND ${table.checkedAt} IS NULL
+          AND ${table.responseHash} IS NULL
+          AND ${table.busyIntervalCount} IS NULL
+          AND ${table.safeProviderErrorCode} IS NOT NULL)
+        OR (${table.state} IN ('scope_not_granted', 'google_disconnected', 'vera_rules_only')
+          AND ${table.calendarIdsAttempted} = '[]'::jsonb
+          AND ${table.calendarsChecked} = '[]'::jsonb
+          AND ${table.checkedAt} IS NULL
+          AND ${table.responseHash} IS NULL
+          AND ${table.busyIntervalCount} IS NULL
+          AND ${table.safeProviderErrorCode} IS NULL)`
     )
   ]
 );
@@ -570,6 +815,8 @@ export const sourceJobs = pgTable(
     capability: text("capability").notNull(),
     approvalId: text("approval_id"),
     operation: text("operation").notNull(),
+    browserNodeId: text("browser_node_id"),
+    browserProfileId: text("browser_profile_id"),
     payload: jsonb("payload").$type<SourceJob["payload"]>().notNull(),
     payloadHash: text("payload_hash").notNull(),
     idempotencyKey: text("idempotency_key").notNull(),
@@ -595,6 +842,13 @@ export const sourceJobs = pgTable(
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
+    foreignKey({
+      name: "source_jobs_browser_node_tenant_fk",
+      columns: [table.userId, table.browserNodeId],
+      foreignColumns: [browserNodes.userId, browserNodes.nodeId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
     uniqueIndex("source_jobs_user_idempotency_key_unique").on(table.userId, table.idempotencyKey),
     index("source_jobs_claim_idx").on(
       table.status,
@@ -614,6 +868,13 @@ export const sourceJobs = pgTable(
       sql`${table.status} IN ('queued', 'dispatched', 'running', 'completed', 'retryable_failed', 'permanently_failed', 'deferred_node_offline', 'manual_action_required', 'cancelled_by_policy')`
     ),
     check("source_jobs_payload_hash_valid", sql`${table.payloadHash} ~ '^[a-f0-9]{64}$'`),
+    check(
+      "source_jobs_browser_target_consistency",
+      sql`(${table.browserNodeId} IS NULL AND ${table.browserProfileId} IS NULL)
+        OR (${table.acquisitionMode} = 'local_browser'
+          AND ${table.browserNodeId} IS NOT NULL
+          AND ${table.browserProfileId} IS NOT NULL)`
+    ),
     check(
       "source_jobs_attempts_valid",
       sql`${table.attempts} >= 0 AND ${table.maxAttempts} > 0 AND ${table.attempts} <= ${table.maxAttempts}`
@@ -668,11 +929,25 @@ export const browserNodes = pgTable(
       .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
     nodeId: text("node_id").notNull(),
     providerId: text("provider_id").notNull(),
+    nodeName: text("node_name").notNull().default("Unnamed browser node"),
     status: text("status").notNull(),
+    pairingState: text("pairing_state").notNull().default("not_paired"),
+    capabilityApprovalState: text("capability_approval_state").notNull().default("not_approved"),
+    selectedProfileId: text("selected_profile_id"),
+    allowedProfileIds: jsonb("allowed_profile_ids")
+      .$type<BrowserNodeStatus["allowedProfileIds"]>()
+      .notNull()
+      .default([]),
+    reportedOpenClawVersion: text("reported_openclaw_version"),
+    expectedOpenClawVersion: text("expected_openclaw_version").notNull().default("2026.6.33"),
+    versionCompatibility: text("version_compatibility").notNull().default("unknown"),
     lastHeartbeatAt: instant("last_heartbeat_at").notNull(),
     heartbeatExpiresAt: instant("heartbeat_expires_at").notNull(),
+    lastSuccessfulCaptureAt: instant("last_successful_capture_at"),
+    disabledAt: instant("disabled_at"),
     contractVersion: integer("contract_version").notNull(),
     capabilities: jsonb("capabilities").$type<BrowserNodeStatus["capabilities"]>().notNull(),
+    createdAt: instant("created_at").notNull().defaultNow(),
     updatedAt: instant("updated_at").notNull()
   },
   (table) => [
@@ -686,7 +961,148 @@ export const browserNodes = pgTable(
       "browser_nodes_status_allowed",
       sql`${table.status} IN ('online', 'offline', 'stale', 'revoked')`
     ),
+    check(
+      "browser_nodes_pairing_state_allowed",
+      sql`${table.pairingState} IN ('not_paired', 'pairing_pending', 'paired', 'revoked')`
+    ),
+    check(
+      "browser_nodes_capability_state_allowed",
+      sql`${table.capabilityApprovalState} IN ('not_approved', 'approval_pending', 'approved', 'revoked')`
+    ),
+    check(
+      "browser_nodes_version_compatibility_allowed",
+      sql`${table.versionCompatibility} IN ('unknown', 'compatible', 'incompatible')`
+    ),
+    check(
+      "browser_nodes_expected_version_pinned",
+      sql`${table.expectedOpenClawVersion} = '2026.6.33'`
+    ),
+    check(
+      "browser_nodes_selected_profile_allowlisted",
+      sql`${table.selectedProfileId} IS NULL OR ${table.allowedProfileIds} @> jsonb_build_array(${table.selectedProfileId})`
+    ),
     check("browser_nodes_contract_version_positive", sql`${table.contractVersion} > 0`)
+  ]
+);
+
+export const browserUserControls = pgTable("browser_user_controls", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+  enabled: boolean("enabled").notNull().default(false),
+  updatedAt: instant("updated_at").notNull()
+});
+
+export const browserSourceControls = pgTable(
+  "browser_source_controls",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    connectorId: text("connector_id").notNull(),
+    enabled: boolean("enabled").notNull().default(false),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.connectorId] })]
+);
+
+export const browserProfileControls = pgTable(
+  "browser_profile_controls",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    nodeId: text("node_id").notNull(),
+    profileId: text("profile_id").notNull(),
+    disabledAt: instant("disabled_at"),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.nodeId, table.profileId] }),
+    foreignKey({
+      name: "browser_profile_controls_node_tenant_fk",
+      columns: [table.userId, table.nodeId],
+      foreignColumns: [browserNodes.userId, browserNodes.nodeId]
+    })
+      .onDelete("cascade")
+      .onUpdate("restrict")
+  ]
+);
+
+export const browserCaptureAcceptances = pgTable(
+  "browser_capture_acceptances",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    sourceJobId: text("source_job_id").notNull(),
+    attemptId: text("attempt_id").notNull(),
+    nodeId: text("node_id").notNull(),
+    profileId: text("profile_id").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    invocationIdempotencyKey: text("invocation_idempotency_key").notNull(),
+    resultHash: text("result_hash").notNull(),
+    contentHash: text("content_hash").notNull(),
+    canonicalUrl: text("canonical_url").notNull(),
+    rawListingId: text("raw_listing_id").notNull(),
+    acceptedAt: instant("accepted_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("browser_capture_acceptances_user_job_unique").on(table.userId, table.sourceJobId),
+    uniqueIndex("browser_capture_acceptances_user_invocation_unique").on(
+      table.userId,
+      table.invocationIdempotencyKey
+    ),
+    foreignKey({
+      name: "browser_capture_acceptances_job_tenant_fk",
+      columns: [table.userId, table.sourceJobId],
+      foreignColumns: [sourceJobs.userId, sourceJobs.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "browser_capture_acceptances_attempt_tenant_fk",
+      columns: [table.userId, table.attemptId],
+      foreignColumns: [sourceJobAttempts.userId, sourceJobAttempts.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "browser_capture_acceptances_profile_tenant_fk",
+      columns: [table.userId, table.nodeId, table.profileId],
+      foreignColumns: [
+        browserProfileControls.userId,
+        browserProfileControls.nodeId,
+        browserProfileControls.profileId
+      ]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "browser_capture_acceptances_raw_listing_tenant_fk",
+      columns: [table.userId, table.rawListingId],
+      foreignColumns: [rawListings.userId, rawListings.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check(
+      "browser_capture_acceptances_payload_hash_valid",
+      sql`${table.payloadHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_capture_acceptances_invocation_hash_valid",
+      sql`${table.invocationIdempotencyKey} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_capture_acceptances_result_hash_valid",
+      sql`${table.resultHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_capture_acceptances_content_hash_valid",
+      sql`${table.contentHash} ~ '^[a-f0-9]{64}$'`
+    )
   ]
 );
 
@@ -1528,7 +1944,9 @@ export const viewings = pgTable(
     id: text("id").notNull(),
     canonicalListingId: text("canonical_listing_id").notNull(),
     proposedWindows: jsonb("proposed_windows").$type<Viewing["proposedWindows"]>().notNull(),
+    selectedWindow: jsonb("selected_window").$type<Viewing["selectedWindow"]>(),
     confirmedWindow: jsonb("confirmed_window").$type<Viewing["confirmedWindow"]>(),
+    supersedesViewingId: text("supersedes_viewing_id"),
     timeZone: text("time_zone").notNull(),
     calendarReference: text("calendar_reference"),
     state: text("state").notNull(),
@@ -1546,9 +1964,120 @@ export const viewings = pgTable(
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
+    foreignKey({
+      name: "viewings_supersedes_tenant_fk",
+      columns: [table.userId, table.supersedesViewingId],
+      foreignColumns: [table.userId, table.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
     check(
       "viewings_state_allowed",
       sql`${table.state} IN ('proposed', 'selected', 'hold_approved', 'hold_created', 'confirmed', 'completed', 'cancelled')`
+    )
+  ]
+);
+
+export const calendarHolds = pgTable(
+  "calendar_holds",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    viewingId: text("viewing_id").notNull(),
+    approvalId: text("approval_id"),
+    availabilityCheckId: text("availability_check_id"),
+    payloadHash: text("payload_hash").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    calendarId: text("calendar_id").notNull().default("primary"),
+    googleEventId: text("google_event_id").notNull(),
+    providerEventReference: text("provider_event_reference"),
+    state: text("state").notNull(),
+    conflictCheckOverride: boolean("conflict_check_override").notNull().default(false),
+    conflictCheckOverrideReason: text("conflict_check_override_reason"),
+    safeErrorCode: text("safe_error_code"),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull(),
+    completedAt: instant("completed_at")
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "calendar_holds_viewing_tenant_fk",
+      columns: [table.userId, table.viewingId],
+      foreignColumns: [viewings.userId, viewings.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "calendar_holds_approval_tenant_fk",
+      columns: [table.userId, table.approvalId],
+      foreignColumns: [approvals.userId, approvals.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "calendar_holds_check_tenant_fk",
+      columns: [table.userId, table.availabilityCheckId],
+      foreignColumns: [availabilityChecks.userId, availabilityChecks.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("calendar_holds_user_idempotency_unique").on(table.userId, table.idempotencyKey),
+    uniqueIndex("calendar_holds_user_approval_unique").on(table.userId, table.approvalId),
+    uniqueIndex("calendar_holds_user_provider_event_unique").on(
+      table.userId,
+      table.calendarId,
+      table.googleEventId
+    ),
+    check("calendar_holds_calendar_primary", sql`${table.calendarId} = 'primary'`),
+    check(
+      "calendar_holds_state_allowed",
+      sql`${table.state} IN ('approval_pending', 'approved', 'creating', 'created', 'retryable_failed', 'permanently_failed', 'cancelled_internal')`
+    ),
+    check("calendar_holds_payload_hash_valid", sql`${table.payloadHash} ~ '^[a-f0-9]{64}$'`),
+    check("calendar_holds_idempotency_key_valid", sql`${table.idempotencyKey} ~ '^[a-f0-9]{64}$'`),
+    check(
+      "calendar_holds_google_event_id_valid",
+      sql`${table.googleEventId} ~ '^vera[a-f0-9]{40}$'`
+    ),
+    check(
+      "calendar_holds_override_consistency",
+      sql`(${table.conflictCheckOverride} = false AND ${table.conflictCheckOverrideReason} IS NULL)
+        OR (${table.conflictCheckOverride} = true
+          AND ${table.conflictCheckOverrideReason} IN ('scope_not_granted', 'google_disconnected', 'google_temporarily_unavailable', 'stale', 'vera_rules_only'))`
+    ),
+    check(
+      "calendar_holds_error_consistency",
+      sql`(${table.state} IN ('retryable_failed', 'permanently_failed'))
+        = (${table.safeErrorCode} IS NOT NULL)`
+    ),
+    check(
+      "calendar_holds_completion_consistency",
+      sql`(${table.state} IN ('created', 'permanently_failed', 'cancelled_internal'))
+        = (${table.completedAt} IS NOT NULL)`
+    ),
+    check(
+      "calendar_holds_approval_consistency",
+      sql`(${table.state} = 'approval_pending' AND ${table.approvalId} IS NULL)
+        OR (${table.state} IN ('approved', 'creating', 'created', 'retryable_failed', 'permanently_failed')
+          AND ${table.approvalId} IS NOT NULL)
+        OR (${table.state} = 'cancelled_internal'
+          AND (${table.approvalId} IS NOT NULL OR ${table.providerEventReference} IS NULL))`
+    ),
+    check(
+      "calendar_holds_provider_reference_consistency",
+      sql`(${table.state} = 'created' AND ${table.providerEventReference} IS NOT NULL)
+        OR (${table.state} = 'cancelled_internal')
+        OR (${table.state} NOT IN ('created', 'cancelled_internal')
+          AND ${table.providerEventReference} IS NULL)`
+    ),
+    check(
+      "calendar_holds_timestamp_order",
+      sql`${table.updatedAt} >= ${table.createdAt}
+        AND (${table.completedAt} IS NULL
+          OR (${table.completedAt} >= ${table.createdAt} AND ${table.completedAt} <= ${table.updatedAt}))`
     )
   ]
 );
@@ -1600,6 +2129,519 @@ export const activityEvents = pgTable(
     check(
       "activity_events_outcome_allowed",
       sql`${table.outcome} IN ('recorded', 'authorized', 'denied', 'succeeded', 'failed')`
+    )
+  ]
+);
+
+export const maritimeDeployments = pgTable(
+  "maritime_deployments",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull(),
+    maritimeAgentId: text("maritime_agent_id").notNull(),
+    environment: text("environment").notNull(),
+    status: text("status").notNull(),
+    version: text("version").notNull(),
+    diagnosticUrl: text("diagnostic_url"),
+    lastCheckedAt: instant("last_checked_at"),
+    safeErrorCode: text("safe_error_code"),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("maritime_deployments_kind_environment_unique").on(table.kind, table.environment),
+    uniqueIndex("maritime_deployments_agent_unique").on(table.maritimeAgentId),
+    check(
+      "maritime_deployments_kind_allowed",
+      sql`${table.kind} IN ('vera_worker', 'openclaw_gateway')`
+    ),
+    check(
+      "maritime_deployments_environment_allowed",
+      sql`${table.environment} IN ('development', 'staging', 'production')`
+    ),
+    check(
+      "maritime_deployments_status_allowed",
+      sql`${table.status} IN ('unknown', 'sleeping', 'starting', 'running', 'restarting', 'unavailable', 'configuration_error', 'authentication_error')`
+    ),
+    check("maritime_deployments_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const serviceHeartbeats = pgTable(
+  "service_heartbeats",
+  {
+    id: text("id").primaryKey(),
+    service: text("service").notNull(),
+    deploymentId: text("deployment_id").notNull(),
+    status: text("status").notNull(),
+    version: text("version").notNull(),
+    checkedAt: instant("checked_at").notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    safeCode: text("safe_code")
+  },
+  (table) => [
+    uniqueIndex("service_heartbeats_deployment_unique").on(table.deploymentId),
+    check(
+      "service_heartbeats_service_allowed",
+      sql`${table.service} IN ('vera-worker', 'openclaw-gateway')`
+    ),
+    check(
+      "service_heartbeats_status_allowed",
+      sql`${table.status} IN ('ready', 'degraded', 'unavailable')`
+    ),
+    check("service_heartbeats_expiry_order", sql`${table.expiresAt} > ${table.checkedAt}`)
+  ]
+);
+
+export const maritimeDispatches = pgTable(
+  "maritime_dispatches",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    sourceJobId: text("source_job_id").notNull(),
+    issuer: text("issuer").notNull(),
+    audience: text("audience").notNull(),
+    nonceHash: text("nonce_hash").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    state: text("state").notNull(),
+    maritimeAgentId: text("maritime_agent_id").notNull(),
+    maritimeRunId: text("maritime_run_id"),
+    issuedAt: instant("issued_at").notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    acceptedAt: instant("accepted_at"),
+    consumedAt: instant("consumed_at"),
+    rejectedAt: instant("rejected_at"),
+    rejectionCode: text("rejection_code"),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "maritime_dispatches_source_job_tenant_fk",
+      columns: [table.userId, table.sourceJobId],
+      foreignColumns: [sourceJobs.userId, sourceJobs.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("maritime_dispatches_nonce_hash_unique").on(table.nonceHash),
+    index("maritime_dispatches_user_job_idx").on(table.userId, table.sourceJobId),
+    index("maritime_dispatches_claim_idx").on(
+      table.state,
+      table.expiresAt,
+      table.issuedAt,
+      table.userId
+    ),
+    check("maritime_dispatches_issuer_vera", sql`${table.issuer} = 'vera-control-plane'`),
+    check("maritime_dispatches_nonce_hash_valid", sql`${table.nonceHash} ~ '^[a-f0-9]{64}$'`),
+    check("maritime_dispatches_payload_hash_valid", sql`${table.payloadHash} ~ '^[a-f0-9]{64}$'`),
+    check(
+      "maritime_dispatches_state_allowed",
+      sql`${table.state} IN ('pending_wake', 'accepted', 'consumed', 'expired', 'rejected')`
+    ),
+    check("maritime_dispatches_expiry_order", sql`${table.expiresAt} > ${table.issuedAt}`),
+    check(
+      "maritime_dispatches_rejection_consistency",
+      sql`(${table.state} = 'rejected') = (${table.rejectedAt} IS NOT NULL AND ${table.rejectionCode} IS NOT NULL)`
+    ),
+    check(
+      "maritime_dispatches_consumption_consistency",
+      sql`${table.state} <> 'consumed' OR (${table.acceptedAt} IS NOT NULL AND ${table.consumedAt} IS NOT NULL)`
+    ),
+    check("maritime_dispatches_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const productionSchedules = pgTable(
+  "production_schedules",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    kind: text("kind").notNull(),
+    state: text("state").notNull(),
+    intervalSeconds: integer("interval_seconds").notNull(),
+    sourceConfigurationId: text("source_configuration_id"),
+    nextRunAt: instant("next_run_at").notNull(),
+    lastRunAt: instant("last_run_at"),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("production_schedules_user_kind_source_unique").on(
+      table.userId,
+      table.kind,
+      table.sourceConfigurationId
+    ),
+    uniqueIndex("production_schedules_user_global_kind_unique")
+      .on(table.userId, table.kind)
+      .where(sql`${table.sourceConfigurationId} IS NULL`),
+    index("production_schedules_due_idx").on(table.state, table.nextRunAt, table.userId),
+    check(
+      "production_schedules_kind_allowed",
+      sql`${table.kind} IN ('gmail_alert_ingestion', 'normalization_reconciliation', 'decision_reconciliation', 'stale_listing_check', 'notification_fanout', 'health_reconciliation', 'ephemeral_cleanup')`
+    ),
+    check(
+      "production_schedules_state_allowed",
+      sql`${table.state} IN ('enabled', 'paused', 'disabled_by_policy')`
+    ),
+    check(
+      "production_schedules_interval_range",
+      sql`${table.intervalSeconds} BETWEEN 60 AND 31536000`
+    ),
+    check("production_schedules_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const productionScheduleRuns = pgTable(
+  "production_schedule_runs",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    scheduleId: text("schedule_id").notNull(),
+    state: text("state").notNull(),
+    dueAt: instant("due_at").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    sourceJobId: text("source_job_id"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    safeErrorCode: text("safe_error_code"),
+    startedAt: instant("started_at"),
+    completedAt: instant("completed_at"),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "production_schedule_runs_schedule_tenant_fk",
+      columns: [table.userId, table.scheduleId],
+      foreignColumns: [productionSchedules.userId, productionSchedules.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "production_schedule_runs_source_job_tenant_fk",
+      columns: [table.userId, table.sourceJobId],
+      foreignColumns: [sourceJobs.userId, sourceJobs.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("production_schedule_runs_user_idempotency_unique").on(
+      table.userId,
+      table.idempotencyKey
+    ),
+    index("production_schedule_runs_state_due_idx").on(table.state, table.dueAt, table.userId),
+    check(
+      "production_schedule_runs_idempotency_valid",
+      sql`${table.idempotencyKey} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "production_schedule_runs_state_allowed",
+      sql`${table.state} IN ('created', 'running', 'completed', 'retryable_failed', 'permanently_failed', 'cancelled_by_policy')`
+    ),
+    check(
+      "production_schedule_runs_attempts_valid",
+      sql`${table.attemptCount} >= 0 AND ${table.attemptCount} <= 100`
+    ),
+    check("production_schedule_runs_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const notificationPreferences = pgTable(
+  "notification_preferences",
+  {
+    userId: uuid("user_id")
+      .primaryKey()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    enabled: boolean("enabled").notNull().default(false),
+    scoreThreshold: integer("score_threshold").notNull(),
+    freshnessMinutes: integer("freshness_minutes").notNull(),
+    riskCeiling: text("risk_ceiling").notNull(),
+    timezone: text("timezone").notNull(),
+    quietHoursStart: text("quiet_hours_start").notNull(),
+    quietHoursEnd: text("quiet_hours_end").notNull(),
+    hourlyLimit: integer("hourly_limit").notNull(),
+    digestEnabled: boolean("digest_enabled").notNull(),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    check("notification_preferences_score_range", sql`${table.scoreThreshold} BETWEEN 0 AND 100`),
+    check(
+      "notification_preferences_freshness_range",
+      sql`${table.freshnessMinutes} BETWEEN 1 AND 43200`
+    ),
+    check(
+      "notification_preferences_risk_allowed",
+      sql`${table.riskCeiling} IN ('none', 'low', 'medium', 'high')`
+    ),
+    check(
+      "notification_preferences_quiet_start_valid",
+      sql`${table.quietHoursStart} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`
+    ),
+    check(
+      "notification_preferences_quiet_end_valid",
+      sql`${table.quietHoursEnd} ~ '^(?:[01][0-9]|2[0-3]):[0-5][0-9]$'`
+    ),
+    check("notification_preferences_hourly_range", sql`${table.hourlyLimit} BETWEEN 1 AND 60`),
+    check("notification_preferences_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const webPushSubscriptions = pgTable(
+  "web_push_subscriptions",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    endpointHash: text("endpoint_hash").notNull(),
+    credentialVersion: integer("credential_version").notNull(),
+    credentialAlgorithm: text("credential_algorithm").notNull(),
+    credentialKeyId: text("credential_key_id").notNull(),
+    credentialNonce: bytea("credential_nonce").notNull(),
+    credentialCiphertext: bytea("credential_ciphertext").notNull(),
+    credentialAuthenticationTag: bytea("credential_authentication_tag").notNull(),
+    status: text("status").notNull(),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull(),
+    revokedAt: instant("revoked_at")
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("web_push_subscriptions_user_endpoint_unique").on(table.userId, table.endpointHash),
+    check(
+      "web_push_subscriptions_endpoint_hash_valid",
+      sql`${table.endpointHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check("web_push_subscriptions_credential_version", sql`${table.credentialVersion} = 1`),
+    check(
+      "web_push_subscriptions_credential_algorithm",
+      sql`${table.credentialAlgorithm} = 'aes-256-gcm'`
+    ),
+    check("web_push_subscriptions_nonce_length", sql`octet_length(${table.credentialNonce}) = 12`),
+    check(
+      "web_push_subscriptions_ciphertext_length",
+      sql`octet_length(${table.credentialCiphertext}) BETWEEN 1 AND 16384`
+    ),
+    check(
+      "web_push_subscriptions_authentication_tag_length",
+      sql`octet_length(${table.credentialAuthenticationTag}) = 16`
+    ),
+    check(
+      "web_push_subscriptions_status_allowed",
+      sql`${table.status} IN ('active', 'revoked', 'disabled')`
+    ),
+    check(
+      "web_push_subscriptions_revocation_consistency",
+      sql`(${table.status} = 'revoked') = (${table.revokedAt} IS NOT NULL)`
+    ),
+    check("web_push_subscriptions_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const notificationDeliveries = pgTable(
+  "notification_deliveries",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    canonicalListingId: text("canonical_listing_id").notNull(),
+    subscriptionId: text("subscription_id").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    state: text("state").notNull(),
+    payload: jsonb("payload").$type<NotificationPayload>().notNull(),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    availableAt: instant("available_at").notNull(),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: instant("lease_expires_at"),
+    deliveredAt: instant("delivered_at"),
+    safeErrorCode: text("safe_error_code"),
+    createdAt: instant("created_at").notNull(),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "notification_deliveries_listing_tenant_fk",
+      columns: [table.userId, table.canonicalListingId],
+      foreignColumns: [canonicalListings.userId, canonicalListings.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "notification_deliveries_subscription_tenant_fk",
+      columns: [table.userId, table.subscriptionId],
+      foreignColumns: [webPushSubscriptions.userId, webPushSubscriptions.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("notification_deliveries_user_idempotency_unique").on(
+      table.userId,
+      table.idempotencyKey
+    ),
+    index("notification_deliveries_claim_idx").on(
+      table.state,
+      table.availableAt,
+      table.createdAt,
+      table.userId
+    ),
+    check(
+      "notification_deliveries_idempotency_valid",
+      sql`${table.idempotencyKey} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "notification_deliveries_payload_hash_valid",
+      sql`${table.payloadHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check("notification_deliveries_payload_object", sql`jsonb_typeof(${table.payload}) = 'object'`),
+    check(
+      "notification_deliveries_state_allowed",
+      sql`${table.state} IN ('queued', 'leased', 'deferred_quiet_hours', 'deferred_rate_limit', 'delivered', 'retryable_failed', 'permanently_failed', 'cancelled_by_policy')`
+    ),
+    check("notification_deliveries_attempt_range", sql`${table.attemptCount} BETWEEN 0 AND 20`),
+    check(
+      "notification_deliveries_lease_consistency",
+      sql`(${table.state} = 'leased' AND ${table.leaseOwner} IS NOT NULL AND ${table.leaseExpiresAt} IS NOT NULL) OR (${table.state} <> 'leased' AND ${table.leaseOwner} IS NULL AND ${table.leaseExpiresAt} IS NULL)`
+    ),
+    check(
+      "notification_deliveries_delivered_consistency",
+      sql`(${table.state} = 'delivered') = (${table.deliveredAt} IS NOT NULL)`
+    ),
+    check("notification_deliveries_timestamp_order", sql`${table.updatedAt} >= ${table.createdAt}`)
+  ]
+);
+
+export const notificationDigestItems = pgTable(
+  "notification_digest_items",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    notificationDeliveryId: text("notification_delivery_id").notNull(),
+    releaseAt: instant("release_at").notNull(),
+    createdAt: instant("created_at").notNull(),
+    releasedAt: instant("released_at")
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "notification_digest_items_delivery_tenant_fk",
+      columns: [table.userId, table.notificationDeliveryId],
+      foreignColumns: [notificationDeliveries.userId, notificationDeliveries.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("notification_digest_items_user_delivery_unique").on(
+      table.userId,
+      table.notificationDeliveryId
+    ),
+    index("notification_digest_items_release_idx").on(table.releaseAt, table.userId)
+  ]
+);
+
+export const gmailOauthStates = pgTable(
+  "gmail_oauth_states",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    stateHash: text("state_hash").notNull(),
+    codeVerifierHash: text("code_verifier_hash").notNull(),
+    redirectPath: text("redirect_path").notNull(),
+    requestedScopes: text("requested_scopes").array().notNull(),
+    createdAt: instant("created_at").notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    consumedAt: instant("consumed_at")
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("gmail_oauth_states_state_hash_unique").on(table.stateHash),
+    check("gmail_oauth_states_state_hash_valid", sql`${table.stateHash} ~ '^[a-f0-9]{64}$'`),
+    check(
+      "gmail_oauth_states_verifier_hash_valid",
+      sql`${table.codeVerifierHash} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "gmail_oauth_states_redirect_path",
+      sql`${table.redirectPath} = '/settings/integrations'`
+    ),
+    check(
+      "gmail_oauth_states_scopes_exact",
+      sql`${table.requestedScopes} = ARRAY['https://www.googleapis.com/auth/gmail.readonly']::text[]`
+    ),
+    check("gmail_oauth_states_expiry_order", sql`${table.expiresAt} > ${table.createdAt}`)
+  ]
+);
+
+export const gmailAlertCursors = pgTable(
+  "gmail_alert_cursors",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    sourceConfigurationId: text("source_configuration_id").notNull(),
+    historyId: text("history_id"),
+    lastSuccessfulAt: instant("last_successful_at"),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    uniqueIndex("gmail_alert_cursors_user_source_unique").on(
+      table.userId,
+      table.sourceConfigurationId
+    ),
+    check(
+      "gmail_alert_cursors_history_id_valid",
+      sql`${table.historyId} IS NULL OR ${table.historyId} ~ '^[0-9]{1,64}$'`
+    )
+  ]
+);
+
+export const gmailAlertExternalReferences = pgTable(
+  "gmail_alert_external_references",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    messageId: text("message_id").notNull(),
+    historyId: text("history_id"),
+    rawListingId: text("raw_listing_id").notNull(),
+    contentHash: text("content_hash").notNull(),
+    importedAt: instant("imported_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "gmail_alert_external_references_raw_listing_tenant_fk",
+      columns: [table.userId, table.rawListingId],
+      foreignColumns: [rawListings.userId, rawListings.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("gmail_alert_external_references_user_message_unique").on(
+      table.userId,
+      table.messageId
+    ),
+    check(
+      "gmail_alert_external_references_history_valid",
+      sql`${table.historyId} IS NULL OR ${table.historyId} ~ '^[0-9]{1,64}$'`
+    ),
+    check(
+      "gmail_alert_external_references_content_hash_valid",
+      sql`${table.contentHash} ~ '^[a-f0-9]{64}$'`
     )
   ]
 );
@@ -1702,7 +2744,15 @@ export const schema = {
   accounts,
   activityEvents,
   approvals,
+  availabilityChecks,
+  availabilityRuleSets,
+  browserCaptureAcceptances,
+  browserProfileControls,
+  browserSourceControls,
+  browserUserControls,
   browserNodes,
+  calendarHolds,
+  calendarOauthStates,
   canonicalDecisionRuns,
   canonicalFieldSources,
   canonicalListingSources,
@@ -1718,11 +2768,22 @@ export const schema = {
   duplicatePairEvaluations,
   fieldProvenance,
   integrationConnections,
+  integrationRefreshLeases,
+  gmailAlertCursors,
+  gmailAlertExternalReferences,
+  gmailOauthStates,
   listingExtractions,
   listingPhotos,
   listingScores,
   listingSourceRecords,
   normalizationJobs,
+  maritimeDeployments,
+  maritimeDispatches,
+  notificationDeliveries,
+  notificationDigestItems,
+  notificationPreferences,
+  productionScheduleRuns,
+  productionSchedules,
   rawListings,
   riskSignals,
   searchProfiles,
@@ -1730,7 +2791,9 @@ export const schema = {
   sourceJobAttempts,
   sourceJobs,
   sourcePolicyManifests,
+  serviceHeartbeats,
   users,
   verifications,
-  viewings
+  viewings,
+  webPushSubscriptions
 };

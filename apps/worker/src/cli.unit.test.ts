@@ -31,9 +31,10 @@ function createHealthDependencies(write: (message: string) => void): WorkerCliDe
     createId: () => "unused-health-id",
     nodeVersion: "24.13.3",
     version: "0.1.0",
+    validateRuntimeConfiguration() {},
     createNormalizationRuntime: () => ({
       processNext: async () => ({ kind: "normalization", result: { status: "idle" } }),
-      close() {}
+      async close() {}
     })
   };
 }
@@ -56,7 +57,22 @@ describe("worker CLI", () => {
     });
   });
 
-  it("processes at most one normalization job with run-once", async () => {
+  it("rejects invalid hosted configuration before creating a runtime", async () => {
+    const dependencies = createHealthDependencies(() => {});
+    let runtimeCreated = false;
+    dependencies.validateRuntimeConfiguration = () => {
+      throw new Error("hosted_config_missing");
+    };
+    dependencies.createNormalizationRuntime = () => {
+      runtimeCreated = true;
+      throw new Error("must not run");
+    };
+
+    await expect(runCli(["serve"], dependencies)).resolves.toBe(1);
+    expect(runtimeCreated).toBe(false);
+  });
+
+  it("processes one acquisition, normalization, and decision rotation with run-once", async () => {
     const output: string[] = [];
     let closed = false;
     const dependencies = createHealthDependencies((message) => output.push(message));
@@ -81,7 +97,7 @@ describe("worker CLI", () => {
             }
           : { kind: "decision" as const, result: { status: "idle" as const } };
       },
-      close() {
+      async close() {
         closed = true;
       }
     });
@@ -96,6 +112,7 @@ describe("worker CLI", () => {
           kind: "normalization",
           result: { status: "completed", jobId: "job-1", mode: "deterministic_only" }
         },
+        { kind: "decision", result: { status: "idle" } },
         { kind: "decision", result: { status: "idle" } }
       ]
     });
@@ -127,7 +144,7 @@ describe("worker CLI", () => {
           result: { status: "cancelled" as const, jobId: "job-leased" }
         };
       },
-      close() {
+      async close() {
         closed = true;
       }
     });

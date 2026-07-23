@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-07-18
 
+Superseded in part by ADR 0011, which implements the production Maritime adapter, durable schedules/dispatch, deployment assets, and Web Push while preserving this record's provider-neutral, fail-closed boundaries.
+
 ## Context
 
 Vera's Ship Season topology now names Maritime as its primary orchestration environment and OpenClaw as the default local browser execution adapter. The working repository, however, remains a deterministic single-user application with local fixture and user-capture ingestion. Treating architecture direction as if live integrations already existed would make fixtures look like production connectors and could hide offline nodes, manual blockers, or policy denials behind successful empty results.

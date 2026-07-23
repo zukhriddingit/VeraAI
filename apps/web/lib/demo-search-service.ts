@@ -1,14 +1,20 @@
 import { randomUUID } from "node:crypto";
 
 import { SOURCE_FIXTURES } from "@vera/db/fixtures";
-import { canonicalJson, sha256Text, type VeraRepositories } from "@vera/db/runtime";
+import {
+  canonicalJson,
+  sha256Text,
+  type UserRepositories,
+  type UserRepositoryProvider
+} from "@vera/db";
 import {
   ActivityEventSchema,
   DEMO_SEARCH_COMPLETION_SUMMARY,
   DemoRunResponseSchema,
   DemoStatusResponseSchema,
   type DemoRunResponse,
-  type DemoStatusResponse
+  type DemoStatusResponse,
+  type VeraUserId
 } from "@vera/domain";
 
 import { captureListing, type CaptureServiceDependencies } from "./capture-service.ts";
@@ -40,11 +46,11 @@ function numberMetadata(value: unknown, expected: number): boolean {
   return typeof value === "number" && value === expected;
 }
 
-function runFromCompletionEvent(
-  repositories: VeraRepositories,
+async function runFromCompletionEvent(
+  repositories: UserRepositories,
   idempotentReplay: boolean
-): DemoRunResponse | null {
-  const event = repositories.activityEvents.getById(DEMO_COMPLETION_EVENT_ID);
+): Promise<DemoRunResponse | null> {
+  const event = await repositories.activityEvents.getById(DEMO_COMPLETION_EVENT_ID);
   if (!event) return null;
 
   const valid =
@@ -68,42 +74,49 @@ function runFromCompletionEvent(
   });
 }
 
-function seededFixturesAreValid(repositories: VeraRepositories): boolean {
-  const activeCanonicals = repositories.canonicalListings.list();
-  const decisionRuns = repositories.decisionHistory.listRuns(DEMO_PROFILE_ID);
-  const succeededJobs = repositories.decisionJobs
-    .list()
-    .filter((job) => job.searchProfileId === DEMO_PROFILE_ID && job.status === "succeeded");
+async function seededFixturesAreValid(repositories: UserRepositories): Promise<boolean> {
+  const activeCanonicals = await repositories.canonicalListings.list();
+  const decisionRuns = await repositories.decisionHistory.listRuns(DEMO_PROFILE_ID);
+  const succeededJobs = (await repositories.decisionJobs.list()).filter(
+    (job) => job.searchProfileId === DEMO_PROFILE_ID && job.status === "succeeded"
+  );
+  const fixturesExist = await Promise.all(
+    SOURCE_FIXTURES.map(async (fixture) =>
+      Boolean(
+        (await repositories.rawListings.getById(fixture.capture.id)) &&
+        (await repositories.sourceRecords.getById(fixture.sourceRecord.id))
+      )
+    )
+  );
 
   return (
-    repositories.searchProfiles.getById(DEMO_PROFILE_ID) !== null &&
-    SOURCE_FIXTURES.every(
-      (fixture) =>
-        repositories.rawListings.getById(fixture.capture.id) !== null &&
-        repositories.sourceRecords.getById(fixture.sourceRecord.id) !== null
-    ) &&
+    (await repositories.searchProfiles.getById(DEMO_PROFILE_ID)) !== null &&
+    fixturesExist.every(Boolean) &&
     activeCanonicals.length === 8 &&
-    repositories.duplicateClusters.count() === 3 &&
+    (await repositories.duplicateClusters.count()) === 3 &&
     decisionRuns.length === 1 &&
     succeededJobs.length === 1 &&
     decisionRuns[0]?.jobId === succeededJobs[0]?.id &&
-    activeCanonicals.every(
-      (listing) =>
-        repositories.listingScores.getCurrentV2ByCanonicalListingId(
-          listing.id,
-          decisionRuns[0]!.id
-        ) !== null
-    )
+    (
+      await Promise.all(
+        activeCanonicals.map((listing) =>
+          repositories.listingScores.getCurrentV2ByCanonicalListingId(
+            listing.id,
+            decisionRuns[0]!.id
+          )
+        )
+      )
+    ).every((score) => score !== null)
   );
 }
 
-export function getDemoStatus(
-  repositories: VeraRepositories,
+export async function getDemoStatus(
+  repositories: UserRepositories,
   now: () => Date = () => new Date()
-): DemoStatusResponse {
-  const profile = repositories.searchProfiles.getById(DEMO_PROFILE_ID);
-  if (!profile || !seededFixturesAreValid(repositories)) throw new DemoSearchStateError();
-  const run = runFromCompletionEvent(repositories, true);
+): Promise<DemoStatusResponse> {
+  const profile = await repositories.searchProfiles.getById(DEMO_PROFILE_ID);
+  if (!profile || !(await seededFixturesAreValid(repositories))) throw new DemoSearchStateError();
+  const run = await runFromCompletionEvent(repositories, true);
 
   return DemoStatusResponseSchema.parse({
     demoMode: true,
@@ -115,7 +128,9 @@ export function getDemoStatus(
 }
 
 export interface RunDemoSearchDependencies {
-  readonly repositories: VeraRepositories;
+  readonly userId: VeraUserId;
+  readonly repositoryProvider: UserRepositoryProvider;
+  readonly repositories: UserRepositories;
   readonly capture?: Omit<
     CaptureServiceDependencies,
     "repositories" | "policyRegistry" | "connectors" | "now"
@@ -123,17 +138,21 @@ export interface RunDemoSearchDependencies {
   now(): Date;
 }
 
-export function runDemoSearch(dependencies: RunDemoSearchDependencies): DemoRunResponse {
-  const replay = runFromCompletionEvent(dependencies.repositories, true);
+export async function runDemoSearch(
+  dependencies: RunDemoSearchDependencies
+): Promise<DemoRunResponse> {
+  const replay = await runFromCompletionEvent(dependencies.repositories, true);
   if (replay) return replay;
-  if (!seededFixturesAreValid(dependencies.repositories)) throw new DemoSearchStateError();
+  if (!(await seededFixturesAreValid(dependencies.repositories))) throw new DemoSearchStateError();
 
   const connectors = listSourceConnectors();
-  const policyRegistry = createPersistedPolicyRegistry(dependencies.repositories);
+  const policyRegistry = await createPersistedPolicyRegistry(dependencies.repositories);
   const createId = dependencies.capture?.createId ?? randomUUID;
 
   for (const fixture of SOURCE_FIXTURES) {
-    const result = captureListing(fixture.request, {
+    const result = await captureListing(fixture.request, {
+      userId: dependencies.userId,
+      repositoryProvider: dependencies.repositoryProvider,
       repositories: dependencies.repositories,
       connectors,
       policyRegistry,
@@ -147,16 +166,16 @@ export function runDemoSearch(dependencies: RunDemoSearchDependencies): DemoRunR
   }
 
   const completedAt = dependencies.now().toISOString();
-  dependencies.repositories.transaction((repositories) => {
+  await dependencies.repositoryProvider.transaction(dependencies.userId, async (repositories) => {
     let causationId: string | null = null;
 
     for (const fixture of SOURCE_FIXTURES) {
       const eventId = `event-demo-normalization-reused:${fixture.capture.id}`;
-      const existing = repositories.activityEvents.getById(eventId);
+      const existing = await repositories.activityEvents.getById(eventId);
       if (!existing) {
-        const raw = repositories.rawListings.getById(fixture.capture.id);
+        const raw = await repositories.rawListings.getById(fixture.capture.id);
         if (!raw) throw new DemoSearchStateError();
-        repositories.activityEvents.append(
+        await repositories.activityEvents.append(
           ActivityEventSchema.parse({
             id: eventId,
             correlationId: demoCorrelationId,
@@ -181,7 +200,7 @@ export function runDemoSearch(dependencies: RunDemoSearchDependencies): DemoRunR
       causationId = eventId;
     }
 
-    repositories.activityEvents.append(
+    await repositories.activityEvents.append(
       ActivityEventSchema.parse({
         id: DEMO_COMPLETION_EVENT_ID,
         correlationId: demoCorrelationId,
@@ -208,7 +227,7 @@ export function runDemoSearch(dependencies: RunDemoSearchDependencies): DemoRunR
     );
   });
 
-  const completed = runFromCompletionEvent(dependencies.repositories, false);
+  const completed = await runFromCompletionEvent(dependencies.repositories, false);
   if (!completed) throw new DemoSearchStateError();
   return completed;
 }

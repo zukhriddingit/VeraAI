@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { dirname, resolve } from "node:path";
 
 import { type ReadinessReport, ReadinessReportSchema } from "@vera/domain";
 import { readMigrationFiles } from "drizzle-orm/migrator";
@@ -6,7 +7,10 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 
 import type { PostgresConnection } from "./connection.ts";
 
-export const postgresMigrationsFolder = fileURLToPath(new URL("../../drizzle", import.meta.url));
+export const postgresMigrationsFolder = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../drizzle"
+);
 
 export interface PostgresMigrationOptions {
   readonly migrationsFolder?: string;

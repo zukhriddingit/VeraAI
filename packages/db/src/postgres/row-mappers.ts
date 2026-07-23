@@ -1,8 +1,12 @@
 import {
   ActivityEventSchema,
   ApprovalSchema,
+  AvailabilityCheckSchema,
+  AvailabilityRuleSetSchema,
   BrowserNodeStatusSchema,
   CanonicalListingSchema,
+  CalendarHoldSchema,
+  CalendarOAuthStateSchema,
   ContactWorkflowSchema,
   DuplicateClusterSchema,
   DecisionJobSchema,
@@ -18,11 +22,16 @@ import {
   SearchProfileSchema,
   SourceJobSchema,
   SourcePolicyManifestSchema,
+  ProposedViewingWindowSchema,
   ViewingSchema,
   type ActivityEvent,
   type Approval,
+  type AvailabilityCheck,
+  type AvailabilityRuleSet,
   type BrowserNodeStatus,
   type CanonicalListing,
+  type CalendarHold,
+  type CalendarOAuthState,
   type ContactWorkflow,
   type DuplicateCluster,
   type DecisionJob,
@@ -38,13 +47,18 @@ import {
   type SearchProfile,
   type SourceJob,
   type SourcePolicyManifest,
+  type ProposedViewingWindow,
   type Viewing
 } from "@vera/domain";
 
 import type {
   activityEvents,
   approvals,
+  availabilityChecks,
+  availabilityRuleSets,
   browserNodes,
+  calendarHolds,
+  calendarOauthStates,
   canonicalListings,
   contactWorkflows,
   duplicateClusters,
@@ -78,6 +92,10 @@ type ListingScoreRow = typeof listingScores.$inferSelect;
 type RiskSignalRow = typeof riskSignals.$inferSelect;
 type ContactWorkflowRow = typeof contactWorkflows.$inferSelect;
 type ApprovalRow = typeof approvals.$inferSelect;
+type AvailabilityRuleSetRow = typeof availabilityRuleSets.$inferSelect;
+type AvailabilityCheckRow = typeof availabilityChecks.$inferSelect;
+type CalendarOAuthStateRow = typeof calendarOauthStates.$inferSelect;
+type CalendarHoldRow = typeof calendarHolds.$inferSelect;
 type ViewingRow = typeof viewings.$inferSelect;
 type ActivityEventRow = typeof activityEvents.$inferSelect;
 type SourcePolicyManifestRow = typeof sourcePolicyManifests.$inferSelect;
@@ -316,8 +334,130 @@ export function mapApprovalRow(row: ApprovalRow): Approval {
   return ApprovalSchema.parse(normalizeTenantRow(row));
 }
 
+const EMPTY_WEEKLY_INTERVALS = {
+  "1": [],
+  "2": [],
+  "3": [],
+  "4": [],
+  "5": [],
+  "6": [],
+  "7": []
+} as const;
+
+function legacyViewingWindow(value: unknown, timeZone: string): ProposedViewingWindow | null {
+  const parsed = ProposedViewingWindowSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  if (typeof value !== "object" || value === null) return null;
+  const candidate = value as { readonly startsAt?: unknown; readonly endsAt?: unknown };
+  if (typeof candidate.startsAt !== "string" || typeof candidate.endsAt !== "string") return null;
+  return ProposedViewingWindowSchema.parse({
+    startsAt: candidate.startsAt,
+    endsAt: candidate.endsAt,
+    timeZone,
+    availabilitySource: "vera_rules_only",
+    state: "vera_rules_only",
+    availabilityCheckId: null,
+    checkedAt: null,
+    calendarsChecked: [],
+    requiresConflictWarning: true,
+    rules: {
+      timeZone,
+      weeklyIntervals: EMPTY_WEEKLY_INTERVALS,
+      durationMinutes: 60,
+      minimumNoticeMinutes: 0,
+      travelMinutes: 0,
+      bufferMinutes: 0,
+      remindersMinutesBeforeStart: [],
+      conflictCheckingEnabled: false,
+      calendarIds: [],
+      schemaVersion: 1
+    },
+    generatorVersion: "legacy.v0"
+  });
+}
+
 export function mapViewingRow(row: ViewingRow): Viewing {
-  return ViewingSchema.parse(normalizeTenantRow(row));
+  const proposedWindows = row.proposedWindows.map((window) =>
+    legacyViewingWindow(window, row.timeZone)
+  );
+  if (proposedWindows.some((window) => window === null)) {
+    throw new Error("Persisted Viewing contains an invalid proposed window.");
+  }
+  const selectedWindow =
+    legacyViewingWindow(row.selectedWindow, row.timeZone) ??
+    (["selected", "hold_approved", "hold_created", "confirmed", "completed"].includes(row.state)
+      ? (proposedWindows[0] ?? null)
+      : null);
+  return ViewingSchema.parse({
+    ...(normalizeTenantRow(row) as Record<string, unknown>),
+    proposedWindows,
+    selectedWindow
+  });
+}
+
+function encryptedVerifier(row: CalendarOAuthStateRow) {
+  const values = [
+    row.credentialVersion,
+    row.credentialAlgorithm,
+    row.credentialKeyId,
+    row.credentialNonce,
+    row.credentialCiphertext,
+    row.credentialAuthenticationTag
+  ];
+  if (values.some((value) => value === null)) {
+    throw new Error("Persisted Calendar OAuth verifier envelope is incomplete.");
+  }
+  return {
+    version: row.credentialVersion,
+    algorithm: row.credentialAlgorithm,
+    keyId: row.credentialKeyId,
+    nonce: row.credentialNonce?.toString("base64"),
+    ciphertext: row.credentialCiphertext?.toString("base64"),
+    authenticationTag: row.credentialAuthenticationTag?.toString("base64")
+  };
+}
+
+export function mapAvailabilityRuleSetRow(row: AvailabilityRuleSetRow): AvailabilityRuleSet {
+  return AvailabilityRuleSetSchema.parse({
+    id: row.id,
+    timeZone: row.timeZone,
+    weeklyIntervals: row.weeklyIntervals,
+    durationMinutes: row.durationMinutes,
+    minimumNoticeMinutes: row.minimumNoticeMinutes,
+    travelMinutes: row.travelMinutes,
+    bufferMinutes: row.bufferMinutes,
+    remindersMinutesBeforeStart: row.remindersMinutesBeforeStart,
+    conflictCheckingEnabled: row.conflictCheckingEnabled,
+    calendarIds: row.selectedCalendarIds,
+    schemaVersion: row.schemaVersion,
+    createdAt: toIso(row.createdAt),
+    updatedAt: toIso(row.updatedAt)
+  });
+}
+
+export function mapCalendarOAuthStateRow(row: CalendarOAuthStateRow): CalendarOAuthState {
+  return CalendarOAuthStateSchema.parse({
+    id: row.id,
+    userId: row.userId,
+    stateHash: row.stateHash,
+    capability: row.capability,
+    requestedCalendarScopes: row.requestedCalendarScopes,
+    encryptedPkceVerifier: encryptedVerifier(row),
+    redirectUriHash: row.redirectUriHash,
+    returnTo: row.returnTo,
+    createdAt: toIso(row.createdAt),
+    expiresAt: toIso(row.expiresAt),
+    consumedAt: toIso(row.consumedAt)
+  });
+}
+
+export function mapAvailabilityCheckRow(row: AvailabilityCheckRow): AvailabilityCheck {
+  return AvailabilityCheckSchema.parse(normalizeTenantRow(row));
+}
+
+export function mapCalendarHoldRow(row: CalendarHoldRow): CalendarHold {
+  const { calendarId: _calendarId, ...value } = row;
+  return CalendarHoldSchema.parse(normalizeTenantRow(value));
 }
 
 export function mapActivityEventRow(row: ActivityEventRow): ActivityEvent {
@@ -334,6 +474,8 @@ export function mapSourceJobRow(row: SourceJobRow): SourceJob {
     availableAt: _availableAt,
     leaseOwner: _leaseOwner,
     leaseExpiresAt: _leaseExpiresAt,
+    browserNodeId: _browserNodeId,
+    browserProfileId: _browserProfileId,
     ...value
   } = row;
   return SourceJobSchema.parse(normalizeDates(value));

@@ -62,6 +62,7 @@ describe("demo data directory", () => {
     expect(environment).toMatchObject({
       VERA_DEMO_MODE: "1",
       VERA_DATA_DIR: "/tmp/vera-recording",
+      VERA_PUBLIC_BASE_URL: "http://127.0.0.1:3000",
       NEXT_TELEMETRY_DISABLED: "1"
     });
     expect(environment.OPENAI_API_KEY).toBeUndefined();

@@ -2,14 +2,24 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSqliteRepositories, migrateDatabase, openDatabase, seedDatabase } from "@vera/db";
+import {
+  createSqliteRepositories,
+  migrateDatabase,
+  openDatabase,
+  seedDatabase
+} from "@vera/db/demo";
 import { DismissListingResponseSchema, ListingActionErrorResponseSchema } from "@vera/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { POST } from "./route.ts";
+import {
+  clearTestApplication,
+  registerTestDemoRuntime
+} from "../../../../../test-support/demo-runtime.ts";
 
 const originalDataDirectory = process.env.VERA_DATA_DIR;
 let directory = "";
+let runtimeConnection: ReturnType<typeof openDatabase> | null = null;
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "vera-dismiss-route-"));
@@ -21,9 +31,13 @@ beforeEach(() => {
   } finally {
     connection.close();
   }
+  runtimeConnection = registerTestDemoRuntime(join(directory, "vera.sqlite"));
 });
 
 afterEach(() => {
+  runtimeConnection?.close();
+  runtimeConnection = null;
+  clearTestApplication();
   if (originalDataDirectory === undefined) delete process.env.VERA_DATA_DIR;
   else process.env.VERA_DATA_DIR = originalDataDirectory;
   rmSync(directory, { recursive: true, force: true });
@@ -33,7 +47,7 @@ function dismiss(id: string, body: unknown = { dismissed: true }): Promise<Respo
   return POST(
     new Request("http://127.0.0.1/api/listings/dismiss", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1" },
       body: JSON.stringify(body)
     }),
     { params: Promise.resolve({ id }) }

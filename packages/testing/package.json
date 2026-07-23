@@ -10,7 +10,7 @@
     "@vera/domain": "workspace:*"
   },
   "scripts": {
-    "generate:photo-fixtures": "node --import tsx scripts/generate-photo-fixtures.ts",
+    "generate:photo-fixtures": "tsx scripts/generate-photo-fixtures.ts",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

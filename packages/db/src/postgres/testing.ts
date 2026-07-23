@@ -6,7 +6,7 @@ import { Pool } from "pg";
 import { parsePostgresConfig } from "./config.ts";
 import { openPostgresConnection, type PostgresConnection } from "./connection.ts";
 import { migratePostgres } from "./migrations.ts";
-import { schema } from "./schema.ts";
+import type { schema } from "./schema.ts";
 
 export interface PostgresTestContext {
   readonly connection: PostgresConnection;

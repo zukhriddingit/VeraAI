@@ -1,0 +1,159 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vera.example/schemas/maritime-release-manifest-v1.json",
+  "title": "Vera founder release manifest",
+  "description": "Immutable supply-chain evidence required before a Vera founder release may be deployed.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion", "releaseCommit", "createdAt", "worker", "openclaw", "rollback"],
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "releaseCommit": {
+      "$ref": "#/$defs/gitCommit"
+    },
+    "createdAt": {
+      "$ref": "#/$defs/instant"
+    },
+    "worker": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "sourceCommit",
+        "sbomSha256",
+        "provenanceVerified",
+        "signatureVerified",
+        "vulnerabilityReview"
+      ],
+      "properties": {
+        "image": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "sourceCommit": {
+          "$ref": "#/$defs/gitCommit"
+        },
+        "sbomSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "provenanceVerified": {
+          "const": true
+        },
+        "signatureVerified": {
+          "const": true
+        },
+        "vulnerabilityReview": {
+          "$ref": "#/$defs/vulnerabilityReview"
+        }
+      }
+    },
+    "openclaw": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "image",
+        "version",
+        "upstreamCommit",
+        "sbomSha256",
+        "provenanceVerified",
+        "signatureVerified",
+        "vulnerabilityReview"
+      ],
+      "properties": {
+        "image": {
+          "const": "ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee"
+        },
+        "version": {
+          "const": "2026.6.33"
+        },
+        "upstreamCommit": {
+          "const": "7af0cfc"
+        },
+        "sbomSha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "provenanceVerified": {
+          "const": true
+        },
+        "signatureVerified": {
+          "const": true
+        },
+        "vulnerabilityReview": {
+          "$ref": "#/$defs/vulnerabilityReview"
+        }
+      }
+    },
+    "rollback": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["workerImage", "openclawImage"],
+      "properties": {
+        "workerImage": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "openclawImage": {
+          "allOf": [
+            {
+              "$ref": "#/$defs/imageDigest"
+            },
+            {
+              "not": {
+                "const": "ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee"
+              }
+            }
+          ]
+        }
+      }
+    }
+  },
+  "$defs": {
+    "gitCommit": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{40}$"
+    },
+    "instant": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$",
+      "not": {
+        "pattern": "^0{64}$"
+      }
+    },
+    "imageDigest": {
+      "type": "string",
+      "pattern": "^[^\\s@]+@sha256:[a-f0-9]{64}$",
+      "not": {
+        "pattern": "@sha256:0{64}$"
+      }
+    },
+    "vulnerabilityReview": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["critical", "highAccepted", "scanner", "databaseUpdatedAt", "scannedAt"],
+      "properties": {
+        "critical": {
+          "const": 0
+        },
+        "highAccepted": {
+          "const": 0
+        },
+        "scanner": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100,
+          "pattern": ".*\\S.*"
+        },
+        "databaseUpdatedAt": {
+          "$ref": "#/$defs/instant"
+        },
+        "scannedAt": {
+          "$ref": "#/$defs/instant"
+        }
+      }
+    }
+  }
+}

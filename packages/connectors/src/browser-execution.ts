@@ -1,12 +1,14 @@
 import {
   BrowserCaptureLimitsSchema,
   BrowserNodeStatusSchema,
+  BrowserProfileIdSchema,
   ConnectorCursorSchema,
   DeferredJobReasonSchema,
   EntityIdSchema,
   IsoDateTimeSchema,
   ManualActionBlockerSchema,
   SafeBrowserUrlSchema,
+  Sha256Schema,
   SourceJobSafeErrorSchema,
   isBrowserNodeStale,
   type BrowserCaptureLimits,
@@ -77,6 +79,24 @@ export const BrowserCaptureRequestSchema = z
   .strict()
   .superRefine(refineExactAllowlist);
 
+export const BrowserCurrentTabCaptureRequestSchema = z
+  .object({
+    nodeId: EntityIdSchema,
+    profileId: BrowserProfileIdSchema,
+    executionId: EntityIdSchema,
+    correlationId: EntityIdSchema,
+    expectedUrl: SafeBrowserUrlSchema,
+    canonicalUrl: SafeBrowserUrlSchema,
+    invocationIdempotencyKey: Sha256Schema,
+    requestedAt: IsoDateTimeSchema,
+    limits: BrowserCaptureLimitsSchema.extend({
+      maxPages: z.literal(1),
+      maxRecords: z.literal(1),
+      maxConcurrency: z.literal(1)
+    })
+  })
+  .strict();
+
 export const BrowserCancellationReasonSchema = z.enum([
   "user_requested",
   "cancelled_by_policy",
@@ -102,6 +122,38 @@ export const BrowserCapturedEvidenceSchema = z
     content: z.string().min(1).max(250_000)
   })
   .strict();
+
+const BrowserMetadataValueSchema = z.union([
+  z.string().max(2_000),
+  z.number().finite(),
+  z.boolean(),
+  z.null()
+]);
+
+export const BrowserCurrentTabEvidenceSchema = z
+  .object({
+    captureId: EntityIdSchema,
+    activeUrl: SafeBrowserUrlSchema,
+    canonicalUrl: SafeBrowserUrlSchema,
+    pageTitle: z.string().trim().min(1).max(500),
+    renderedText: z.string().trim().min(1).max(250_000),
+    structuredMetadata: z.record(z.string().trim().min(1).max(80), BrowserMetadataValueSchema),
+    imageUrls: z.array(SafeBrowserUrlSchema).max(20),
+    observedAt: IsoDateTimeSchema,
+    nodeId: EntityIdSchema,
+    profileId: BrowserProfileIdSchema,
+    contentHash: Sha256Schema
+  })
+  .strict()
+  .superRefine((evidence, context) => {
+    if (Object.keys(evidence.structuredMetadata).length > 50) {
+      context.addIssue({
+        code: "custom",
+        path: ["structuredMetadata"],
+        message: "Browser capture metadata cannot exceed fifty fields."
+      });
+    }
+  });
 
 export const BrowserManualActionRequiredSchema = z
   .object({
@@ -262,6 +314,85 @@ export const BrowserExecutionResultSchema = z
     }
   });
 
+export const BrowserCurrentTabCaptureResultSchema = z
+  .object({
+    providerId: EntityIdSchema,
+    nodeId: EntityIdSchema,
+    profileId: BrowserProfileIdSchema,
+    executionId: EntityIdSchema,
+    status: BrowserExecutionStatusSchema,
+    correlationId: EntityIdSchema,
+    evidence: BrowserCurrentTabEvidenceSchema.nullable(),
+    manualAction: BrowserManualActionRequiredSchema.nullable(),
+    deferredReason: DeferredJobReasonSchema.nullable(),
+    error: SourceJobSafeErrorSchema.nullable(),
+    completedAt: IsoDateTimeSchema,
+    untrustedInput: z.literal(true)
+  })
+  .strict()
+  .superRefine((result, context) => {
+    if (result.evidence !== null) {
+      if (
+        result.evidence.nodeId !== result.nodeId ||
+        result.evidence.profileId !== result.profileId
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["evidence"],
+          message: "Current-tab evidence must identify the selected node and profile."
+        });
+      }
+    }
+    const hasEvidence = result.evidence !== null;
+    const hasManual = result.manualAction !== null;
+    const hasDeferred = result.deferredReason !== null;
+    const hasError = result.error !== null;
+    if (result.status === "completed" && (!hasEvidence || hasManual || hasDeferred || hasError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Completed current-tab capture requires only one evidence envelope."
+      });
+    }
+    if (
+      result.status === "manual_action_required" &&
+      (!hasManual || hasEvidence || hasDeferred || hasError)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Manual current-tab capture requires only manual-action metadata."
+      });
+    }
+    if (
+      result.status === "deferred_node_offline" &&
+      (!hasDeferred || hasEvidence || hasManual || hasError)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Deferred current-tab capture requires only a node reason."
+      });
+    }
+    if (
+      ["retryable_failed", "permanently_failed"].includes(result.status) &&
+      (!hasError || hasEvidence || hasManual || hasDeferred)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Failed current-tab capture requires only one safe error."
+      });
+    }
+    if (result.status === "cancelled" && (hasEvidence || hasManual || hasDeferred || hasError)) {
+      context.addIssue({
+        code: "custom",
+        path: ["status"],
+        message: "Cancelled current-tab capture cannot carry output."
+      });
+    }
+  });
+
 export const BrowserCancellationResultSchema = z
   .object({
     providerId: EntityIdSchema,
@@ -331,16 +462,65 @@ export const MockBrowserOutcomeSchema = z.discriminatedUnion("status", [
   MockFailureOutcomeSchema
 ]);
 
+const MockCurrentTabCompletedOutcomeSchema = z
+  .object({
+    status: z.literal("completed"),
+    completedAt: IsoDateTimeSchema,
+    evidence: BrowserCurrentTabEvidenceSchema
+  })
+  .strict();
+
+const MockCurrentTabManualOutcomeSchema = z
+  .object({
+    status: z.literal("manual_action_required"),
+    blocker: ManualActionBlockerSchema,
+    instruction: z.string().trim().min(1).max(500),
+    completedAt: IsoDateTimeSchema
+  })
+  .strict();
+
+const MockCurrentTabDeferredOutcomeSchema = z
+  .object({
+    status: z.literal("deferred_node_offline"),
+    deferredReason: DeferredJobReasonSchema,
+    completedAt: IsoDateTimeSchema
+  })
+  .strict();
+
+const MockCurrentTabCancelledOutcomeSchema = z
+  .object({ status: z.literal("cancelled"), completedAt: IsoDateTimeSchema })
+  .strict();
+
+const MockCurrentTabFailureOutcomeSchema = z
+  .object({
+    status: z.enum(["retryable_failed", "permanently_failed"]),
+    error: SourceJobSafeErrorSchema,
+    completedAt: IsoDateTimeSchema
+  })
+  .strict();
+
+export const MockCurrentTabOutcomeSchema = z.discriminatedUnion("status", [
+  MockCurrentTabCompletedOutcomeSchema,
+  MockCurrentTabManualOutcomeSchema,
+  MockCurrentTabDeferredOutcomeSchema,
+  MockCurrentTabCancelledOutcomeSchema,
+  MockCurrentTabFailureOutcomeSchema
+]);
+
 export interface BrowserExecutionProvider {
   readonly providerId: string;
   heartbeat(request: BrowserHeartbeatRequest): Promise<BrowserHeartbeatResult>;
   navigate(request: BrowserNavigationRequest): Promise<BrowserExecutionResult>;
   capture(request: BrowserCaptureRequest): Promise<BrowserExecutionResult>;
+  captureCurrentTab(
+    request: BrowserCurrentTabCaptureRequest
+  ): Promise<BrowserCurrentTabCaptureResult>;
   cancel(request: BrowserCancellationRequest): Promise<BrowserCancellationResult>;
 }
 
 export interface MockBrowserExecutionProviderOptions {
   readonly nodes?: readonly BrowserNodeStatus[];
+  readonly currentTabOutcomes?: readonly MockCurrentTabOutcome[];
   readonly now?: () => Date;
 }
 
@@ -359,15 +539,18 @@ export class MockBrowserExecutionProvider implements BrowserExecutionProvider {
 
   readonly #script: readonly unknown[];
   readonly #nodes = new Map<string, BrowserNodeStatus>();
+  readonly #currentTabOutcomes: readonly unknown[];
   readonly #cancelledExecutions = new Set<string>();
   readonly #now: () => Date;
   #scriptIndex = 0;
+  #currentTabScriptIndex = 0;
 
   constructor(
     script: readonly MockBrowserOutcome[] = [],
     options: MockBrowserExecutionProviderOptions = {}
   ) {
     this.#script = script;
+    this.#currentTabOutcomes = options.currentTabOutcomes ?? [];
     this.#now = options.now ?? (() => new Date());
     for (const nodeInput of options.nodes ?? []) {
       const node = BrowserNodeStatusSchema.parse(nodeInput);
@@ -420,6 +603,160 @@ export class MockBrowserExecutionProvider implements BrowserExecutionProvider {
   async capture(input: BrowserCaptureRequest): Promise<BrowserExecutionResult> {
     const request = BrowserCaptureRequestSchema.parse(input);
     return this.execute("capture", request);
+  }
+
+  async captureCurrentTab(
+    input: BrowserCurrentTabCaptureRequest
+  ): Promise<BrowserCurrentTabCaptureResult> {
+    const request = BrowserCurrentTabCaptureRequestSchema.parse(input);
+    const base = {
+      providerId: this.providerId,
+      nodeId: request.nodeId,
+      profileId: request.profileId,
+      executionId: request.executionId,
+      correlationId: request.correlationId,
+      completedAt: this.safeNowIso(),
+      untrustedInput: true as const
+    };
+
+    if (this.#cancelledExecutions.has(request.executionId)) {
+      return BrowserCurrentTabCaptureResultSchema.parse({
+        ...base,
+        status: "cancelled",
+        evidence: null,
+        manualAction: null,
+        deferredReason: null,
+        error: null
+      });
+    }
+    const deferredReason = this.deferredReason(request.nodeId);
+    if (deferredReason !== null) {
+      return BrowserCurrentTabCaptureResultSchema.parse({
+        ...base,
+        status: "deferred_node_offline",
+        evidence: null,
+        manualAction: null,
+        deferredReason,
+        error: null
+      });
+    }
+
+    const node = this.#nodes.get(request.nodeId);
+    const readinessBlocker =
+      node?.pairingState !== "paired"
+        ? "node_pairing_required"
+        : node.capabilityApprovalState !== "approved"
+          ? "capability_approval_required"
+          : node.versionCompatibility !== "compatible"
+            ? "version_incompatible"
+            : node.selectedProfileId !== request.profileId ||
+                !node.allowedProfileIds.includes(request.profileId)
+              ? "browser_profile_unavailable"
+              : null;
+    if (readinessBlocker !== null) {
+      return BrowserCurrentTabCaptureResultSchema.parse({
+        ...base,
+        status: "manual_action_required",
+        evidence: null,
+        manualAction: {
+          nodeId: request.nodeId,
+          executionId: request.executionId,
+          blocker: readinessBlocker,
+          instruction: "Complete the required browser-node setup manually.",
+          correlationId: request.correlationId,
+          requiredAt: base.completedAt
+        },
+        deferredReason: null,
+        error: null
+      });
+    }
+
+    const rawOutcome = this.#currentTabOutcomes[this.#currentTabScriptIndex];
+    if (rawOutcome === undefined) {
+      return BrowserCurrentTabCaptureResultSchema.parse({
+        ...base,
+        status: "permanently_failed",
+        evidence: null,
+        manualAction: null,
+        deferredReason: null,
+        error: safeFailure("mock_current_tab_outcome_missing", "internal")
+      });
+    }
+    this.#currentTabScriptIndex += 1;
+    const outcome = MockCurrentTabOutcomeSchema.parse(rawOutcome);
+    const outcomeBase = { ...base, completedAt: outcome.completedAt };
+
+    switch (outcome.status) {
+      case "completed": {
+        const byteLength = new TextEncoder().encode(outcome.evidence.renderedText).byteLength;
+        if (
+          outcome.evidence.activeUrl !== request.expectedUrl ||
+          outcome.evidence.canonicalUrl !== request.canonicalUrl ||
+          byteLength > request.limits.maxBytes
+        ) {
+          return BrowserCurrentTabCaptureResultSchema.parse({
+            ...outcomeBase,
+            status: "permanently_failed",
+            evidence: null,
+            manualAction: null,
+            deferredReason: null,
+            error: safeFailure("browser_current_tab_evidence_rejected", "validation")
+          });
+        }
+        return BrowserCurrentTabCaptureResultSchema.parse({
+          ...outcomeBase,
+          status: "completed",
+          evidence: outcome.evidence,
+          manualAction: null,
+          deferredReason: null,
+          error: null
+        });
+      }
+      case "manual_action_required":
+        return BrowserCurrentTabCaptureResultSchema.parse({
+          ...outcomeBase,
+          status: outcome.status,
+          evidence: null,
+          manualAction: {
+            nodeId: request.nodeId,
+            executionId: request.executionId,
+            blocker: outcome.blocker,
+            instruction: outcome.instruction,
+            correlationId: request.correlationId,
+            requiredAt: outcome.completedAt
+          },
+          deferredReason: null,
+          error: null
+        });
+      case "deferred_node_offline":
+        return BrowserCurrentTabCaptureResultSchema.parse({
+          ...outcomeBase,
+          status: outcome.status,
+          evidence: null,
+          manualAction: null,
+          deferredReason: outcome.deferredReason,
+          error: null
+        });
+      case "cancelled":
+        return BrowserCurrentTabCaptureResultSchema.parse({
+          ...outcomeBase,
+          status: outcome.status,
+          evidence: null,
+          manualAction: null,
+          deferredReason: null,
+          error: null
+        });
+      case "retryable_failed":
+      case "permanently_failed":
+        return BrowserCurrentTabCaptureResultSchema.parse({
+          ...outcomeBase,
+          status: outcome.status,
+          evidence: null,
+          manualAction: null,
+          deferredReason: null,
+          error: outcome.error
+        });
+    }
   }
 
   async cancel(input: BrowserCancellationRequest): Promise<BrowserCancellationResult> {
@@ -638,13 +975,17 @@ export type BrowserHeartbeatRequest = z.infer<typeof BrowserHeartbeatRequestSche
 export type BrowserHeartbeatResult = z.infer<typeof BrowserHeartbeatResultSchema>;
 export type BrowserNavigationRequest = z.infer<typeof BrowserNavigationRequestSchema>;
 export type BrowserCaptureRequest = z.infer<typeof BrowserCaptureRequestSchema>;
+export type BrowserCurrentTabCaptureRequest = z.infer<typeof BrowserCurrentTabCaptureRequestSchema>;
 export type BrowserCancellationReason = z.infer<typeof BrowserCancellationReasonSchema>;
 export type BrowserCancellationRequest = z.infer<typeof BrowserCancellationRequestSchema>;
 export type BrowserCapturedEvidence = z.infer<typeof BrowserCapturedEvidenceSchema>;
+export type BrowserCurrentTabEvidence = z.infer<typeof BrowserCurrentTabEvidenceSchema>;
 export type BrowserManualActionRequired = z.infer<typeof BrowserManualActionRequiredSchema>;
 export type BrowserExecutionStatus = z.infer<typeof BrowserExecutionStatusSchema>;
 export type BrowserExecutionResult = z.infer<typeof BrowserExecutionResultSchema>;
+export type BrowserCurrentTabCaptureResult = z.infer<typeof BrowserCurrentTabCaptureResultSchema>;
 export type BrowserCancellationResult = z.infer<typeof BrowserCancellationResultSchema>;
 export type MockBrowserOutcome = z.infer<typeof MockBrowserOutcomeSchema>;
+export type MockCurrentTabOutcome = z.infer<typeof MockCurrentTabOutcomeSchema>;
 
 export type { BrowserCaptureLimits };

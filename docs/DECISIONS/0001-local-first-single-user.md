@@ -1,6 +1,6 @@
 # ADR 0001: Local-first single-user architecture
 
-- Status: Accepted
+- Status: Superseded by ADR 0009 for hosted deployments; retained for the deterministic offline demo
 - Date: 2026-07-17
 
 ## Context

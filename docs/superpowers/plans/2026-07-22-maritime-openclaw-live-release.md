@@ -356,6 +356,14 @@ git commit -m "feat: enforce least privilege OpenClaw gateway"
 
 ### Task 3: Upload Gateway Configuration Through the Supported Maritime API
 
+> **Reconciliation update (2026-07-22): deferred until after Task 9 read-only inventory.** The
+> founder already has a Maritime/OpenClaw agent. Do not build or invoke this uploader before the
+> authenticated inventory proves the existing configuration needs a change. Reconfirm the file
+> endpoint, authentication scheme, payload, destination semantics, overwrite behavior, and required
+> restart from the installed `maritime guide --json` and current official Provisioning API. Then
+> present the exact diff and obtain separate operator approval before any upload. If the existing
+> agent is already compliant, omit this task entirely.
+
 **Files:**
 - Create: `scripts/maritime-upload-openclaw-config.ts`
 - Create: `scripts/maritime-upload-openclaw-config.unit.test.ts`

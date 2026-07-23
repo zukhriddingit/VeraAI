@@ -12,7 +12,7 @@ import {
   type EnqueueNormalizationJob,
   type VeraDatabaseConnection,
   type VeraRepositories
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const queuedAt = "2026-07-17T12:00:00.000Z";
 const firstFailureAt = "2026-07-17T12:00:30.000Z";

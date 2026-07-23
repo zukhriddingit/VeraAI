@@ -17,14 +17,16 @@ import {
 } from "@vera/ai";
 import { projectListingExtraction } from "@vera/connectors";
 import {
+  DEMO_USER_ID,
+  createDemoRepositoryProvider,
   createSqliteRepositories,
   migrateDatabase,
   openDatabase,
   sha256Text,
-  type VeraDatabaseConnection,
-  type VeraRepositories
-} from "@vera/db";
-import { DEMO_SEARCH_PROFILE } from "@vera/db/fixtures";
+  type VeraDatabaseConnection
+} from "@vera/db/demo";
+import type { UserRepositoryProvider, VeraRepositories } from "@vera/db";
+import { DEMO_SEARCH_PROFILE } from "@vera/db/demo";
 import {
   ListingExtractionFieldNameSchema,
   ListingExtractionProviderResultSchema,
@@ -43,6 +45,7 @@ import {
 let directory = "";
 let connection: VeraDatabaseConnection;
 let repositories: VeraRepositories;
+let repositoryProvider: UserRepositoryProvider;
 const capturedAt = "2026-07-17T21:00:00.000Z";
 const processingAt = "2026-07-17T21:00:05.000Z";
 
@@ -165,7 +168,9 @@ function throwingProvider(error: LLMError): MockLLMProvider {
 
 function dependencies(overrides: Partial<Parameters<typeof processNextNormalizationJob>[0]> = {}) {
   return {
-    repositories,
+    userId: DEMO_USER_ID,
+    repositoryProvider,
+    repositories: repositoryProvider.forUser(DEMO_USER_ID),
     leaseOwner: "worker-test-1",
     provider: null,
     providerTimeoutMilliseconds: 20_000,
@@ -180,6 +185,7 @@ beforeEach(() => {
   connection = openDatabase({ filePath: join(directory, "vera.sqlite") });
   migrateDatabase(connection);
   repositories = createSqliteRepositories(connection);
+  repositoryProvider = createDemoRepositoryProvider(connection);
   repositories.searchProfiles.insert(DEMO_SEARCH_PROFILE);
 });
 
@@ -295,17 +301,17 @@ describe("normalization worker extraction orchestration", () => {
       }
     });
     queueCapture();
-    const wrappedRepositories: VeraRepositories = {
-      ...repositories,
-      transaction(callback) {
+    const wrappedProvider: UserRepositoryProvider = {
+      forUser: (userId) => repositoryProvider.forUser(userId),
+      transaction(userId, callback) {
         expect(providerSettled).toBe(true);
-        return repositories.transaction(callback);
+        return repositoryProvider.transaction(userId, callback);
       }
     };
 
     await expect(
       processNextNormalizationJob(
-        dependencies({ provider, repositories: wrappedRepositories }),
+        dependencies({ provider, repositoryProvider: wrappedProvider }),
         new AbortController().signal
       )
     ).resolves.toMatchObject({ status: "completed" });
@@ -314,17 +320,17 @@ describe("normalization worker extraction orchestration", () => {
   it("rolls back every result row when atomic success persistence fails", async () => {
     const { rawListingId } = queueCapture();
     let transactionCall = 0;
-    const wrappedRepositories: VeraRepositories = {
-      ...repositories,
-      transaction(callback) {
+    const wrappedProvider: UserRepositoryProvider = {
+      forUser: (userId) => repositoryProvider.forUser(userId),
+      transaction(userId, callback) {
         transactionCall += 1;
-        if (transactionCall !== 1) return repositories.transaction(callback);
-        return repositories.transaction((transactionRepositories) =>
+        if (transactionCall !== 1) return repositoryProvider.transaction(userId, callback);
+        return repositoryProvider.transaction(userId, (transactionRepositories) =>
           callback({
             ...transactionRepositories,
             listingExtractions: {
               ...transactionRepositories.listingExtractions,
-              insert() {
+              async insert() {
                 throw new Error("Synthetic insertion failure with raw content.");
               }
             }
@@ -334,7 +340,7 @@ describe("normalization worker extraction orchestration", () => {
     };
 
     const result = await processNextNormalizationJob(
-      dependencies({ repositories: wrappedRepositories }),
+      dependencies({ repositoryProvider: wrappedProvider }),
       new AbortController().signal
     );
     expect(result).toMatchObject({

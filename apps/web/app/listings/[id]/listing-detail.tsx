@@ -3,11 +3,14 @@
 import {
   CanonicalListingDetailResponseSchema,
   ShortlistResponseSchema,
+  type CalendarCapabilityGrantState,
   type CanonicalListingDetailResponse,
   type ListingSourceLabel
 } from "@vera/domain";
 import Link from "next/link";
 import { useState } from "react";
+
+import { ViewingPlanner } from "./viewing-planner.tsx";
 
 type DetailState =
   | { kind: "loading" }
@@ -66,10 +69,14 @@ async function requestListingDetail(
 
 export function ListingDetail({
   listingId,
-  initialDetail
+  initialDetail,
+  demoMode,
+  holdCapabilityState
 }: {
   listingId: string;
   initialDetail: CanonicalListingDetailResponse;
+  demoMode: boolean;
+  holdCapabilityState: CalendarCapabilityGrantState;
 }) {
   const [state, setState] = useState<DetailState>({ kind: "ready", detail: initialDetail });
   const [saving, setSaving] = useState(false);
@@ -112,6 +119,9 @@ export function ListingDetail({
 
   const { detail } = state;
   const shortlisted = detail.canonical.lifecycleState === "shortlisted";
+  const viewingEligible = ["replied", "tour_proposed", "tour_scheduled"].includes(
+    detail.canonical.lifecycleState
+  );
   const scoreV2 = detail.score && "schemaVersion" in detail.score ? detail.score : null;
   const selectedProvenanceIds = new Set(
     detail.fieldSources.map(({ fieldProvenanceId }) => fieldProvenanceId)
@@ -165,6 +175,14 @@ export function ListingDetail({
           <strong>{detail.sources.length}</strong>
         </div>
       </section>
+
+      {viewingEligible ? (
+        <ViewingPlanner
+          listingId={listingId}
+          demoMode={demoMode}
+          holdCapabilityState={holdCapabilityState}
+        />
+      ) : null}
 
       <section className="detail-panel missing-information-panel" aria-labelledby="missing-heading">
         <div className="section-heading compact-heading">

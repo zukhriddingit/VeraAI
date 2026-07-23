@@ -4,14 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  DEMO_USER_ID,
+  createDemoRepositoryProvider,
   createSqliteRepositories,
   migrateDatabase,
   openDatabase,
   seedDatabase,
-  type VeraDatabaseConnection,
-  type VeraRepositories
-} from "@vera/db";
-import { DEMO_SEARCH_PROFILE } from "@vera/db/fixtures";
+  type VeraDatabaseConnection
+} from "@vera/db/demo";
+import type { UserRepositoryProvider, VeraRepositories } from "@vera/db";
+import { DEMO_SEARCH_PROFILE } from "@vera/db/demo";
 import { evaluateCorpus } from "@vera/scoring";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -21,12 +23,14 @@ const now = "2026-07-20T18:00:00.000Z";
 let directory = "";
 let connection: VeraDatabaseConnection;
 let repositories: VeraRepositories;
+let repositoryProvider: UserRepositoryProvider;
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "vera-decision-worker-"));
   connection = openDatabase({ filePath: join(directory, "vera.sqlite") });
   migrateDatabase(connection);
   repositories = createSqliteRepositories(connection);
+  repositoryProvider = createDemoRepositoryProvider(connection);
   seedDatabase(repositories);
 });
 
@@ -37,7 +41,9 @@ afterEach(() => {
 
 function dependencies(overrides: Partial<Parameters<typeof processNextDecisionJob>[0]> = {}) {
   return {
-    repositories,
+    userId: DEMO_USER_ID,
+    repositoryProvider,
+    repositories: repositoryProvider.forUser(DEMO_USER_ID),
     leaseOwner: "decision-worker-test-1",
     now: () => new Date(now),
     createId: randomUUID,

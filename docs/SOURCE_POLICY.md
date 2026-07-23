@@ -1,7 +1,7 @@
 # Source and action policy
 
 Status: normative MVP policy  
-Reviewed: 2026-07-18
+Reviewed: 2026-07-22
 
 ## Purpose
 
@@ -13,16 +13,18 @@ Maritime is the primary orchestration and deployment environment for monitoring 
 
 ## Current implementation
 
-`SourcePolicyRegistry` is the sole runtime evaluator for implemented capture connectors and the local Maritime orchestration mock. It loads the latest persisted manifest version for each connector and returns a typed decision; malformed registries, malformed requests, missing connectors, acquisition-mode mismatches, unknown capabilities or operations, disabled manifests, network mismatches, and internal evaluation exceptions all deny.
+`SourcePolicyRegistry` is the sole runtime evaluator for implemented connectors, production Maritime dispatch, and deterministic mocks. It loads the latest persisted manifest version for each connector and returns a typed decision; malformed registries, malformed requests, missing connectors, acquisition-mode mismatches, unknown capabilities or operations, disabled manifests, network mismatches, and internal evaluation exceptions all deny.
 
-The clean-clone seed enables exactly two no-network manifests:
+The hosted PostgreSQL seed installs global policy manifests only and creates no private user or listing data. The explicit deterministic demo seed enables exactly two no-network manifests for its synthetic owner:
 
 - `fixture.feed.v1` may perform only `fixture.read_sanitized` under `fixture.read`.
 - `manual.capture.v1` may perform only `capture.user_supplied` under `manual.capture`.
 
-The database also carries disabled source-label manifests for Zillow, Facebook Marketplace, Craigslist, and Apartments.com. These are status labels, not connectors, and grant no operation. Manifest schema version 2 requires acquisition mode and policy state as independent fields. Migration `0003_romantic_fantastic_four.sql` backfills fixture, manual-capture, and label-only rows without enabling a live source.
+Both stores also carry disabled source-label manifests for Zillow, Facebook Marketplace, Craigslist, and Apartments.com. These are status labels, not production connectors, and grant no operation. PostgreSQL is the canonical hosted policy store; the SQLite rows exist only for deterministic offline policy evaluation.
 
-The code now defines the optional-operation `SourceConnector`, `BrowserExecutionProvider`, and `MaritimeOrchestrator` boundaries. Fixture and manual connectors are capture-only deterministic adapters. The Maritime and browser implementations in this repository are no-network mocks for contract tests; Gmail alert ingestion, a real Maritime adapter, an OpenClaw bridge, remote dispatch transport, and draft, calendar, notification, official API, email, and site-specific browser adapters remain unimplemented.
+The code defines the optional-operation `SourceConnector`, `BrowserExecutionProvider`, and `MaritimeOrchestrator` boundaries. Fixture and manual connectors remain deterministic adapters and mocks remain the default test composition. A pinned OpenClaw `2026.6.33` adapter implements one production-shaped, user-triggered current-tab operation. The server-only Maritime adapter persists an expiring hashed dispatch before waking the exact worker agent. Gmail alert ingestion implements a narrow, scheduled `gmail.readonly` connector for configured senders/subjects/label. Scheduled browser monitoring, broad discovery, official listing APIs, and additional site-specific browser adapters remain unimplemented.
+
+Maritime triggers only wake the worker. PostgreSQL remains authoritative for tenant schedules and idempotent run state, and the worker rechecks policy at execution. Gmail alert ingestion, deterministic reconciliation, stale checks, notification fan-out, health reconciliation, and cleanup may be scheduled when enabled. `local_browser` acquisition is not scheduled in the founder release.
 
 Set `VERA_ACTIVE_KILL_SWITCHES` to a comma-separated list of exact keys. `integrations.disabled` denies both current connectors; each manifest also exposes its connector-specific key on `/connectors`. An unknown key grants nothing and changes no policy.
 
@@ -126,9 +128,11 @@ Every exception path denies. The source-policy state comes from the selected man
 
 Source jobs persist the exact capability, execution mode, operation, and optional opaque approval ID, but never persist session or approval truth booleans. At every dispatch and retry, `SourceJobRuntimeAuthorizationProvider` checks current session availability and resolves the current approval. The approval must still be pending, unused, unexpired, and bound to the job's connector, operation, payload hash, target type, and target ID. A missing provider or error fails closed. The mock re-requires a current pending approval on every attempt; a live composition must atomically consume it before the authorized side effect so one approval cannot authorize multiple executions.
 
-### Future live connector and orchestration gates
+Current-tab capture is a read/capture action authorized by the four explicit confirmations at job creation. Its approval is atomically recorded as `used` with the exact job target and payload hash. The acquisition worker re-resolves that immutable approval and requires matching connector, operation, target, hash, use time, and unexpired window before invoking OpenClaw. A non-null approval ID alone is never sufficient.
 
-The following checks are required before live acquisition but are not current `SourcePolicyRegistry` behavior:
+### Saved-search and Maritime gates
+
+The following checks remain required before scheduled saved-search acquisition or Maritime deployment; current-tab capture already implements the applicable node, limit, blocker, policy, and acceptance checks:
 
 1. Bind a `local_browser` job to an assigned node and an exact reviewed saved-search manifest entry, including the bounded same-source detail scope.
 2. Reject cursor rollback, replay, widening, or inconsistency against the last durably committed source cursor.
@@ -136,9 +140,9 @@ The following checks are required before live acquisition but are not current `S
 4. Stop on a manual blocker or content-originated attempt to broaden the action; never reinterpret it as successful acquisition.
 5. After policy authorization, check the assigned node's registered heartbeat and revocation state before dispatch.
 
-The current strict local-browser job payload and exact browser-request allowlist bind one URL, but no live saved-search manifest, connector, transport, or node exists yet. A future live source-orchestration composition must persist and audit the authorization and dispatch outcomes rather than treating the in-memory mock as an audit implementation.
+The current strict local-browser job payload supports legacy saved-search rows plus the implemented current-tab variant. No live saved-search connector or scheduled transport exists. Current-tab authorization, attempts, typed non-success states, acceptance, raw import, normalization enqueue, and audit are PostgreSQL-backed; deterministic mocks remain the default tests.
 
-An authorized `local_browser` job whose assigned node is unregistered, offline, stale, or revoked does not become a policy denial or a successful empty result. It enters the queryable non-success state `deferred_node_offline` with a typed reason, retains its stable job identity, and preserves the last committed source cursor. It creates no RawListing, successful result, or cursor candidate. The current local mock exposes the state contract; a future live Maritime adapter and UI must persist, audit, and render it before production use. Explicit bounded retry is allowed only after policy still permits the same job.
+An authorized `local_browser` job whose assigned node is unregistered, offline, stale, or revoked does not become a successful empty result. It enters the queryable non-success state `deferred_node_offline` with a typed reason, retains its stable job identity, and preserves any last committed source cursor. It creates no RawListing, successful result, or cursor candidate. The worker persists/audits this state and the browser-agent UI renders its recovery action. Explicit bounded retry is allowed only after policy still permits the same job.
 
 ## Normative MVP acquisition portfolio
 
@@ -146,16 +150,17 @@ An authorized `local_browser` job whose assigned node is unregistered, offline, 
 | ------------------------------------------------------------ | ----------------------- | ------------------------- | ---------------------------------------------------------------------------------------- |
 | Fixture test double / `fixture`                              | `approved`              | Enabled in dev/test       | Local sanitized data only; test-only mode; no network request.                           |
 | General / `user_capture`                                     | `user_triggered_only`   | Enabled                   | Store supplied evidence and inert URL provenance; no implicit fetch.                     |
-| Craigslist / `email_alert`                                   | `approved`              | Disabled until configured | Official search-alert email ingestion.                                                   |
+| Configured Gmail listing alerts / `email_alert`              | `approved`              | Disabled until configured | Read-only Vera label/sender/subject query; five-minute minimum interval.                  |
 | Craigslist / `local_browser`                                 | `disabled`              | Disabled                  | No automated browser search initially.                                                   |
-| Zillow / `local_browser`                                     | `experimental_personal` | Disabled                  | Exact user-configured saved-search URL through the local OpenClaw node.                  |
+| Zillow / `local_browser` current tab                         | `experimental_personal` | Disabled                  | Exact user-confirmed current listing URL through the selected local OpenClaw node/profile. |
+| Zillow / `local_browser` saved search                        | `experimental_personal` | Disabled                  | Contract only; no scheduled discovery or polling implementation.                         |
 | Facebook Marketplace / `local_browser`                       | `experimental_personal` | Disabled                  | Exact user-configured saved-search URL through the local OpenClaw node.                  |
 | Zillow, Facebook Marketplace, or Craigslist / `user_capture` | `user_triggered_only`   | Available                 | Direct user-supplied URL or content; the URL remains inert unless separately authorized. |
 | Reviewed structured provider / `official_api`                | `disabled`              | Disabled                  | Review must promote the entry; exact documented API operations and origins only.         |
 
 `experimental_personal` never means generally approved, hosted browser execution, or permission to run for other users. Zillow and Facebook Marketplace browser monitoring remain disabled until the user explicitly enables a reviewed personal manifest. Their user-triggered capture paths remain available. Craigslist begins with official search-alert email ingestion; automated Craigslist browser searching remains disabled.
 
-External-effect connectors remain separate grants: Gmail draft creation, Calendar holds, and notifications retain their closed capabilities and approval requirements. No acquisition state authorizes an outbound message, calendar write, application, payment, upload, or account change.
+External effects remain separate grants: Calendar holds and notifications retain their closed capabilities and approval requirements, and any future Gmail draft writer must remain separate from alert reading. No acquisition state authorizes an outbound message, calendar write, application, payment, upload, or account change.
 
 ## Manual capture
 
@@ -211,7 +216,7 @@ Availability reading, free/busy lookup, invitations, attendee changes, and remin
 
 ## Browser policy
 
-Browser acquisition is first-class MVP architecture. The repository now has a provider-neutral browser-execution contract and a deterministic no-network mock; the OpenClaw bridge and source-specific monitors remain implementation work. OpenClaw is the default future adapter behind that replaceable interface. An authorized `local_browser` connector must:
+Browser acquisition is first-class MVP architecture. The repository has a provider-neutral browser-execution contract, deterministic no-network mock, and pinned OpenClaw current-tab adapter. Source-specific saved-search monitors remain implementation work. An authorized `local_browser` connector must:
 
 - use a dedicated, user-controlled local OpenClaw profile and rely on the user for manual login;
 - never request, record, type, upload, or transmit a third-party password, cookie, session export, password-manager value, or browser-profile content;
@@ -225,6 +230,8 @@ Browser acquisition is first-class MVP architecture. The repository now has a pr
 - cap page count, record count, bytes, execution time, and concurrency;
 - expose immediate source and local-node kill switches;
 - never explore arbitrary categories, crawl an entire website, widen a search, follow unrelated recommendations, or click message, contact, apply, submit, payment, or account-setting controls.
+
+The implemented `zillow.current-tab.v1` operation is narrower than saved-search monitoring. It is `experimental_personal`, manual-only, disabled by default, and may only read the already-open exact `www.zillow.com/homedetails/.../<id>_zpid/` tab after four-part user confirmation. Vera's adapter calls only OpenClaw node `browser.proxy` `GET /tabs` and `GET /snapshot`; it has no navigation or discovery request path. Native `browser.proxy` remains broader than Vera's adapter because OpenClaw `2026.6.33` has no path-level proxy allowlist, so this source remains founder-only and disabled for a public release. URL canonicalization strips only reviewed tracking parameters and rejects credentials, fragments, ports, alternate hosts, unknown query keys, redirects, and listing-identity changes. User and source activation cannot add any capability from the frozen code-owned manifest.
 
 A successful empty result means the configured saved search returned no IDs newer than the committed cursor. It is distinct from `deferred_node_offline`, policy denial, a manual blocker, a changed layout, and a retryable or terminal failure. None of those outcomes advances the cursor.
 
@@ -290,7 +297,7 @@ A connector remains disabled until review confirms:
 - Craigslist `local_browser` monitoring denies; Zillow and Facebook Marketplace `local_browser` monitoring remain disabled until their `experimental_personal` manifests are explicitly enabled.
 - Dispatch and audit payloads contain no password, cookie, authorization header, session export, password-manager value, or browser-profile content.
 - Login, 2FA, CAPTCHA, consent, camera, and microphone states stop.
-- Gmail adapter exposes draft creation but no send operation.
+- Gmail alert ingestion is read-only; no draft or send adapter is implemented. Any future draft adapter must expose draft creation only.
 - Calendar payloads with attendees or conferencing deny.
 - Every allow and deny appends an audit event with no secret or raw message body.
 

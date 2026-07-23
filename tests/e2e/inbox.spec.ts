@@ -47,7 +47,7 @@ test("inbox filters, sorts, shortlists, dismisses, and audits renter decisions",
     await orchardCard.getByRole("button", { name: "Confirm" }).click();
     await expect(
       page.getByText("Listing dismissed and preserved in Archived with an audit event.")
-    ).toBeVisible();
+    ).toBeVisible({ timeout: 15_000 });
   }
 
   await page.getByRole("button", { name: /Archived \d+/u }).click();

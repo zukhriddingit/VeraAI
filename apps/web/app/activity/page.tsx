@@ -1,21 +1,18 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import Link from "next/link";
 
 import { getActivityCollection } from "../../lib/listing-presentation";
+import { requireVeraPageSession } from "../../lib/server/page-session";
 import { ActivityTimeline } from "./activity-timeline";
 
 export const dynamic = "force-dynamic";
 
-export default function ActivityPage() {
-  let activity: ReturnType<typeof getActivityCollection> | null = null;
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
+export default async function ActivityPage() {
+  const context = await requireVeraPageSession();
+  let activity: Awaited<ReturnType<typeof getActivityCollection>> | null = null;
   try {
-    connection = openExistingDatabase();
-    activity = getActivityCollection(createSqliteRepositories(connection));
+    activity = await getActivityCollection(context.repositories);
   } catch {
     activity = null;
-  } finally {
-    connection?.close();
   }
 
   return (
@@ -37,7 +34,7 @@ export default function ActivityPage() {
         <ActivityTimeline activity={activity} />
       ) : (
         <div className="listing-message listing-message-warning" role="alert">
-          Activity history is unavailable. Run pnpm db:migrate and pnpm db:seed.
+          Activity history is unavailable. Check Vera database readiness.
         </div>
       )}
     </main>

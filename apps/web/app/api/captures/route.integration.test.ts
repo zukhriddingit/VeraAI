@@ -2,20 +2,30 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSqliteRepositories, migrateDatabase, openDatabase, seedDatabase } from "@vera/db";
+import {
+  createSqliteRepositories,
+  migrateDatabase,
+  openDatabase,
+  seedDatabase
+} from "@vera/db/demo";
 import { CaptureAcceptedResponseSchema, CaptureErrorResponseSchema } from "@vera/domain";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { POST } from "./route.ts";
+import {
+  clearTestApplication,
+  registerTestDemoRuntime
+} from "../../../test-support/demo-runtime.ts";
 
 let dataDirectory = "";
 const originalDataDirectory = process.env.VERA_DATA_DIR;
 const originalKillSwitches = process.env.VERA_ACTIVE_KILL_SWITCHES;
+let runtimeConnection: ReturnType<typeof openDatabase> | null = null;
 
 function jsonRequest(payload: unknown): Request {
   return new Request("http://127.0.0.1:3000/api/captures", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:3000" },
     body: JSON.stringify(payload)
   });
 }
@@ -43,9 +53,13 @@ beforeEach(() => {
   } finally {
     connection.close();
   }
+  runtimeConnection = registerTestDemoRuntime(join(dataDirectory, "vera.sqlite"));
 });
 
 afterEach(() => {
+  runtimeConnection?.close();
+  runtimeConnection = null;
+  clearTestApplication();
   if (originalDataDirectory === undefined) {
     delete process.env.VERA_DATA_DIR;
   } else {
@@ -137,13 +151,13 @@ describe.sequential("POST /api/captures", () => {
     const response = await POST(
       new Request("http://127.0.0.1:3000/api/captures", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1:3000" },
         body: "x".repeat(260_001)
       })
     );
     const error = CaptureErrorResponseSchema.parse(await response.json());
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(413);
     expect(error.code).toBe("malformed_request");
     withRepositories((repositories) => {
       expect(repositories.rawListings.count()).toBe(12);

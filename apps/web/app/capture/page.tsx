@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { requireVeraPageSession } from "../../lib/server/page-session";
 import { CaptureForm } from "./capture-form";
 
-export default function CapturePage() {
+export default async function CapturePage() {
+  await requireVeraPageSession();
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">

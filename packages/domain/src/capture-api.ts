@@ -207,7 +207,7 @@ export const ConnectorStatusSchema = z
     displayName: z.string().trim().min(1).max(160),
     status: ConnectorStatusStateSchema,
     capabilities: z.array(SourceCapabilitySchema),
-    networkAccess: z.literal(false),
+    networkAccess: z.boolean(),
     detail: z.string().trim().min(1).max(1_000)
   })
   .strict();

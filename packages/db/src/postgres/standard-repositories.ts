@@ -1,5 +1,6 @@
 import {
   ApprovalSchema,
+  ApprovalStateSchema,
   BrowserNodeStatusSchema,
   CanonicalFieldSourceSchema,
   CanonicalListingSchema,
@@ -14,14 +15,17 @@ import {
   ListingLifecycleStateSchema,
   ListingScoreSchema,
   ListingScoreV2Schema,
-  NormalizationJobSchema,
+  ReminderMinutesSchema,
   RiskSignalSchema,
   RiskSignalV2Schema,
   SourceJobSchema,
   SourceJobStatusSchema,
   ViewingSchema,
+  ViewingStateSchema,
+  transitionApprovalState,
   transitionListingLifecycle,
   transitionSourceJobStatus,
+  transitionViewingState,
   type CanonicalListingSummary,
   type VeraUserId
 } from "@vera/domain";
@@ -708,6 +712,47 @@ export function createStandardPostgresRepositories(
         .where(and(eq(approvals.userId, userId), eq(approvals.id, id)))
         .limit(1);
       return rows[0] ? mapApprovalRow(rows[0]) : null;
+    },
+    async transition(idInput, expectedInput, requestedInput, atInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const expected = ApprovalStateSchema.parse(expectedInput);
+      const requested = ApprovalStateSchema.parse(requestedInput);
+      const at = IsoDateTimeSchema.parse(atInput);
+      transitionApprovalState(expected, requested);
+      const current = await approvalRepository.getById(id);
+      if (!current) throw new RepositoryNotFoundError("Approval", id);
+      if (current.state !== expected) {
+        throw new PostgresRepositoryError(
+          "conflict",
+          false,
+          "Approval state changed concurrently."
+        );
+      }
+      if (Date.parse(at) < Date.parse(current.createdAt)) {
+        throw new Error("Approval transition time cannot precede its creation time.");
+      }
+      const candidate = ApprovalSchema.parse({
+        ...current,
+        state: requested,
+        usedAt: requested === "used" ? at : null
+      });
+      const rows = await operation(() =>
+        db
+          .update(approvals)
+          .set({ state: candidate.state, usedAt: instant(candidate.usedAt) })
+          .where(
+            and(eq(approvals.userId, userId), eq(approvals.id, id), eq(approvals.state, expected))
+          )
+          .returning()
+      );
+      if (!rows[0]) {
+        throw new PostgresRepositoryError(
+          "conflict",
+          false,
+          "Approval state changed concurrently."
+        );
+      }
+      return mapApprovalRow(rows[0]);
     }
   };
 
@@ -735,6 +780,127 @@ export function createStandardPostgresRepositories(
         .where(and(eq(viewings.userId, userId), eq(viewings.id, id)))
         .limit(1);
       return rows[0] ? mapViewingRow(rows[0]) : null;
+    },
+    async prepareCalendarHold(idInput, expectedState, contactNotes, remindersInput, atInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const at = IsoDateTimeSchema.parse(atInput);
+      const remindersMinutesBeforeStart = ReminderMinutesSchema.parse(remindersInput);
+      const current = await viewingRepository.getById(id);
+      if (!current) throw new RepositoryNotFoundError("Viewing", id);
+      if (current.state !== expectedState) {
+        throw new PostgresRepositoryError(
+          "conflict",
+          false,
+          "Viewing state changed before Calendar hold preparation."
+        );
+      }
+      if (Date.parse(at) < Date.parse(current.updatedAt)) {
+        throw new Error("Calendar hold preparation cannot precede the current Viewing update.");
+      }
+      const metadata = {
+        ...current.metadata,
+        calendarHoldRemindersMinutesBeforeStart: remindersMinutesBeforeStart
+      };
+      const candidate = ViewingSchema.parse({
+        ...current,
+        notes: contactNotes,
+        metadata,
+        updatedAt: at
+      });
+      const rows = await operation(() =>
+        db
+          .update(viewings)
+          .set({ notes: candidate.notes, metadata: candidate.metadata, updatedAt: instant(at) })
+          .where(
+            and(
+              eq(viewings.userId, userId),
+              eq(viewings.id, id),
+              eq(viewings.state, expectedState),
+              eq(viewings.updatedAt, instant(current.updatedAt))
+            )
+          )
+          .returning()
+      );
+      if (!rows[0]) {
+        throw new PostgresRepositoryError(
+          "conflict",
+          false,
+          "Viewing changed concurrently during Calendar hold preparation."
+        );
+      }
+      return mapViewingRow(rows[0]);
+    },
+    async transition(idInput, expectedInput, requestedInput, atInput, patch = {}) {
+      const id = EntityIdSchema.parse(idInput);
+      const expected = ViewingStateSchema.parse(expectedInput);
+      const requested = ViewingStateSchema.parse(requestedInput);
+      const at = IsoDateTimeSchema.parse(atInput);
+      transitionViewingState(expected, requested);
+      const current = await viewingRepository.getById(id);
+      if (!current) throw new RepositoryNotFoundError("Viewing", id);
+      if (current.state !== expected) {
+        throw new PostgresRepositoryError("conflict", false, "Viewing state changed concurrently.");
+      }
+      if (Date.parse(at) < Date.parse(current.updatedAt)) {
+        throw new Error("Viewing transition time cannot precede its current update time.");
+      }
+      const candidate = ViewingSchema.parse({
+        ...current,
+        state: requested,
+        selectedWindow:
+          patch.selectedWindow !== undefined
+            ? patch.selectedWindow
+            : requested === "proposed"
+              ? null
+              : current.selectedWindow,
+        confirmedWindow:
+          patch.confirmedWindow !== undefined ? patch.confirmedWindow : current.confirmedWindow,
+        calendarReference:
+          patch.calendarReference !== undefined
+            ? patch.calendarReference
+            : current.calendarReference,
+        supersedesViewingId:
+          patch.supersedesViewingId !== undefined
+            ? patch.supersedesViewingId
+            : current.supersedesViewingId,
+        updatedAt: at
+      });
+      const rows = await operation(() =>
+        db
+          .update(viewings)
+          .set({
+            selectedWindow: candidate.selectedWindow,
+            confirmedWindow: candidate.confirmedWindow,
+            calendarReference: candidate.calendarReference,
+            supersedesViewingId: candidate.supersedesViewingId,
+            state: candidate.state,
+            updatedAt: instant(candidate.updatedAt)
+          })
+          .where(
+            and(
+              eq(viewings.userId, userId),
+              eq(viewings.id, id),
+              eq(viewings.state, expected),
+              eq(viewings.updatedAt, instant(current.updatedAt))
+            )
+          )
+          .returning()
+      );
+      if (!rows[0]) {
+        throw new PostgresRepositoryError("conflict", false, "Viewing state changed concurrently.");
+      }
+      return mapViewingRow(rows[0]);
+    },
+    async listByCanonicalListingId(input) {
+      const canonicalListingId = EntityIdSchema.parse(input);
+      const rows = await db
+        .select()
+        .from(viewings)
+        .where(
+          and(eq(viewings.userId, userId), eq(viewings.canonicalListingId, canonicalListingId))
+        )
+        .orderBy(asc(viewings.createdAt), asc(viewings.id));
+      return rows.map(mapViewingRow);
     }
   };
 
@@ -747,6 +913,16 @@ export function createStandardPostgresRepositories(
           .values({
             userId,
             ...job,
+            browserNodeId:
+              job.payload.acquisitionMode === "local_browser" &&
+              job.payload.captureKind === "current_tab"
+                ? job.payload.nodeId
+                : null,
+            browserProfileId:
+              job.payload.acquisitionMode === "local_browser" &&
+              job.payload.captureKind === "current_tab"
+                ? job.payload.profileId
+                : null,
             availableAt: instant(job.createdAt),
             leaseOwner: null,
             leaseExpiresAt: null,
@@ -944,14 +1120,27 @@ export function createStandardPostgresRepositories(
             ...status,
             lastHeartbeatAt: instant(status.lastHeartbeatAt),
             heartbeatExpiresAt: instant(status.heartbeatExpiresAt),
+            lastSuccessfulCaptureAt: instant(status.lastSuccessfulCaptureAt),
+            disabledAt: instant(status.disabledAt),
+            createdAt: instant(status.createdAt),
             updatedAt: instant(status.updatedAt)
           })
           .onConflictDoUpdate({
             target: [browserNodes.userId, browserNodes.nodeId],
             set: {
               status: status.status,
+              nodeName: status.nodeName,
+              pairingState: status.pairingState,
+              capabilityApprovalState: status.capabilityApprovalState,
+              selectedProfileId: status.selectedProfileId,
+              allowedProfileIds: status.allowedProfileIds,
+              reportedOpenClawVersion: status.reportedOpenClawVersion,
+              expectedOpenClawVersion: status.expectedOpenClawVersion,
+              versionCompatibility: status.versionCompatibility,
               lastHeartbeatAt: instant(status.lastHeartbeatAt),
               heartbeatExpiresAt: instant(status.heartbeatExpiresAt),
+              lastSuccessfulCaptureAt: instant(status.lastSuccessfulCaptureAt),
+              disabledAt: instant(status.disabledAt),
               contractVersion: status.contractVersion,
               capabilities: status.capabilities,
               updatedAt: instant(status.updatedAt)

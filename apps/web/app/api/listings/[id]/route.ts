@@ -1,8 +1,8 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import { ListingActionErrorResponseSchema } from "@vera/domain";
 
 import { getListingDetail } from "../../../../lib/listing-presentation";
 import { parseRouteEntityId } from "../../../../lib/route-entity-id";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,9 +12,9 @@ interface RouteContext {
   readonly params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
+    const session = await requireVeraSession(request.headers);
     const listingId = parseRouteEntityId((await context.params).id);
     if (listingId === null) {
       return Response.json(
@@ -25,8 +25,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
         { status: 404, headers }
       );
     }
-    connection = openExistingDatabase();
-    const detail = getListingDetail(createSqliteRepositories(connection), listingId);
+    const detail = await getListingDetail(session.repositories, listingId);
     if (!detail) {
       return Response.json(
         ListingActionErrorResponseSchema.parse({
@@ -37,7 +36,13 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       );
     }
     return Response.json(detail, { status: 200, headers });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
     return Response.json(
       ListingActionErrorResponseSchema.parse({
         code: "database_unavailable",
@@ -45,7 +50,5 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       }),
       { status: 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

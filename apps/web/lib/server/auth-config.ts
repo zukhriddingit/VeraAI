@@ -67,12 +67,33 @@ export function buildIdentityAuthOptions(environment: IdentityAuthEnvironment) {
         trustedProviders: ["google"]
       }
     },
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      cookieCache: { enabled: false }
+    },
+    rateLimit: {
+      enabled: true,
+      storage: "memory",
+      window: 60,
+      max: 60,
+      customRules: {
+        "/sign-in/social": { window: 60, max: 10 },
+        "/callback/google": { window: 60, max: 20 }
+      }
+    },
     advanced: {
       database: { generateId: "uuid" },
       useSecureCookies: environment.NODE_ENV === "production",
       disableCSRFCheck: false,
       disableOriginCheck: false,
       crossSubDomainCookies: { enabled: false },
+      defaultCookieAttributes: {
+        httpOnly: true,
+        sameSite: "lax",
+        secure: environment.NODE_ENV === "production",
+        path: "/"
+      },
       cookiePrefix: "vera"
     }
   } satisfies BetterAuthOptions;

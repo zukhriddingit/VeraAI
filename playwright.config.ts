@@ -4,6 +4,9 @@ import { join } from "node:path";
 const port = 3000;
 const baseURL = "http://127.0.0.1:" + String(port);
 const e2eDataDirectory = join(process.cwd(), "test-results", "vera-e2e-data");
+const nodeExecutable = JSON.stringify(process.execPath);
+const tsxExecutable = JSON.stringify(join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"));
+const runTypeScript = (script: string) => `${nodeExecutable} ${tsxExecutable} ${script}`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -23,12 +26,15 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command:
-      "node --import tsx tests/e2e/reset-data.ts && pnpm db:migrate && pnpm db:seed && pnpm --filter @vera/web build && pnpm serve:e2e",
+    command: [
+      runTypeScript("scripts/demo-reset.ts"),
+      runTypeScript("scripts/demo-seed.ts"),
+      runTypeScript("scripts/demo-start.ts")
+    ].join(" && "),
     env: {
       NEXT_TELEMETRY_DISABLED: "1",
-      VERA_DATA_DIR: e2eDataDirectory,
-      VERA_DEMO_MODE: "1"
+      VERA_DEMO_DATA_DIR: e2eDataDirectory,
+      VERA_PUBLIC_BASE_URL: baseURL
     },
     url: baseURL + "/api/health",
     reuseExistingServer: false,

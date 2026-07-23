@@ -18,7 +18,7 @@ import {
   openDatabase,
   type VeraDatabaseConnection,
   type VeraRepositories
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const now = "2026-07-17T12:00:00.000Z";
 const later = "2026-07-17T12:01:00.000Z";
@@ -419,8 +419,43 @@ describe("SQLite repositories", () => {
     const viewing = repositories.viewings.insert({
       id: "viewing-repository-test",
       canonicalListingId: canonical.id,
-      proposedWindows: [{ startsAt: now, endsAt: "2026-07-17T12:15:00.000Z" }],
+      proposedWindows: [
+        {
+          startsAt: now,
+          endsAt: "2026-07-17T12:15:00.000Z",
+          timeZone: "America/New_York",
+          availabilitySource: "vera_rules_only",
+          state: "vera_rules_only",
+          availabilityCheckId: null,
+          checkedAt: null,
+          calendarsChecked: [],
+          requiresConflictWarning: true,
+          rules: {
+            timeZone: "America/New_York",
+            weeklyIntervals: {
+              "1": [],
+              "2": [],
+              "3": [],
+              "4": [],
+              "5": [],
+              "6": [],
+              "7": []
+            },
+            durationMinutes: 15,
+            minimumNoticeMinutes: 0,
+            travelMinutes: 0,
+            bufferMinutes: 0,
+            remindersMinutesBeforeStart: [],
+            conflictCheckingEnabled: false,
+            calendarIds: [],
+            schemaVersion: 1
+          },
+          generatorVersion: "legacy.v0"
+        }
+      ],
+      selectedWindow: null,
       confirmedWindow: null,
+      supersedesViewingId: null,
       timeZone: "America/New_York",
       calendarReference: null,
       state: "proposed",

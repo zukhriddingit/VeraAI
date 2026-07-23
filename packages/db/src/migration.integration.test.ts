@@ -11,10 +11,10 @@ import {
   openDatabase,
   seedDatabase,
   type VeraDatabaseConnection
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const initialMigration = readFileSync(
-  new URL("../drizzle/0000_bored_stick.sql", import.meta.url),
+  new URL("../drizzle-demo/0000_bored_stick.sql", import.meta.url),
   "utf8"
 );
 let temporaryDirectory: string | null = null;

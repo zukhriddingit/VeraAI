@@ -17,8 +17,14 @@ import type { UserRepositories, UserRepositoryProvider } from "../repositories.t
 import type { PostgresConnection } from "./connection.ts";
 import { createPostgresDecisionReconciliation } from "./decision-reconciliation.ts";
 import { createPostgresDecisionRepositories } from "./decision-repositories.ts";
+import { createPostgresCalendarRepositories } from "./calendar-repositories.ts";
+import { createPostgresBrowserRepositories } from "./browser-repositories.ts";
+import { createPostgresGmailRepositories } from "./gmail-repositories.ts";
 import { mapPostgresError } from "./errors.ts";
 import { createPostgresIntegrationConnectionRepository } from "./integration-repository.ts";
+import { createPostgresIntegrationRefreshLeaseRepository } from "./integration-refresh-leases.ts";
+import { createPostgresMaritimeRepositories } from "./maritime-repositories.ts";
+import { createPostgresNotificationRepositories } from "./notification-repositories.ts";
 import { createPostgresPolicyReader } from "./policy-repository.ts";
 import {
   mapActivityEventRow,
@@ -520,6 +526,12 @@ export function createPostgresUserRepositories(
   const decision = createPostgresDecisionRepositories(db, userId);
   const repositories = {
     integrationConnections: createPostgresIntegrationConnectionRepository(db, userId),
+    integrationRefreshLeases: createPostgresIntegrationRefreshLeaseRepository(db, userId),
+    ...createPostgresCalendarRepositories(db, userId),
+    ...createPostgresBrowserRepositories(db, userId),
+    ...createPostgresGmailRepositories(db, userId),
+    ...createPostgresMaritimeRepositories(db, userId),
+    ...createPostgresNotificationRepositories(db, userId),
     ...createCorePostgresRepositories(db, userId),
     ...createStandardPostgresRepositories(db, userId),
     sourcePolicyManifests: createPostgresPolicyReader(db),

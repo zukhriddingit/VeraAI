@@ -352,7 +352,7 @@ export const CalendarHoldStateSchema = z.enum([
 
 `AvailabilityRuleSet` includes `id`, `timeZone`, `weeklyIntervals` keyed by ISO weekday `"1"` through `"7"` with arrays of `{ startsAt: "HH:mm", endsAt: "HH:mm" }`, duration, notice, travel, buffer, unique popup reminders, `conflictCheckingEnabled`, `calendarIds`, `schemaVersion: 1`, and timestamps. Bounds are duration 15–240, notice 0–10,080, travel/buffer 0–240, at most five reminders, non-overlapping weekly intervals, and exactly `['primary']` only when checking is enabled.
 
-`ProposedViewingWindow` contains interval, timezone, `availabilitySource`, state, nullable check ID/time, exact checked IDs, warning flag, complete contributing-rule snapshot, and `generatorVersion: "availability.v1"`. Require `checked` to carry source `google_freebusy`, `['primary']`, a check ID/time, and no warning. Every other state uses `vera_rules_only` and requires a warning.
+`ProposedViewingWindow` contains interval, timezone, `availabilitySource`, state, nullable check ID/time, exact checked IDs, warning flag, complete contributing-rule snapshot, and `generatorVersion: "availability.v1"`. Require `checked` to carry source `google_freebusy`, `['primary']`, a check ID/time, and no warning. A read-time `stale` window retains that same Google provenance but requires a warning; it is never rewritten as Vera-rules-only. Missing scope, disconnection, temporary failure, and intentionally disabled checking use `vera_rules_only`, carry no checked calendar IDs, and require a warning.
 
 Define the exact approval projection in `calendar-api.ts`:
 
@@ -435,7 +435,7 @@ git commit -m "feat(domain): model viewing availability and holds"
 
 **Interfaces:**
 - Consumes: `AvailabilityRuleSet`, `AvailabilityCheckState`, busy intervals, trusted clock, user/viewing/listing inputs.
-- Produces: `CalendarAvailabilityInput`, `generateViewingWindows`, `isAvailabilityCheckFresh`, `HoldPayloadInput`, `TentativeHoldPayload`, `buildTentativeHoldPayload`, `computeCalendarPayloadHash`, and `computeGoogleEventId`.
+- Produces: `CalendarAvailabilityInput`, `generateViewingWindows`, `isAvailabilityCheckFresh`, `HoldPayloadInput`, `CalendarHoldEffectPayload`, `buildCalendarHoldEffectPayload`, `computeCalendarPayloadHash`, `computeGoogleEventId`, and `buildInsertTentativeHoldRequest`.
 
 - [ ] **Step 1: Write the labeled fixture matrix for scheduling and DST**
 
@@ -477,7 +477,7 @@ describe("generateViewingWindows", () => {
 });
 ```
 
-Add tests for missing scope, disconnected/revoked, provider failure, stale results, minimum notice, deterministic order, one-per-day first pass, and every provenance field. Add payload tests proving equivalent inputs hash identically, any approved field changes the hash, and the event ID matches `/^vera[a-f0-9]{40}$/`.
+Add tests for missing scope, disconnected/revoked, provider failure, stale results, minimum notice, deterministic order, one-per-day first pass, and every provenance field. Add payload tests proving equivalent inputs hash identically, any approved field changes the hash, the effect hash excludes the derived event ID, and the event ID matches `/^vera[a-f0-9]{40}$/`.
 
 The test-fixture module contains only sanitized deterministic builders with these complete signatures:
 
@@ -511,7 +511,7 @@ export type CalendarAvailabilityInput =
       readonly busy: readonly FreeBusyInterval[];
     }
   | {
-      readonly state: Exclude<AvailabilityCheckState, "checked">;
+      readonly state: Exclude<AvailabilityCheckState, "checked" | "stale">;
       readonly checkId: string | null;
       readonly checkedAt: string | null;
       readonly calendarIds: readonly [];
@@ -533,18 +533,22 @@ export function isAvailabilityCheckFresh(
   now: string,
   maximumAgeMilliseconds: 300_000
 ): boolean;
+export function markStaleWindowAtRead(input: {
+  readonly window: ProposedViewingWindow;
+  readonly now: string;
+  readonly maximumAgeMilliseconds: 300_000;
+}): ProposedViewingWindow;
 ```
 
 Enumerate wall-clock slots at 15-minute boundaries using `Temporal.PlainDate`, `Temporal.PlainTime`, and the configured IANA zone. Convert with `disambiguation: "reject"`; do not guess at duplicated or skipped wall times. Expand each busy interval by `travelMinutes + bufferMinutes` before intersection. Sort by instant, pick one candidate per local date, then fill remaining positions chronologically, returning at most three.
 
-For a fresh successful check, use `google_freebusy`, `checked`, `['primary']`, no warning, and the persisted check ID. Every other availability input generates from rules only with the exact failure state and `requiresConflictWarning: true`.
+For a fresh successful check, use `google_freebusy`, `checked`, `['primary']`, no warning, and the persisted check ID. Every degraded generator input produces rules-only windows with the exact failure state and `requiresConflictWarning: true`. `stale` is never a generator fallback input: at read time `markStaleWindowAtRead` returns a copy of an aged checked window with state `stale`, original Google source/check/calendar/time provenance intact, and `requiresConflictWarning: true`; persistence remains unchanged.
 
 - [ ] **Step 4: Implement canonical payloads and deterministic identity**
 
 Canonicalize JSON by recursively sorting object keys, preserving array order, and UTF-8 hashing the result. Build:
 
 ```ts
-export type TentativeHoldPayload = InsertTentativeHoldRequest;
 export interface HoldPayloadInput {
   readonly holdId: string;
   readonly userId: VeraUserId;
@@ -556,10 +560,35 @@ export interface HoldPayloadInput {
   readonly contactNotes: string | null;
   readonly selectedWindow: ProposedViewingWindow;
   readonly remindersMinutesBeforeStart: readonly number[];
+  readonly finalCheckState: AvailabilityCheckState;
+  readonly conflictCheckOverride: boolean;
+  readonly conflictWarning: string | null;
 }
 
-export function buildTentativeHoldPayload(input: HoldPayloadInput): TentativeHoldPayload;
-export function computeCalendarPayloadHash(payload: TentativeHoldPayload): string;
+export interface CalendarHoldEffectPayload {
+  readonly holdId: string;
+  readonly veraMarker: string;
+  readonly summary: string;
+  readonly location: string;
+  readonly description: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly timeZone: string;
+  readonly remindersMinutesBeforeStart: readonly number[];
+  readonly calendarId: "primary";
+  readonly status: "tentative";
+  readonly visibility: "private";
+  readonly transparency: "opaque";
+  readonly attendees: readonly [];
+  readonly conferenceData: null;
+  readonly sendUpdates: "none";
+  readonly finalCheckState: AvailabilityCheckState;
+  readonly conflictCheckOverride: boolean;
+  readonly conflictWarning: string | null;
+}
+
+export function buildCalendarHoldEffectPayload(input: HoldPayloadInput): CalendarHoldEffectPayload;
+export function computeCalendarPayloadHash(payload: CalendarHoldEffectPayload): string;
 export function computeGoogleEventId(input: {
   userId: VeraUserId;
   viewingId: string;
@@ -567,7 +596,13 @@ export function computeGoogleEventId(input: {
   endsAt: string;
   payloadHash: string;
 }): string;
+export function buildInsertTentativeHoldRequest(input: {
+  readonly effect: CalendarHoldEffectPayload;
+  readonly eventId: string;
+}): InsertTentativeHoldRequest;
 ```
+
+The approval hash covers `CalendarHoldEffectPayload`, which contains every approved visible/provider-visible value and the warning/override policy state, but never the derived Google event ID. Reserve and persist one `approval_pending` `calendar_holds` row before returning the first preview; its stable `holdId` supplies the Vera marker. Rebuilding preview or retrying resolves that same row by `(user_id, viewing_id, selected interval, effect-input hash)`. After approval, derive the Google event ID from the effect hash and construct the strict provider request. This removes circular hashing and prevents a regenerated marker from invalidating approval or idempotency.
 
 The title is `Tentative viewing — {short address}`. The description contains only the user-approved canonical listing URL, retained source URLs, contact notes, and `VERA-HOLD:{holdId}`. Reject URLs with credentials, non-HTTP(S) schemes, or fragments. The provider payload always fixes primary/tentative/private/opaque/no attendees/no conference/none notifications.
 
@@ -728,6 +763,7 @@ git commit -m "feat(calendar): add mock and Google providers"
 - Modify: `packages/db/src/postgres/schema.ts`
 - Modify: `packages/db/src/postgres/schema.integration.test.ts`
 - Modify: `packages/db/src/postgres/migrations.integration.test.ts`
+- Create: `packages/db/src/postgres/calendar-migration-testing.ts`
 - Create: `packages/db/drizzle/0001_calendar_availability.sql`
 - Modify: `packages/db/drizzle/meta/_journal.json`
 - Create: `packages/db/drizzle/meta/0001_snapshot.json`
@@ -756,7 +792,7 @@ it("adds tenant-owned Calendar tables with PostgreSQL-native types", async () =>
 });
 ```
 
-Add assertions for composite ownership foreign keys, one active rule set per user, unique state hash, append-only availability checks, unique `(user_id,idempotency_key)`, unique provider event identity, encrypted verifier all-or-none columns, allowed-state checks, and legacy Viewing rows preserved.
+Add assertions for composite ownership foreign keys, one active rule set per user, unique state hash, append-only availability checks, unique `(user_id,idempotency_key)`, unique `(user_id,approval_id)`, unique provider event identity, one Google integration per `(user_id,provider)`, encrypted verifier all-or-none columns, allowed-state checks, and legacy Viewing rows preserved.
 
 - [ ] **Step 2: Run the PostgreSQL schema tests and confirm missing-table failures**
 
@@ -773,6 +809,7 @@ Add:
 - `availability_checks`: tenant key, rule-set and nullable integration same-owner FKs, state, requested range, attempted/successful calendar IDs JSONB, checked time, response hash, busy count, safe provider error, correlation ID, created time.
 - `calendar_holds`: tenant key, viewing/approval/check same-owner FKs, payload hash, idempotency key, deterministic event ID, provider reference, hold state, override flag/reason, safe error, timestamps; unique idempotency and provider identity.
 - `viewings`: nullable selected-window JSONB and nullable `supersedes_viewing_id` with a same-owner self-FK.
+- `integration_connections`: add unique `(user_id, provider)` so the founder flow has one linked Google account and a callback cannot silently add or swap subjects.
 
 Create an append-only trigger for `availability_checks`, matching the existing raw/activity trigger style. All state/check constraints use the exact Task 2 enums.
 
@@ -786,7 +823,7 @@ Expected: one new `0001_*.sql` migration and matching snapshot. Rename the SQL t
 
 Run: `pnpm vitest run --project postgres-integration packages/db/src/postgres/schema.integration.test.ts packages/db/src/postgres/migrations.integration.test.ts`
 
-Expected: both suites PASS, including preservation of a pre-migration Viewing row.
+Expected: both suites PASS, including preservation of a pre-migration Viewing row. `calendar-migration-testing.ts` must create a temporary migration directory containing only the baseline SQL/journal, migrate and insert the legacy row, then add the Calendar SQL/journal and run the migrator again; the normal `withPostgresTestDatabase` helper cannot prove cross-version preservation because it always applies all migrations.
 
 - [ ] **Step 6: Commit the additive migration**
 
@@ -1015,7 +1052,7 @@ export function callbackFixture(kind: CallbackFailure): GoogleCallbackFixture;
 export function runCallback(fixture: GoogleCallbackFixture): Promise<GoogleCallbackTestResult>;
 ```
 
-`GoogleCallbackTestResult` contains the HTTP response, persisted connection, code-exchange call count, revocation call count, encrypted database rows, and captured safe logs. No test fixture contains a real email, token, code, client secret, or Google response.
+`GoogleCallbackTestResult` contains the HTTP response, persisted connection, code-exchange call count, revocation call count, synthetic encrypted persistence projection, and captured safe logs. Route/service tests use injected in-memory repository doubles so the default `integration` Vitest project requires neither PostgreSQL nor Google. Database encryption/constraint/transaction behavior remains in `packages/db/src/postgres/**/*.integration.test.ts`, which runs only in the PostgreSQL test project. No test fixture contains a real email, token, code, client secret, or Google response.
 
 - [ ] **Step 2: Verify security tests fail**
 
@@ -1056,7 +1093,7 @@ interface GoogleIntegrationOAuth {
 
 Generate 32 random state bytes and an RFC 7636 S256 verifier/challenge. Store only state SHA-256 and an encrypted verifier using the OAuth state UUID as the credential-context integration ID. Request `openid email` plus exactly one Calendar scope, `access_type=offline`, `include_granted_scopes=true`, `prompt=consent` only when a refresh token is missing, and no identity `profile` scope.
 
-On callback, consume the state before exchange, verify its session user, exchange server-side, verify the ID token audience/issuer/subject/email, verify actual granted scopes with token info, and persist only the encrypted refresh token plus safe metadata. Preserve existing encrypted refresh material if incremental consent omits a new token. Missing first refresh material becomes `reconnect_required`.
+On callback, consume the state before exchange, verify its session user, exchange server-side, verify the ID token audience/issuer/subject/email, verify actual granted scopes with token info, and persist only the encrypted refresh token plus safe metadata. Preserve existing encrypted refresh material if incremental consent omits a new token. Missing first refresh material becomes `reconnect_required`. If the user already has a non-disconnected Google integration with a different verified subject, reject with an account-linking conflict; replacing the linked subject requires the explicit disconnect/reconnect flow.
 
 Refresh access tokens only in memory with one bounded transient retry. `invalid_grant` transitions to revoked/reconnect-required. Disconnect calls Google's revocation endpoint through the injected transport, then deletes the stored credential even if revocation reports already-invalid; append only safe audited state changes.
 
@@ -1348,6 +1385,8 @@ git commit -m "feat(web): create approved tentative viewing holds"
 - Create: `apps/web/app/listings/[id]/viewing-planner.test-fixtures.ts`
 - Modify: `apps/web/app/listings/[id]/listing-detail.tsx`
 - Modify: `apps/web/app/listings/[id]/page.tsx`
+- Modify: `apps/web/lib/listing-presentation.ts`
+- Modify: `apps/web/lib/listing-presentation.integration.test.ts`
 - Modify: `apps/web/app/globals.css`
 
 **Interfaces:**
@@ -1439,6 +1478,8 @@ After creation, display `Tentative hold created—no landlord was invited or not
 
 Render the planner only in `replied`, `tour_proposed`, and `tour_scheduled`. Preserve evidence, risk, and activity sections. Add mobile stacking, minimum 44px actions, focus-visible outlines, `aria-live` for status, fieldset/radio semantics for windows, and non-color warning text.
 
+Extend the existing closed `safeActivityDetail` projection with the Calendar/viewing activity vocabulary from Task 6, returning only human-readable state/count/hash-safe summaries. Never fall back to raw metadata; listing-detail activity must make the new audited actions legible without exposing addresses, notes, URLs, event descriptions, or provider bodies.
+
 - [ ] **Step 5: Pass component tests and web typecheck**
 
 Run: `pnpm vitest run apps/web/app/listings/[id]/viewing-planner.unit.test.ts && pnpm --filter @vera/web typecheck`
@@ -1448,7 +1489,7 @@ Expected: component tests and typecheck PASS.
 - [ ] **Step 6: Commit the viewing UI**
 
 ```bash
-git add apps/web/app/listings/[id] apps/web/app/globals.css
+git add apps/web/app/listings/[id] apps/web/app/globals.css apps/web/lib/listing-presentation.ts apps/web/lib/listing-presentation.integration.test.ts
 git commit -m "feat(web): add approved viewing planner"
 ```
 
@@ -1507,7 +1548,7 @@ Expected: FAIL until the demo repository and mock composition are wired.
 
 Use a process-owned in-memory Calendar sidecar for the current rule, safe availability summaries, and hold operation records; continue to persist viewings, approvals, listing lifecycle, and activity through the existing SQLite repositories. Do not add a SQLite migration, OAuth state table, token table, or a general second database implementation, and keep `integrationConnections.upsert` fail-closed. The sidecar is scoped to `DEMO_USER_ID`, seeded at demo application construction, and reset when the process restarts. The demo application always injects `MockCalendarClient`; it never reads integration OAuth environment variables.
 
-Seed one replied sanitized listing, a weekly `America/New_York` rule set, and scripted primary-calendar busy intervals. Reset restores the same state and IDs on every run.
+Seed one replied sanitized listing through an explicit demo-only fixture state (never by arbitrary runtime mutation), a weekly `America/New_York` rule set, and scripted primary-calendar busy intervals. Reset restores the same state and IDs on every run. Store the sidecar and mock client on the long-lived registered `VeraApplication`, not inside `forUser()`, so separate Next.js requests observe the same deterministic hold state.
 
 The mock may exercise the same strict `checked` contract, but `demoMode` changes all provider-facing copy and confirmations so a fixture can never be mistaken for a connected production Google account or a real external event.
 

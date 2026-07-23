@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import {
   InvalidListingTransitionError,
   ListingActionErrorResponseSchema,
@@ -9,6 +8,13 @@ import {
 
 import { setListingShortlist } from "../../../../../lib/listing-presentation";
 import { parseRouteEntityId } from "../../../../../lib/route-entity-id";
+import {
+  assertSameOriginMutation,
+  CrossOriginMutationError,
+  MutationRequestError,
+  readBoundedJson
+} from "../../../../../lib/server/request-security";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,9 +25,10 @@ interface RouteContext {
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    const input: unknown = await request.json();
+    const session = await requireVeraSession(request.headers);
+    assertSameOriginMutation(request);
+    const input = await readBoundedJson(request, { maxBytes: 16_384 });
     const parsed = ShortlistRequestSchema.safeParse(input);
     if (!parsed.success) {
       return Response.json(
@@ -42,14 +49,32 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         { status: 404, headers }
       );
     }
-    connection = openExistingDatabase();
-    const result = setListingShortlist(listingId, parsed.data.shortlisted, {
-      repositories: createSqliteRepositories(connection),
+    const result = await setListingShortlist(listingId, parsed.data.shortlisted, {
+      userId: session.userId,
+      repositoryProvider: session.repositoryProvider,
       now: () => new Date(),
       createId: randomUUID
     });
     return Response.json(result, { status: 200, headers });
   } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
+    if (error instanceof CrossOriginMutationError) {
+      return Response.json(
+        { code: "malformed_request", message: "Request origin is not allowed." },
+        { status: 403, headers }
+      );
+    }
+    if (error instanceof MutationRequestError) {
+      return Response.json(
+        { code: "malformed_request", message: "Shortlist request is malformed." },
+        { status: error.status, headers }
+      );
+    }
     const invalid = error instanceof InvalidListingTransitionError;
     return Response.json(
       ListingActionErrorResponseSchema.parse({
@@ -60,7 +85,5 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       }),
       { status: invalid ? 409 : 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

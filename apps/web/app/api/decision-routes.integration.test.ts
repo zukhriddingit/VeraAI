@@ -7,7 +7,7 @@ import {
   migrateDatabase,
   openDatabase,
   seedEvidenceDatabase
-} from "@vera/db";
+} from "@vera/db/demo";
 import {
   CreateDuplicateOverrideResponseSchema,
   DecisionApiErrorResponseSchema,
@@ -18,9 +18,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { GET as getDecisionJob } from "./decision-jobs/[id]/route.ts";
 import { GET as getOverrides, POST as createOverride } from "./dedupe/overrides/route.ts";
+import { clearTestApplication, registerTestDemoRuntime } from "../../test-support/demo-runtime.ts";
 
 const originalDataDirectory = process.env.VERA_DATA_DIR;
 let directory = "";
+let runtimeConnection: ReturnType<typeof openDatabase> | null = null;
 
 beforeEach(() => {
   directory = mkdtempSync(join(tmpdir(), "vera-decision-routes-"));
@@ -33,9 +35,13 @@ beforeEach(() => {
   } finally {
     connection.close();
   }
+  runtimeConnection = registerTestDemoRuntime(join(directory, "vera.sqlite"));
 });
 
 afterEach(() => {
+  runtimeConnection?.close();
+  runtimeConnection = null;
+  clearTestApplication();
   if (originalDataDirectory === undefined) delete process.env.VERA_DATA_DIR;
   else process.env.VERA_DATA_DIR = originalDataDirectory;
   if (directory) rmSync(directory, { recursive: true, force: true });
@@ -46,7 +52,7 @@ function postOverride(body: unknown): Promise<Response> {
   return createOverride(
     new Request("http://127.0.0.1/api/dedupe/overrides", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1" },
       body: JSON.stringify(body)
     })
   );
@@ -54,7 +60,7 @@ function postOverride(body: unknown): Promise<Response> {
 
 describe.sequential("decision operator routes", () => {
   it("records an immutable split override and queues its own corpus revision", async () => {
-    const beforeResponse = await getOverrides();
+    const beforeResponse = await getOverrides(new Request("http://127.0.0.1/api/dedupe/overrides"));
     const before = DuplicateOverrideHistoryResponseSchema.parse(await beforeResponse.json());
     expect(beforeResponse.status).toBe(200);
     expect(before.overrides).toEqual([]);
@@ -74,7 +80,9 @@ describe.sequential("decision operator routes", () => {
       targetCorpusRevision: 2
     });
 
-    const historyResponse = await getOverrides();
+    const historyResponse = await getOverrides(
+      new Request("http://127.0.0.1/api/dedupe/overrides")
+    );
     const history = DuplicateOverrideHistoryResponseSchema.parse(await historyResponse.json());
     expect(history.overrides).toEqual([created.override]);
     expect(history.activeOverrideIds).toEqual([created.override.id]);

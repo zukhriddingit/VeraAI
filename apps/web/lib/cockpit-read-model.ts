@@ -1,15 +1,10 @@
-import {
-  createSqliteRepositories,
-  openExistingDatabase,
-  type VeraRepositories
-} from "@vera/db/runtime";
+import type { UserRepositories } from "@vera/db";
 import {
   CanonicalListingCollectionResponseSchema,
   type CanonicalListingCollectionResponse,
   type DemoStatusResponse
 } from "@vera/domain";
 
-import { isDemoMode } from "./demo-mode";
 import { getDemoStatus } from "./demo-search-service";
 
 export type CockpitInitialState =
@@ -25,16 +20,16 @@ export type CockpitInitialState =
       readonly message: string;
     };
 
-export function projectCockpitInitialState(
-  repositories: VeraRepositories,
+export async function projectCockpitInitialState(
+  repositories: UserRepositories,
   options: { readonly demoMode: boolean; readonly now?: () => Date }
-): CockpitInitialState {
+): Promise<CockpitInitialState> {
   const generatedAt = (options.now ?? (() => new Date()))().toISOString();
-  const demoStatus = options.demoMode ? getDemoStatus(repositories, options.now) : null;
+  const demoStatus = options.demoMode ? await getDemoStatus(repositories, options.now) : null;
   const listings =
     options.demoMode && demoStatus?.status === "not_run"
       ? []
-      : repositories.canonicalListings.listSummaries();
+      : await repositories.canonicalListings.listSummaries();
 
   return {
     kind: "ready",
@@ -48,21 +43,19 @@ export function projectCockpitInitialState(
   };
 }
 
-export function loadCockpitInitialState(): CockpitInitialState {
-  const demoMode = isDemoMode();
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
+export async function loadCockpitInitialState(
+  repositories: UserRepositories,
+  demoMode: boolean
+): Promise<CockpitInitialState> {
   try {
-    connection = openExistingDatabase();
-    return projectCockpitInitialState(createSqliteRepositories(connection), { demoMode });
+    return await projectCockpitInitialState(repositories, { demoMode });
   } catch {
     return {
       kind: "unavailable",
       demoMode,
       message: demoMode
         ? "Demo data is not ready. Run pnpm demo:reset and pnpm demo:seed."
-        : "Local listing data is not ready. Run pnpm db:migrate and pnpm db:seed."
+        : "Hosted listing data is unavailable. Check PostgreSQL readiness."
     };
-  } finally {
-    connection?.close();
   }
 }

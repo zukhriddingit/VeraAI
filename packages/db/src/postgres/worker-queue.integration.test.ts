@@ -91,4 +91,67 @@ describe("PostgreSQL system worker queue", () => {
       }
     });
   });
+
+  it("reclaims an expired running source job without exceeding its attempt budget", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await seedOwner(db);
+      await db.insert(sourceJobs).values({
+        userId,
+        id: "source-recoverable",
+        correlationId: "source-recoverable-correlation",
+        connectorId: "zillow.openclaw.current-tab.v1",
+        source: "zillow",
+        acquisitionMode: "local_browser",
+        manifestVersion: 1,
+        trigger: "manual",
+        capability: "browser.capture",
+        approvalId: null,
+        operation: "capture.current_tab",
+        payload: {
+          acquisitionMode: "local_browser",
+          captureKind: "current_tab",
+          nodeId: "node-not-needed-for-queue-test",
+          profileId: "profile-not-needed-for-queue-test",
+          expectedUrl: "https://www.zillow.com/homedetails/Test/12345_zpid/",
+          canonicalUrl: "https://www.zillow.com/homedetails/Test/12345_zpid/",
+          limits: {
+            maxPages: 1,
+            maxRecords: 1,
+            maxBytes: 250_000,
+            maxDurationMilliseconds: 30_000,
+            maxConcurrency: 1
+          }
+        },
+        payloadHash: "d".repeat(64),
+        idempotencyKey: "e".repeat(64),
+        status: "running",
+        attempts: 1,
+        maxAttempts: 2,
+        availableAt: new Date("2026-07-20T11:00:00.000Z"),
+        leaseOwner: "dead-worker",
+        leaseExpiresAt: new Date("2026-07-20T11:59:00.000Z"),
+        createdAt: new Date("2026-07-20T11:00:00.000Z"),
+        updatedAt: new Date("2026-07-20T11:00:00.000Z")
+      });
+
+      const queue = createPostgresWorkerQueue(connection);
+      const recovered = await queue.claimNextSourceJob({
+        leaseOwner: "replacement-worker",
+        now,
+        leaseExpiresAt
+      });
+      expect(recovered?.job).toMatchObject({
+        id: "source-recoverable",
+        status: "running",
+        attempts: 2
+      });
+
+      const exhausted = await queue.claimNextSourceJob({
+        leaseOwner: "another-worker",
+        now: "2026-07-20T12:02:00.000Z",
+        leaseExpiresAt: "2026-07-20T12:03:00.000Z"
+      });
+      expect(exhausted).toBeNull();
+    });
+  });
 });

@@ -25,6 +25,39 @@ const now = "2026-07-17T12:00:00.000Z";
 const later = "2026-07-17T12:15:00.000Z";
 const hash = "a".repeat(64);
 
+const viewingWindow = {
+  startsAt: now,
+  endsAt: later,
+  timeZone: "America/New_York",
+  availabilitySource: "vera_rules_only",
+  state: "vera_rules_only",
+  availabilityCheckId: null,
+  checkedAt: null,
+  calendarsChecked: [],
+  requiresConflictWarning: true,
+  rules: {
+    timeZone: "America/New_York",
+    weeklyIntervals: {
+      "1": [{ startsAt: "08:00", endsAt: "12:00" }],
+      "2": [],
+      "3": [],
+      "4": [],
+      "5": [],
+      "6": [],
+      "7": []
+    },
+    durationMinutes: 15,
+    minimumNoticeMinutes: 0,
+    travelMinutes: 0,
+    bufferMinutes: 0,
+    remindersMinutesBeforeStart: [],
+    conflictCheckingEnabled: false,
+    calendarIds: [],
+    schemaVersion: 1
+  },
+  generatorVersion: "availability.v1"
+} as const;
+
 const address = {
   line1: "101 Juniper Row",
   unit: "1A",
@@ -265,8 +298,10 @@ describe("strict Vera domain schemas", () => {
       ViewingSchema.parse({
         id: "viewing-juniper",
         canonicalListingId: validCanonicalListing.id,
-        proposedWindows: [{ startsAt: now, endsAt: later }],
+        proposedWindows: [viewingWindow],
+        selectedWindow: null,
         confirmedWindow: null,
+        supersedesViewingId: null,
         timeZone: "America/New_York",
         calendarReference: null,
         state: "proposed",

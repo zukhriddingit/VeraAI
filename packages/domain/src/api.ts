@@ -67,6 +67,7 @@ export const ListingsUnavailableResponseSchema = z
     code: z.literal("database_unavailable"),
     message: z.enum([
       "Local listing data is unavailable. Run pnpm db:migrate and pnpm db:seed.",
+      "Hosted listing data is unavailable. Check PostgreSQL readiness.",
       "Demo listing data is unavailable. Run pnpm demo:reset and pnpm demo:seed."
     ]),
     generatedAt: IsoDateTimeSchema

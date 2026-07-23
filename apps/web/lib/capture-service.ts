@@ -11,7 +11,12 @@ import {
   type CaptureSourceConnector,
   type ConnectorContext
 } from "@vera/connectors";
-import { canonicalJson, sha256Text, type VeraRepositories } from "@vera/db/runtime";
+import {
+  canonicalJson,
+  sha256Text,
+  type UserRepositories,
+  type UserRepositoryProvider
+} from "@vera/db";
 import {
   ActivityEventSchema,
   CaptureAcceptedResponseSchema,
@@ -29,12 +34,15 @@ import {
   type FieldProvenance,
   type ListingExtractionRun,
   type ListingSourceRecord,
-  type PolicyDecision
+  type PolicyDecision,
+  type VeraUserId
 } from "@vera/domain";
 import type { SourcePolicyRegistry } from "@vera/policy";
 
 export interface CaptureServiceDependencies {
-  readonly repositories: VeraRepositories;
+  readonly userId: VeraUserId;
+  readonly repositoryProvider: UserRepositoryProvider;
+  readonly repositories: UserRepositories;
   readonly connectors: readonly CaptureSourceConnector[];
   readonly policyRegistry: SourcePolicyRegistry;
   now(): Date;
@@ -436,8 +444,8 @@ function mapFailure(error: unknown, correlationId: string): CaptureServiceError 
   );
 }
 
-function appendFailure(
-  repositories: VeraRepositories,
+async function appendFailure(
+  repositories: UserRepositories,
   failure: CaptureServiceError,
   input: {
     id: string;
@@ -447,8 +455,8 @@ function appendFailure(
     policyDecision: PolicyDecision;
     occurredAt: string;
   }
-): void {
-  repositories.activityEvents.append(
+): Promise<void> {
+  await repositories.activityEvents.append(
     event({
       id: input.id,
       correlationId: failure.correlationId,
@@ -467,10 +475,10 @@ function appendFailure(
   );
 }
 
-export function captureListing(
+export async function captureListing(
   input: unknown,
   dependencies: CaptureServiceDependencies
-): CaptureAcceptedResponse {
+): Promise<CaptureAcceptedResponse> {
   const correlationId = dependencies.createId();
   const occurredAt = safeNow(dependencies);
   const payload = JsonValueSchema.safeParse(input);
@@ -479,7 +487,7 @@ export function captureListing(
   );
   const requestedEventId = dependencies.createId();
 
-  dependencies.repositories.activityEvents.append(
+  await dependencies.repositories.activityEvents.append(
     event({
       id: requestedEventId,
       correlationId,
@@ -518,7 +526,7 @@ export function captureListing(
     lastEventId = policyEventId;
     failurePolicyDecision = policy.allowed ? "authorized" : "denied";
 
-    dependencies.repositories.activityEvents.append(
+    await dependencies.repositories.activityEvents.append(
       event({
         id: policyEventId,
         correlationId,
@@ -570,49 +578,56 @@ export function captureListing(
     });
     const completedEventId = dependencies.createId();
     const jobId = dependencies.createId();
-    const stored = dependencies.repositories.transaction((repositories) => {
-      const imported = repositories.rawListings.import(capture);
-      const existingSourceRecord = repositories.sourceRecords.getByRawListingId(imported.record.id);
-      const queued = existingSourceRecord
-        ? null
-        : repositories.normalizationJobs.enqueue({
-            id: jobId,
-            rawListingId: imported.record.id,
-            idempotencyKey: sha256Text(`normalization-job:v1:${imported.record.id}`),
-            availableAt: occurredAt,
-            maxAttempts: 3,
+    const stored = await dependencies.repositoryProvider.transaction(
+      dependencies.userId,
+      async (repositories) => {
+        const imported = await repositories.rawListings.import(capture);
+        const existingSourceRecord = await repositories.sourceRecords.getByRawListingId(
+          imported.record.id
+        );
+        const queued = existingSourceRecord
+          ? null
+          : (
+              await repositories.normalizationJobs.enqueue({
+                id: jobId,
+                rawListingId: imported.record.id,
+                idempotencyKey: sha256Text(`normalization-job:v1:${imported.record.id}`),
+                availableAt: occurredAt,
+                maxAttempts: 3,
+                correlationId,
+                causationId: completedEventId,
+                createdAt: occurredAt
+              })
+            ).record;
+        const resolvedJob =
+          queued ?? (await repositories.normalizationJobs.getByRawListingId(imported.record.id));
+
+        await repositories.activityEvents.append(
+          event({
+            id: completedEventId,
             correlationId,
-            causationId: completedEventId,
-            createdAt: occurredAt
-          }).record;
-      const resolvedJob =
-        queued ?? repositories.normalizationJobs.getByRawListingId(imported.record.id);
+            causationId: policyEventId,
+            actor: "connector",
+            action: "capture.completed",
+            targetType: "raw_listing",
+            targetId: imported.record.id,
+            policyDecision: "authorized",
+            payloadHash: imported.record.contentHash,
+            outcome: "succeeded",
+            errorCategory: null,
+            metadata: {
+              connectorId: connector.connectorId,
+              source: imported.record.source,
+              duplicate: !imported.inserted,
+              normalizationJobId: resolvedJob?.id ?? null
+            },
+            occurredAt
+          })
+        );
 
-      repositories.activityEvents.append(
-        event({
-          id: completedEventId,
-          correlationId,
-          causationId: policyEventId,
-          actor: "connector",
-          action: "capture.completed",
-          targetType: "raw_listing",
-          targetId: imported.record.id,
-          policyDecision: "authorized",
-          payloadHash: imported.record.contentHash,
-          outcome: "succeeded",
-          errorCategory: null,
-          metadata: {
-            connectorId: connector.connectorId,
-            source: imported.record.source,
-            duplicate: !imported.inserted,
-            normalizationJobId: resolvedJob?.id ?? null
-          },
-          occurredAt
-        })
-      );
-
-      return { imported, existingSourceRecord, job: resolvedJob };
-    });
+        return { imported, existingSourceRecord, job: resolvedJob };
+      }
+    );
     const result = CaptureResultSchema.parse({
       correlationId,
       rawListingId: stored.imported.record.id,
@@ -637,7 +652,7 @@ export function captureListing(
     const failure = mapFailure(error, correlationId);
 
     try {
-      appendFailure(dependencies.repositories, failure, {
+      await appendFailure(dependencies.repositories, failure, {
         id: dependencies.createId(),
         causationId: lastEventId,
         targetId: failureTargetId,

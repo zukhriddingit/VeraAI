@@ -11,6 +11,32 @@ const environment = {
 } as const;
 
 describe("hosted identity configuration", () => {
+  it("uses explicit founder-release session, cookie, and rate-limit policy", () => {
+    const options = buildIdentityAuthOptions(parseIdentityAuthEnvironment(environment));
+
+    expect(options.session).toEqual({
+      expiresIn: 60 * 60 * 24 * 7,
+      updateAge: 60 * 60 * 24,
+      cookieCache: { enabled: false }
+    });
+    expect(options.advanced.defaultCookieAttributes).toEqual({
+      httpOnly: true,
+      sameSite: "lax",
+      secure: true,
+      path: "/"
+    });
+    expect(options.advanced.disableCSRFCheck).toBe(false);
+    expect(options.advanced.disableOriginCheck).toBe(false);
+    expect(options.rateLimit).toMatchObject({
+      enabled: true,
+      storage: "memory",
+      window: 60,
+      max: 60
+    });
+    expect(options.rateLimit.customRules["/sign-in/social"]).toEqual({ window: 60, max: 10 });
+    expect(options.rateLimit.customRules["/callback/google"]).toEqual({ window: 60, max: 20 });
+  });
+
   it("requests identity scopes only and hardens token/state handling", () => {
     const options = buildIdentityAuthOptions(parseIdentityAuthEnvironment(environment));
 

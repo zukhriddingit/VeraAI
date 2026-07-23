@@ -1,6 +1,6 @@
 # ADR 0005: Stable TypeScript toolchain and test boundaries
 
-- Status: Accepted
+- Status: Accepted, amended by ADR 0009 for hosted persistence and PostgreSQL integration tests
 - Date: 2026-07-17
 
 ## Context
@@ -18,7 +18,7 @@ Use:
 - Next.js 16.2.10 App Router with React 19.2.7;
 - TypeScript 6.0.3 in strict mode;
 - Zod 4.4.3;
-- SQLite with better-sqlite3 12.11.1, Drizzle ORM 0.45.2, and Drizzle Kit 0.31.10;
+- PostgreSQL 18.4 with pg 8.16.3, Drizzle ORM 0.45.2, and Drizzle Kit 0.31.10 for hosted environments; SQLite with better-sqlite3 12.11.1 only for the deterministic offline demo;
 - tsx 4.23.1 for worker and migration development commands;
 - Vitest 4.1.10 for unit and integration projects;
 - Playwright 1.61.1 for end-to-end tests;
@@ -47,7 +47,7 @@ The root command contract is:
 }
 ~~~
 
-Vitest unit tests do not use network or persistent developer storage. Integration tests apply real migrations to unique temporary SQLite databases. Connector contract tests use sanitized fixtures and fake provider clients. Playwright owns a seeded test database and fake effects. Live provider checks are opt-in, separately named, and never part of test or CI.
+Vitest unit tests do not use network or persistent developer storage. Persistence-sensitive integration tests apply real migrations to isolated PostgreSQL schemas; explicit demo-adapter tests use temporary SQLite databases. Connector contract tests use sanitized fixtures and fake provider clients. Playwright owns a seeded demo database and fake effects. Live provider checks are opt-in, separately named, and never part of test or CI.
 
 ## Rationale
 
@@ -57,6 +57,6 @@ This is the smallest stack that satisfies the requested web, worker, persistence
 
 - Dependency upgrades require compatibility review and lockfile diff review.
 - Next.js linting uses the ESLint CLI; Next build is not treated as a lint command.
-- The native SQLite driver must be verified on supported development and CI platforms.
+- The PostgreSQL service version must be kept aligned across Compose and CI; the native SQLite driver is required only by the demo adapter and must still be verified on demo platforms.
 - Each workspace package owns typecheck and build scripts; root scripts provide the stable contributor interface.
 - Live tests cannot be required for a clean clone or CI.

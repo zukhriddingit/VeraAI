@@ -1,0 +1,221 @@
+{
+  meta: {
+    lastTouchedVersion: "2026.6.33"
+  },
+  env: {
+    shellEnv: {
+      enabled: false
+    }
+  },
+  diagnostics: {
+    enabled: false
+  },
+  update: {
+    channel: "extended-stable",
+    checkOnStart: false,
+    auto: {
+      enabled: false
+    }
+  },
+  logging: {
+    level: "info",
+    consoleLevel: "info",
+    redactSensitive: "tools"
+  },
+  acp: {
+    enabled: false
+  },
+  cron: {
+    enabled: false
+  },
+  plugins: {
+    enabled: false,
+    bundledDiscovery: "allowlist",
+    allow: [],
+    deny: [],
+    load: {
+      paths: []
+    },
+    slots: {
+      memory: "none"
+    }
+  },
+  commands: {
+    native: false,
+    nativeSkills: false,
+    text: false,
+    bash: false,
+    config: false,
+    mcp: false,
+    plugins: false,
+    debug: false,
+    restart: false,
+    useAccessGroups: true,
+    ownerAllowFrom: []
+  },
+  tools: {
+    profile: "minimal",
+    allow: [],
+    alsoAllow: [],
+    deny: [
+      "browser",
+      "canvas",
+      "terminal",
+      "exec",
+      "process",
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "message",
+      "nodes",
+      "gateway",
+      "cron",
+      "sessions_spawn",
+      "sessions_send",
+      "web_search",
+      "web_fetch"
+    ],
+    agentToAgent: {
+      enabled: false,
+      allow: []
+    },
+    sessions: {
+      visibility: "self"
+    },
+    elevated: {
+      enabled: false
+    },
+    web: {
+      search: {
+        enabled: false
+      },
+      fetch: {
+        enabled: false
+      }
+    },
+    experimental: {
+      planTool: false
+    }
+  },
+  channels: {},
+  gateway: {
+    port: 18789,
+    mode: "local",
+    bind: "lan",
+    controlUi: {
+      enabled: false,
+      allowedOrigins: [],
+      embedSandbox: "strict",
+      allowExternalEmbedUrls: false,
+      dangerouslyAllowHostHeaderOriginFallback: false,
+      allowInsecureAuth: false,
+      dangerouslyDisableDeviceAuth: false
+    },
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      allowTailscale: false,
+      rateLimit: {
+        maxAttempts: 10,
+        windowMs: 60000,
+        lockoutMs: 300000,
+        exemptLoopback: false
+      }
+    },
+    tailscale: {
+      mode: "off",
+      resetOnExit: false
+    },
+    remote: {
+      enabled: false
+    },
+    reload: {
+      mode: "restart",
+      debounceMs: 1000,
+      deferralTimeoutMs: 15000
+    },
+    http: {
+      endpoints: {
+        chatCompletions: {
+          enabled: false
+        },
+        responses: {
+          enabled: false
+        }
+      },
+      securityHeaders: {
+        strictTransportSecurity: "max-age=31536000; includeSubDomains"
+      }
+    },
+    nodes: {
+      browser: {
+        mode: "manual",
+        node: "${VERA_OPENCLAW_NODE_ID}"
+      },
+      pairing: {
+        autoApproveCidrs: []
+      },
+      allowCommands: ["browser.proxy"],
+      denyCommands: [
+        "camera.list",
+        "system.run",
+        "system.run.prepare",
+        "system.which",
+        "system.notify",
+        "system.execApprovals.get",
+        "system.execApprovals.set",
+        "camera.snap",
+        "camera.clip",
+        "screen.snapshot",
+        "screen.record",
+        "location.get",
+        "device.info",
+        "device.status",
+        "device.permissions",
+        "device.health",
+        "device.apps",
+        "contacts.add",
+        "sms.search",
+        "sms.send",
+        "contacts.search",
+        "calendar.add",
+        "calendar.events",
+        "callLog.search",
+        "reminders.list",
+        "reminders.add",
+        "photos.latest",
+        "motion.activity",
+        "motion.pedometer",
+        "talk.ptt.start",
+        "talk.ptt.stop",
+        "talk.ptt.cancel",
+        "talk.ptt.once",
+        "notifications.list",
+        "notifications.actions"
+      ]
+    },
+    trustedProxies: [],
+    allowRealIpFallback: false,
+    tools: {
+      allow: [],
+      deny: [
+        "browser",
+        "nodes",
+        "gateway",
+        "exec",
+        "process",
+        "read",
+        "write",
+        "edit",
+        "apply_patch",
+        "message",
+        "cron",
+        "sessions_spawn",
+        "sessions_send",
+        "web_search",
+        "web_fetch"
+      ]
+    }
+  }
+}

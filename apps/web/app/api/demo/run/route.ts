@@ -1,16 +1,21 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import { DemoUnavailableResponseSchema } from "@vera/domain";
 
-import { isDemoMode } from "../../../../lib/demo-mode";
 import { DemoSearchStateError, runDemoSearch } from "../../../../lib/demo-search-service";
+import { getHostedApplication } from "../../../../lib/server/application";
+import {
+  assertSameOriginMutation,
+  CrossOriginMutationError
+} from "../../../../lib/server/request-security";
+import { requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const headers = { "Cache-Control": "no-store, max-age=0", "Content-Type": "application/json" };
 
-export async function POST(): Promise<Response> {
-  if (!isDemoMode()) {
+export async function POST(request: Request): Promise<Response> {
+  const application = getHostedApplication();
+  if (application.mode !== "demo") {
     return Response.json(
       DemoUnavailableResponseSchema.parse({
         code: "demo_mode_disabled",
@@ -20,15 +25,26 @@ export async function POST(): Promise<Response> {
     );
   }
 
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    connection = openExistingDatabase();
-    const result = runDemoSearch({
-      repositories: createSqliteRepositories(connection),
+    const context = await requireVeraSession(request.headers, application);
+    assertSameOriginMutation(request);
+    const result = await runDemoSearch({
+      userId: context.userId,
+      repositoryProvider: context.repositoryProvider,
+      repositories: context.repositories,
       now: () => new Date()
     });
     return Response.json(result, { status: 200, headers });
   } catch (error: unknown) {
+    if (error instanceof CrossOriginMutationError) {
+      return Response.json(
+        DemoUnavailableResponseSchema.parse({
+          code: "demo_unavailable",
+          message: "Request origin is not allowed."
+        }),
+        { status: 403, headers }
+      );
+    }
     const invalid = error instanceof DemoSearchStateError;
     return Response.json(
       DemoUnavailableResponseSchema.parse({
@@ -39,7 +55,5 @@ export async function POST(): Promise<Response> {
       }),
       { status: invalid ? 409 : 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

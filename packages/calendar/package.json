@@ -1,0 +1,19 @@
+{
+  "name": "@vera/calendar",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./mock": "./src/mock.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "0.5.1",
+    "@vera/domain": "workspace:*",
+    "googleapis": "173.0.0",
+    "zod": "4.4.3"
+  }
+}

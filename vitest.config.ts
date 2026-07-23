@@ -34,6 +34,9 @@ export default defineConfig({
           environment: "node",
           include: ["**/src/postgres/**/*.integration.test.ts"],
           exclude: ["**/.next/**", "**/dist/**", "**/node_modules/**"],
+          // Every file creates and migrates an isolated schema. Serializing files keeps
+          // lock usage representative of the founder-size PostgreSQL deployment.
+          fileParallelism: false,
           testTimeout: 30_000,
           hookTimeout: 30_000
         }

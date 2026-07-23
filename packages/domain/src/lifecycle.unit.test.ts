@@ -25,6 +25,11 @@ describe("listing lifecycle", () => {
     expect(transitionListingLifecycle("shortlisted", "new")).toBe("new");
   });
 
+  it("supports repository-controlled viewing reschedule and cancel transitions", () => {
+    expect(transitionListingLifecycle("tour_scheduled", "tour_proposed")).toBe("tour_proposed");
+    expect(transitionListingLifecycle("tour_scheduled", "replied")).toBe("replied");
+  });
+
   it("rejects skipped and reversed transitions", () => {
     expect(() => transitionListingLifecycle("new", "tour_scheduled")).toThrow(
       InvalidListingTransitionError

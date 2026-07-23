@@ -117,13 +117,25 @@ describe("source orchestration vocabularies", () => {
       "cancelled_by_policy"
     ]);
     expect(ManualActionBlockerSchema.options).toEqual([
-      "login",
-      "reauthentication",
-      "two_factor_authentication",
-      "captcha",
-      "consent",
-      "camera_permission",
-      "microphone_permission"
+      "login_required",
+      "two_factor_required",
+      "captcha_required",
+      "consent_required",
+      "rate_or_bot_challenge",
+      "unexpected_redirect",
+      "active_url_mismatch",
+      "stale_snapshot",
+      "layout_incompatible",
+      "unsupported_page",
+      "browser_profile_unavailable",
+      "node_pairing_required",
+      "capability_approval_required",
+      "node_offline",
+      "version_incompatible",
+      "download_or_upload_requested",
+      "camera_or_microphone_requested",
+      "policy_uncertain",
+      "user_intervention_required"
     ]);
   });
 });
@@ -150,6 +162,23 @@ describe("source job payload schemas", () => {
         committedCursor: null
       })
     ).toMatchObject({ acquisitionMode: "email_alert" });
+    expect(
+      SourceJobPayloadSchema.parse({
+        acquisitionMode: "local_browser",
+        captureKind: "current_tab",
+        nodeId: "node-local-1",
+        profileId: "vera-zillow",
+        expectedUrl: "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/",
+        canonicalUrl: "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/",
+        limits: {
+          maxPages: 1,
+          maxRecords: 1,
+          maxBytes: 250_000,
+          maxDurationMilliseconds: 30_000,
+          maxConcurrency: 1
+        }
+      })
+    ).toMatchObject({ captureKind: "current_tab", profileId: "vera-zillow" });
   });
 
   it("rejects credential, browser-profile, pasted-evidence, and arbitrary fields", () => {
@@ -163,6 +192,24 @@ describe("source job payload schemas", () => {
     ]) {
       expect(() => SourceJobPayloadSchema.parse({ ...browserPayload, ...forbidden })).toThrow();
     }
+
+    expect(() =>
+      SourceJobPayloadSchema.parse({
+        acquisitionMode: "local_browser",
+        captureKind: "current_tab",
+        nodeId: "node-local-1",
+        profileId: "/Users/founder/.openclaw/profile",
+        expectedUrl: "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/",
+        canonicalUrl: "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/",
+        limits: {
+          maxPages: 1,
+          maxRecords: 1,
+          maxBytes: 250_000,
+          maxDurationMilliseconds: 30_000,
+          maxConcurrency: 1
+        }
+      })
+    ).toThrow();
   });
 
   it("accepts only safe, public, credential-free browser URLs", () => {
@@ -216,7 +263,7 @@ describe("source job schemas", () => {
         updatedAt: LATER,
         completedAt: LATER
       }).result
-    ).toEqual(completedResult);
+    ).toEqual({ ...completedResult, capture: null });
     expect(SourceJobResultSchema.parse(completedResult).recordCount).toBe(2);
   });
 
@@ -313,5 +360,27 @@ describe("browser node heartbeat state", () => {
         new Date("2026-07-18T11:59:59.999Z")
       )
     ).toBe(true);
+  });
+
+  it("defaults historical node rows to fail-closed readiness metadata", () => {
+    expect(node).toMatchObject({
+      pairingState: "not_paired",
+      capabilityApprovalState: "not_approved",
+      selectedProfileId: null,
+      allowedProfileIds: [],
+      expectedOpenClawVersion: "2026.6.33",
+      versionCompatibility: "unknown",
+      createdAt: node.updatedAt
+    });
+  });
+
+  it("requires the selected profile to be explicitly allowlisted", () => {
+    expect(() =>
+      BrowserNodeStatusSchema.parse({
+        ...node,
+        selectedProfileId: "vera-zillow",
+        allowedProfileIds: []
+      })
+    ).toThrow();
   });
 });

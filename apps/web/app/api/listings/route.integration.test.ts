@@ -4,7 +4,13 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createSqliteRepositories, migrateDatabase, openDatabase } from "@vera/db";
+import {
+  DEMO_USER_ID,
+  createDemoRepositoryProvider,
+  createSqliteRepositories,
+  migrateDatabase,
+  openDatabase
+} from "@vera/db/demo";
 import {
   CanonicalListingCollectionResponseSchema,
   ListingsUnavailableResponseSchema
@@ -14,10 +20,15 @@ import { runDemoSearch } from "../../../lib/demo-search-service.ts";
 import { seedAndEvaluateProductionEvidence } from "../../../test-support/production-seed.ts";
 
 import { GET } from "./route.ts";
+import {
+  clearTestApplication,
+  registerTestDemoRuntime
+} from "../../../test-support/demo-runtime.ts";
 
 const temporaryDirectories: string[] = [];
 const originalDataDirectory = process.env.VERA_DATA_DIR;
 const originalDemoMode = process.env.VERA_DEMO_MODE;
+let runtimeConnection: ReturnType<typeof openDatabase> | null = null;
 
 function temporaryDataDirectory(): string {
   const directory = mkdtempSync(join(tmpdir(), "vera-listings-route-"));
@@ -26,6 +37,9 @@ function temporaryDataDirectory(): string {
 }
 
 afterEach(() => {
+  runtimeConnection?.close();
+  runtimeConnection = null;
+  clearTestApplication();
   if (originalDataDirectory === undefined) {
     delete process.env.VERA_DATA_DIR;
   } else {
@@ -59,7 +73,15 @@ describe.sequential("GET /api/listings", () => {
       connection.close();
     }
 
-    const response = await GET();
+    runtimeConnection = registerTestDemoRuntime(join(dataDirectory, "vera.sqlite"));
+    const provider = createDemoRepositoryProvider(runtimeConnection);
+    await runDemoSearch({
+      userId: DEMO_USER_ID,
+      repositoryProvider: provider,
+      repositories: provider.forUser(DEMO_USER_ID),
+      now: () => new Date("2026-07-17T12:30:00.000Z")
+    });
+    const response = await GET(new Request("http://127.0.0.1/api/listings"));
     const body: unknown = await response.json();
     const parsed = CanonicalListingCollectionResponseSchema.parse(body);
 
@@ -80,8 +102,9 @@ describe.sequential("GET /api/listings", () => {
 
   it("fails closed with a safe response when the database is uninitialized", async () => {
     process.env.VERA_DATA_DIR = temporaryDataDirectory();
+    runtimeConnection = registerTestDemoRuntime(join(process.env.VERA_DATA_DIR, "vera.sqlite"));
 
-    const response = await GET();
+    const response = await GET(new Request("http://127.0.0.1/api/listings"));
     const body: unknown = await response.json();
     const parsed = ListingsUnavailableResponseSchema.parse(body);
 
@@ -100,20 +123,24 @@ describe.sequential("GET /api/listings", () => {
       migrateDatabase(connection);
       const repositories = createSqliteRepositories(connection);
       seedAndEvaluateProductionEvidence(repositories);
+      runtimeConnection = registerTestDemoRuntime(join(dataDirectory, "vera.sqlite"));
 
-      const beforeResponse = await GET();
+      const beforeResponse = await GET(new Request("http://127.0.0.1/api/listings"));
       const before = CanonicalListingCollectionResponseSchema.parse(await beforeResponse.json());
       expect(before.count).toBe(0);
 
-      runDemoSearch({
-        repositories,
+      const provider = createDemoRepositoryProvider(runtimeConnection);
+      await runDemoSearch({
+        userId: DEMO_USER_ID,
+        repositoryProvider: provider,
+        repositories: provider.forUser(DEMO_USER_ID),
         now: () => new Date("2026-07-17T12:30:00.000Z")
       });
     } finally {
       connection.close();
     }
 
-    const afterResponse = await GET();
+    const afterResponse = await GET(new Request("http://127.0.0.1/api/listings"));
     const after = CanonicalListingCollectionResponseSchema.parse(await afterResponse.json());
     expect(after.count).toBe(8);
   });

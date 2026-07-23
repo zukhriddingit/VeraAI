@@ -14,19 +14,33 @@ jobs:
     name: Verify workspace
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: vera_test
+          POSTGRES_USER: vera
+          POSTGRES_PASSWORD: vera_dev_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vera -d vera_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Install pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 11.14.0
           run_install: false
 
       - name: Install Node.js
-        uses: actions/setup-node@v5
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
         with:
           node-version: 24
           cache: pnpm
@@ -40,6 +54,27 @@ jobs:
       - name: Check formatting
         run: pnpm format:check
 
+      - name: Verify Calendar boundaries
+        run: pnpm verify:calendar-boundaries
+
+      - name: Verify database boundaries
+        run: pnpm verify:db-boundaries
+
+      - name: Verify browser boundaries
+        run: pnpm verify:browser-boundaries
+
+      - name: Verify Gmail read-only boundary
+        run: pnpm verify:gmail-boundaries
+
+      - name: Verify web mutation boundaries
+        run: pnpm verify:web-mutation-boundaries
+
+      - name: Verify Maritime boundaries and deployment assets
+        run: pnpm verify:maritime-boundaries && pnpm maritime:validate
+
+      - name: Verify worker image supply-chain boundaries
+        run: pnpm verify:worker-image-boundaries && pnpm verify:worker-release-workflow && pnpm verify:openclaw-config
+
       - name: Lint
         run: pnpm lint
 
@@ -48,6 +83,11 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Test PostgreSQL persistence
+        run: pnpm test:integration:postgres
+        env:
+          TEST_DATABASE_URL: postgresql://vera:vera_dev_only@127.0.0.1:5432/vera_test
 
       - name: Build
         run: pnpm build

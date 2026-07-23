@@ -1,6 +1,8 @@
-import pino, { type Logger } from "pino";
+import pino, { type DestinationStream, type Logger, type LoggerOptions } from "pino";
 
 import { isLLMError } from "@vera/ai";
+
+import { sanitizeLogValue } from "./log-sanitizer.js";
 
 const allowedLogLevels = ["fatal", "error", "warn", "info", "debug", "trace", "silent"] as const;
 
@@ -22,8 +24,8 @@ function resolveLogLevel(value: string | undefined): LogLevel {
   return value;
 }
 
-export function createWorkerLogger(): Logger {
-  return pino({
+export function createWorkerLogger(destination?: DestinationStream): Logger {
+  const options: LoggerOptions = {
     base: {
       service: "vera-worker"
     },
@@ -56,8 +58,14 @@ export function createWorkerLogger(): Logger {
       ],
       censor: "[REDACTED]"
     },
+    formatters: {
+      log(bindings) {
+        return sanitizeLogValue(bindings) as Record<string, unknown>;
+      }
+    },
     timestamp: pino.stdTimeFunctions.isoTime
-  });
+  };
+  return destination ? pino(options, destination) : pino(options);
 }
 
 export interface SafeWorkerErrorFields {

@@ -1,491 +1,159 @@
-# Vera architecture and implementation-readiness review
+# Vera architecture
 
-Status: production deterministic decision core plus Maritime/OpenClaw contract alignment implemented
+Status: normative founder-release architecture
+Reviewed: 2026-07-22
 
-Reviewed: 2026-07-20
+## Product boundary
 
-## Readiness verdict
+Vera turns fragmented, user-authorized listing evidence into a provenance-preserving decision inbox. It normalizes fields, clusters duplicates without deleting source records, applies deterministic hard constraints and ranking, surfaces risk indicators with evidence, and records material actions. It does not scrape platforms, collect marketplace credentials, send messages, submit applications, make payments, solve CAPTCHAs, or broaden searches autonomously.
 
-The current implementation is a pnpm TypeScript workspace with a Next.js App Router application, a separate Node worker, and a shared local SQLite database accessed through Drizzle and better-sqlite3. It runs fixture and user-capture ingestion and normalization locally.
-
-The normative Ship Season topology uses Maritime as Vera's primary orchestration and deployment environment for monitoring jobs, scheduled triggers, durable job state, retries, agent health, notifications, and hosted integration secrets. Browser-only work is dispatched to a registered local browser node. That node uses OpenClaw as the default adapter behind a replaceable browser-executor interface and exclusively owns the user's browser profile and authenticated consumer-site sessions.
-
-Milestones 1 and 2 provide the workspace, health slice, worker lifecycle, strict domain schemas, explicit listing transitions, migrated SQLite persistence, transactional repositories, immutable raw and audit storage, a provenance-preserving sanitized seed, and a read-only canonical-listing dashboard. Milestone 3 adds typed connector contracts, local fixture and manual-capture adapters, a persisted fail-closed policy registry, a durable normalization queue, deterministic-first structured extraction, a provider-neutral AI boundary, immutable extraction runs, capture/status routes, and field-level evidence UI. Milestone 4 adds one versioned deterministic decision engine for normalization, deduplication, canonical stitching, ranking, and risk indicators; a leased reconciliation queue; immutable decision histories; stable canonical supersession; operator merge/split overrides; production-derived dashboard results; and forward migration `0005_production_decision_engines.sql`. Migrations `0003` and `0004` continue to own the Maritime/OpenClaw contract persistence.
-
-Node 26 is a Current release, so the project should target Node 24 LTS for repeatable development and CI. The installed Node 26 is sufficient for inspection but should not define the project runtime.
-
-No question blocks the already implemented local deterministic ingestion core or the contract-only orchestration slice. Real Maritime transport and deployment, a real OpenClaw bridge, authenticated remote-node dispatch, email-alert ingestion, official API integrations, and source-specific browser connectors remain required MVP implementation work. Google OAuth configuration blocks only future live acceptance checks for Gmail and Calendar.
-
-## Resolved plan issues
-
-| Issue                                                                | Assessment                 | Resolution                                                                                                                                               |
-| -------------------------------------------------------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Earlier OpenClaw scope conflicted with its required milestone        | Contradiction              | Make browser execution first-class MVP architecture. OpenClaw is the default replaceable local adapter; source-specific monitoring remains fail-closed.  |
-| “Universal manual URL capture” could imply arbitrary fetching        | Safety gap                 | Store the user-supplied URL as provenance and accept pasted/user-supplied content. Do not fetch the URL in the MVP.                                      |
-| Three sources can be read as three live platform connectors          | Scope ambiguity            | Require three labeled channels in the deterministic demo and one real user-authorized ingestion path for MVP completion.                                 |
-| The activity model has a mutable result while the log is append-only | Data-model contradiction   | Append separate requested, authorized/denied, succeeded, and failed events linked by correlation and causation IDs.                                      |
-| Gmail draft creation uses a scope that can also authorize sending    | Platform limitation        | Split read and compose grants, expose only drafts.create in the adapter, omit any send capability or method, and keep the connector disabled by default. |
-| A calendar “hold” could notify a landlord                            | Missing invariant          | Create a tentative event with an empty attendees list, no conference data, and sendUpdates set to none.                                                  |
-| Worker durability and contention are unspecified                     | Missing decision           | Use a SQLite lease table, atomic claims, WAL mode, a busy timeout, stable idempotency keys, and one local worker process.                                |
-| Source manifests use broad verbs such as read and compose            | Policy ambiguity           | Use namespaced, closed-set capabilities tied to a connector and operation. Internal composition is not a connector capability.                           |
-| Raw evidence immutability conflicts with user-controlled deletion    | Privacy ambiguity          | Evidence is immutable while a store exists. A separate, confirmed full local reset may delete the database and credential-store entries.                 |
-| Maritime was previously grouped with unrelated infrastructure        | Architecture contradiction | Use Maritime as the primary monitoring control plane. Keep Redis, Turborepo, broad crawling, hosted browser profiles, and unrelated infrastructure out.  |
-| Browser sessions could be mistaken for hosted secrets                | Security gap               | Keep passwords, cookies, browser storage, and OpenClaw profile contents local; users sign in manually and Vera never transports third-party passwords.   |
-| A local browser node may be unavailable when a Maritime job runs     | Missing state              | Record `deferred_node_offline`, keep it visible, preserve the cursor, and retry without manufacturing a success or RawListing.                           |
-| Perceptual photo hashing may require fetching remote images          | Hidden network scope       | Hash only bytes already present in sanitized fixtures or explicitly supplied captures. Do not download remote images merely to compute a hash.           |
-
-## System shape
+## Hosted topology
 
 ```mermaid
 flowchart LR
-    User["User / Vera dashboard"]
-    Maritime["MaritimeOrchestrator contract<br/>local mock implemented"]
-    API["Official API / email connectors"]
-    Node["Registered local browser node"]
-    OpenClaw["BrowserExecutionProvider<br/>mock boundary; OpenClaw later"]
-    Pipeline["Deterministic Vera pipeline"]
-    Deferred["deferred_node_offline"]
-    Actions["Human-approved external action"]
-
-    User --> Maritime
-    Maritime --> API
-    Maritime --> Node
-    Node --> OpenClaw
-    Node -. offline .-> Deferred
-    API --> Pipeline
-    OpenClaw --> Pipeline
-    User --> Pipeline
-    Pipeline --> Maritime
-    Maritime --> Actions
+  U["Authenticated renter"] --> W["Next.js web · one instance"]
+  W --> A["Better Auth · identity scopes only"]
+  W --> P["Managed PostgreSQL · canonical hosted store"]
+  W --> G["Google Calendar · incremental free/busy or private hold"]
+  W -->|"agent-ID wake only"| M["Maritime control plane"]
+  M --> K["Vera worker · one instance"]
+  K --> P
+  K --> O["Pinned OpenClaw gateway · one instance"]
+  O --> N["Explicitly paired local node/profile"]
+  N -. "manual login; local cookies" .-> S["Exact reviewed current listing tab"]
 ```
 
-In the target topology, Maritime owns orchestration job identity and lifecycle, trigger definitions, bounded retry/backoff, health, notification dispatch, and secrets for approved hosted API and email integrations. It does not own consumer-site credentials or browser session material. The registered local node exclusively owns its dedicated user-controlled OpenClaw profile, cookies, local storage, and sessions created through manual user login. Vera never asks for, records, types, uploads, or transmits a third-party password.
-
-The repository now owns the `MaritimeOrchestrator` interface and a deterministic in-memory `LocalMockMaritimeOrchestrator`. The mock supports scheduling, policy-checked dispatch, status queries, safe retry, policy cancellation, and browser-node heartbeat receipt. It exercises `local_browser` work only through the browser mock; no connector catalog or other acquisition-mode executor is wired into it. It is a contract test double, not Maritime durability, authentication, transport, scheduling, encryption, or deployment.
-
-The existing web process still owns the currently implemented local user interaction and API boundaries. The local worker owns the implemented deterministic-first normalization and provider-assisted extraction when configured. As the target topology is built, Maritime assumes durable orchestration for monitoring and dispatch while local fixture and user-capture execution remains available for development and outage fallback. All processes use the same package contracts; application packages do not import one another.
-
-## Maritime-to-local-node dispatch
-
-A browser job dispatch contains only:
-
-- opaque job and correlation IDs;
-- connector ID and policy-manifest version;
-- the exact requested capability and an optional opaque approval ID; current session availability and approval validity are rechecked at dispatch and retry time;
-- the exact configured saved-search URL identifier and URL;
-- the last committed source cursor or last-seen listing ID;
-- bounded page, record, byte, duration, and concurrency limits;
-- trigger type and attempt metadata.
-
-When implemented, dispatch and result transport must be mutually authenticated, encrypted, replay-protected, bounded, and revocable. Maritime sends no credentials. The node returns only schema-bounded listing evidence, discovered source listing IDs, cursor candidates, typed blocker or failure codes, and safe operational counts. It never returns passwords, cookies, authorization headers, browser storage, local profile paths, password-manager values, or session exports.
-
-The implemented source-job lifecycle is:
-
-```text
-queued -> dispatched -> running -> completed
-                    \-> retryable_failed | permanently_failed
-                    \-> deferred_node_offline | manual_action_required
-                    \-> cancelled_by_policy
-```
-
-If the assigned node is unregistered, offline, stale, or revoked, the stable job moves to `deferred_node_offline` with a typed reason. Deferral creates no RawListing or success result and does not advance the source cursor. Explicit retry requeues the same job identity and last committed cursor after policy still permits it; an offline node is never treated as a successful empty search. The current contracts and SQLite rows make this state queryable, but the dashboard does not yet render source-job or node-health views.
-
-For a successful acquisition, a cursor candidate is committed only after every corresponding immutable raw record is durably accepted through the idempotent ingestion boundary. An empty success therefore means the configured saved search had no new IDs after the committed cursor, which is distinct from deferral, a manual blocker, a layout change, policy denial, or transient failure.
-
-## Implemented SourceConnector boundary
-
-The production connector portfolio has exactly four acquisition modes:
-
-```ts
-type ProductionAcquisitionMode =
-  | "official_api"
-  | "email_alert"
-  | "local_browser"
-  | "user_capture";
-
-type AcquisitionMode = ProductionAcquisitionMode | "fixture";
-
-interface SourceConnector {
-  readonly connectorId: string;
-  readonly displayName: string;
-  readonly source: ListingSourceLabel;
-  readonly acquisitionMode: AcquisitionMode;
-  readonly capability: SourceCapability;
-  readonly policyRequirement: SourcePolicyRequirement;
-  readonly operations: readonly ("discover" | "capture" | "fetch_detail")[];
-  readonly cursorState: ConnectorCursor | null;
-  discover?(
-    request: ConnectorDiscoveryRequest,
-    context: ConnectorContext
-  ): Promise<readonly RawListingEnvelope[]>;
-  capture?(
-    request: CaptureRequest,
-    context: ConnectorContext
-  ): Promise<RawListingEnvelope> | RawListingEnvelope;
-  fetchDetail?(
-    request: ConnectorFetchDetailRequest,
-    context: ConnectorContext
-  ): Promise<RawListingEnvelope>;
-  health(registry: SourcePolicyRegistry): ConnectorHealth;
-}
-```
-
-`fixture` is a fifth code-level, test-only mode for sanitized local evidence. It cannot represent a live provider and never masquerades as `official_api`. Connector operations are optional because a source need not support discovery, capture, and detail fetching. A checked dispatcher returns `unsupported_operation` when an operation is undeclared or missing; it never falls back to another operation or acquisition mode.
-
-Operation results are strict, hash-bound, idempotent envelopes with connector/source/mode identity, correlation ID, payload hash, idempotency key, result hash, untrusted records, safe counts, previous cursor, and optional cursor candidate. A cursor candidate is not committed by the connector. Future ingestion may commit it only after corresponding immutable raw records have been durably and idempotently accepted.
-
-The implemented fixture and manual connectors remain capture-only and no-network. No `official_api`, `email_alert`, or `local_browser` source connector exists yet. OpenClaw will implement the separate `BrowserExecutionProvider` boundary; the current provider is a deterministic no-network mock.
-
-Each source/mode entry has one permission-ceiling state: `approved`, `user_triggered_only`, `experimental_personal`, or `disabled`. Missing or malformed policy denies. Runtime enablement, manifest and capability checks, trigger compatibility, exact saved-search allowlisting, node assignment, limits, kill switches, session availability, and required approvals remain additional fail-closed conditions.
-
-Browser connectors may navigate only an exact configured saved-search URL plus necessary same-source detail URLs discovered from it. They maintain a source-specific cursor or last-seen ID and visit only newly discovered records. They never explore arbitrary categories, widen searches, follow unrelated recommendations, or crawl an entire website. Login, 2FA, CAPTCHA, consent, camera, microphone, unexpected navigation, or structural change stops execution for visible manual action or typed failure.
-
-No connector exposes autonomous messaging, account-login automation, credential login, CAPTCHA bypass, apply, payment, or account-change behavior.
-
-Initial source decisions are explicit:
-
-- Craigslist uses `email_alert` through its official search-alert channel first; Craigslist `local_browser` searching is `disabled`.
-- Zillow and Facebook Marketplace monitoring use `local_browser`, are `experimental_personal`, and are disabled by default. Exact reviewed saved-search configuration and explicit enablement are required.
-- Zillow, Facebook Marketplace, and Craigslist `user_capture` remain `user_triggered_only` and available; a supplied URL is inert unless a separate allowed browser operation is requested.
-- Sanitized fixture adapters use the distinct test-only `fixture` mode and are `approved` in development and tests.
-
-Next.js route handlers must opt into the Node runtime. Edge runtime and serverless deployment are out of scope because the application depends on a local native SQLite driver and an OS credential store.
+The founder release is one region, one web instance, one Maritime worker, one managed PostgreSQL database, one pinned OpenClaw `2026.6.33` gateway, and one founder-controlled local node/profile. Maritime is the primary execution and trigger plane, while PostgreSQL remains canonical. Scheduled browser polling remains disabled.
 
 ## Workspace boundaries
 
-```text
-apps/
-  web/          dashboard, local route handlers, approvals
-  worker/       local deterministic jobs and execution adapters
-packages/
-  domain/       Zod schemas, entities, state transitions, typed errors
-  db/           schema, migrations, repositories, transactions
-  connectors/   source/browser/orchestration contracts and no-network mocks; fixture/manual adapters
-  ai/           LLMProvider, strict evidence validation, mock and OpenAI providers
-  policy/       manifests, evaluation, approvals, kill switches
-  scoring/      normalization, dedupe, scoring, risk indicators
-  testing/      sanitized fixtures, factories, test helpers
-tests/
-  e2e/          Playwright golden path
-infra/
-  maritime/     primary orchestration/deployment assets (target; not implemented)
-```
+- `apps/web`: Next.js server components, protected route handlers, identity, readiness, and the decision cockpit.
+- `apps/worker`: PostgreSQL-backed acquisition, normalization, and decision polling. It claims one owned job through a narrow system queue and processes it through tenant repositories.
+- `packages/domain`: strict Zod schemas, lifecycle state machines, API contracts, readiness, identity, connector jobs, and safety invariants.
+- `packages/db`: canonical PostgreSQL schema/migrations/repositories plus application-layer credential encryption.
+- `packages/db/demo`: explicit sanitized SQLite adapter only.
+- `packages/connectors`: optional-operation source connector, browser provider, and Maritime boundaries; fixture/manual adapters, no-network mocks, and the version-enforcing narrow OpenClaw current-tab adapter. The CLI remains an external node/gateway runtime, not a Vera package dependency.
+- `packages/policy`: fail-closed source manifests and kill switches.
+- `packages/scoring`: deterministic normalization, duplicate clustering, ranking, and risk indicators.
+- `packages/ai`: provider-neutral structured extraction with a deterministic mock and opt-in OpenAI adapter.
+- `packages/calendar`: provider-neutral free/busy, window-generation, hold-payload, and Google Calendar client boundaries with a deterministic mock.
+- `packages/notifications`: deterministic eligibility, quiet-hours, mock/console providers, and generic Web Push delivery.
+- `infra/maritime`: pinned worker/gateway deployment validation and operator-controlled runbooks; no secret values.
 
-These are dependency boundaries, not independent services. Keep the package graph acyclic:
+Business logic depends on asynchronous repository interfaces, not PostgreSQL driver objects. Production composition roots construct one bounded pool per process; no request creates a connection.
 
-- domain depends only on Zod and standard-library utilities.
-- policy and scoring may depend on domain.
-- db may depend on domain.
-- ai depends on domain; connectors may depend on domain, policy, and the AI evidence-validator contract, never on web or worker.
-- web and worker compose packages at the edge.
-- testing is development-only and must not be imported by production code.
+## Identity and tenancy
 
-Do not add Turborepo initially. pnpm's workspace graph and recursive scripts are sufficient for this repository size.
+Better Auth uses a Google Web Application OAuth client and requests only `openid`, `email`, and `profile`. It stores auth state in PostgreSQL, encrypts provider account tokens supported by Better Auth, disables implicit cross-email account linking, and enforces origin/CSRF checks.
 
-## Data and transaction model
+Calendar authorization is a separate server-side Google Web Application OAuth flow. Its state is cryptographically random, single-use, short-lived, bound to the initiating Vera user and capability, and protected by PKCE. Vera verifies the returned Google subject, audience, and scopes instead of inferring consent from a successful callback. Integration refresh tokens are application-encrypted; access tokens remain process-local and short-lived.
 
-The minimum persistent concepts are:
+Every hosted private table is tenant-owned. `requireVeraSession(headers)` derives the UUID owner from the authoritative server session and returns repositories already closed over that user. It accepts no user ID. Repository predicates include `user_id`, and composite foreign keys enforce ownership across parent/child rows. A foreign resource is indistinguishable from a missing resource and returns 404.
 
-- SearchProfile and versioned constraints/preferences.
-- RawListing, an immutable capture with content hash and observation metadata.
-- ListingSourceRecord, a normalized interpretation with per-field provenance.
-- ListingExtraction, an immutable deterministic-only or LLM-augmented run containing strict merged fields, versions, requested fields, and safe usage metadata.
-- CanonicalListing and DuplicateMembership, a stitched view that retains every source record.
-- ScoreSnapshot with algorithm version, input hash, factor values, and reason codes.
-- RiskIndicator with evidence references, severity, confidence, and verification action.
-- ContactWorkflow and Viewing with explicit state transitions.
-- Approval with operation, target, payload hash, expiry, use time, and actor.
-- ActivityEvent with correlation ID, causation ID, actor, action, target, policy decision, payload hash, outcome, error class, and timestamp.
-- SourceJob with strict minimum-data payload, immutable capability and optional opaque approval ID, hashes, idempotency key, attempts, state, and safe outcome metadata.
-- JobAttempt as append-only source-orchestration attempt history.
-- BrowserNodeStatus as the latest safe heartbeat and capability snapshot.
-- NormalizationJob as the separate local leased queue from accepted raw evidence to a source record.
+The only cross-tenant API is `SystemWorkerQueue`. PostgreSQL claims use `FOR UPDATE SKIP LOCKED`, return `{ userId, job }`, and prevent duplicate execution. The worker immediately creates `repositoryProvider.forUser(userId)` before reading private evidence.
 
-RawListing, ListingExtraction, and ActivityEvent receive SQLite triggers that reject updates and deletes. Normalized or canonical views can be superseded by new versions; they do not overwrite raw evidence.
+## PostgreSQL persistence
 
-An external action produces multiple immutable events rather than a mutable audit row:
+`DATABASE_URL` selects the only hosted engine. Drizzle migration `0000_smart_vin_gonzales.sql` is the canonical PostgreSQL baseline. Persisted instants use `timestamptz`, structured bounded data uses `jsonb`, currency uses integer minor units, identity IDs use UUIDs, and domain-stable listing/job IDs remain text where intentional.
 
-```text
-ACTION_REQUESTED
-  -> POLICY_AUTHORIZED or POLICY_DENIED
-  -> ACTION_SUCCEEDED or ACTION_FAILED
-```
+The pool is bounded and configures connection, statement, lock, and idle-transaction timeouts. `/api/health` is dependency-free liveness. `/api/ready` checks connectivity and the latest Drizzle migration hash, returning 503 when PostgreSQL is unavailable or behind. Web and worker shutdown close their pool after in-flight work stops.
 
-Every event in the chain shares a correlation ID. The approval and exact payload hash are recorded, but raw message bodies, tokens, email addresses, and phone numbers are excluded from audit payloads.
+Global `source_policy_manifests` are the sole unowned application table. `pnpm db:seed` upserts those manifests only. Private data is created only for an authenticated user or an explicitly reviewed migration/import operation.
 
-## SQLite and worker behavior
+Migration `0001_calendar_availability.sql` adds user-owned availability rules, append-only availability-check summaries, Calendar OAuth state, idempotent calendar holds, and viewing supersession fields without resetting existing listings, jobs, or demo fixtures.
 
-Use better-sqlite3 behind packages/db. Enable foreign keys, WAL mode, and a bounded busy timeout on every connection. The database lives in the operating system's per-user application-data directory, never in the repository and never on a network filesystem.
+Migration `0003_maritime_execution_plane.sql` additively introduces durable dispatch attempts, schedules/runs, service health, Gmail alert cursors/references/OAuth state, encrypted Web Push subscriptions, and notification deliveries. It upgrades the preserved browser-node compatibility pin without resetting source, listing, Calendar, or demo rows.
 
-The currently implemented local SQLite path supports one worker process. A job claim uses a 90-second lease and occurs in a short immediate transaction:
-
-1. Select the next runnable queued job whose lease is absent or expired.
-2. Atomically set lease owner, lease expiry, state, and attempt count.
-3. Commit before performing I/O.
-4. Complete with a short transaction, or append a redacted typed failure and schedule a bounded retry.
-5. Move exhausted retryable jobs, or an immediately permanent failure at its real attempt count, to a visible dead-letter state.
-
-Each job type defines a stable idempotency key. Connector effects also use provider-side stable IDs where available. A lease timeout allows safe recovery after process death; it does not authorize two active workers.
-
-SQLite writes must stay short. Network calls and LLM calls never run inside a database transaction.
-
-### Source jobs are not normalization jobs
-
-The persistence model has two deliberately separate job planes:
-
-- `source_jobs` represents acquisition orchestration before evidence is accepted. Its domain states are `queued`, `dispatched`, `running`, `completed`, `retryable_failed`, `permanently_failed`, `deferred_node_offline`, `manual_action_required`, and `cancelled_by_policy`.
-- `normalization_jobs` is the existing local leased queue that begins only after one immutable `raw_listings` row has been accepted. Its states remain `queued`, `leased`, `completed`, `retryable`, and `dead_letter`.
-
-A source job may eventually produce a strict connector result envelope for the immutable ingestion gateway. It cannot directly create a source record, canonical listing, score, risk signal, notification, approval, message, or calendar event. The source-job repository validates domain transitions transactionally; `source_job_attempts` is append-only; and `browser_nodes` stores only the latest safe health snapshot. The current local Maritime mock keeps its own in-memory control state, while SQLite establishes the durable application-owned contract a live adapter must use later.
-
-## Ingestion and canonicalization
-
-All paths enter one ingestion gateway. Steps 1-7 and the audit portion of step 8 are implemented for fixture and manual capture. User notifications remain later work:
-
-1. Validate connector output with Zod.
-2. Evaluate source policy before any read or capture.
-3. Compute a content hash and insert immutable raw evidence idempotently.
-4. Queue extraction/normalization.
-5. Run strict deterministic extraction, optionally ask a configured `LLMProvider` only for unresolved fields, validate evidence, merge with closed precedence, and attach provenance to every field.
-6. Generate candidate duplicate edges; cluster without deleting members.
-7. Recompute versioned score and risk snapshots.
-8. Append activity events and expose the resulting state to the UI; emit user notifications only after a separately reviewed notification capability exists.
-
-Acquisition mode changes how evidence reaches Vera, never the processing order. The invariant end-to-end pipeline is:
-
-```text
-source record
-  -> normalization
-  -> provenance
-  -> deduplication
-  -> ranking
-  -> notification
-  -> human-approved external action
-```
-
-No `official_api`, `email_alert`, `local_browser`, `user_capture`, or test-only `fixture` output may bypass a stage. Browser output cannot directly create a notification, ranking result, canonical fact, message, calendar event, or approval. Each stage has its own deterministic, idempotent boundary, and unknown values remain unknown.
-
-Manual capture currently accepts pasted text plus an optional provenance URL, or strict structured JSON plus an optional provenance URL. HTML uploads are not implemented. The connector validates a URL's syntax and source label without DNS or HTTP access; the URL is inert provenance. Unknown public domains are labeled `other` and classified as requiring a future manual browser-policy entry. Gmail ingestion is not implemented. Sanitized fixtures remain the deterministic first path.
-
-### Implemented decision reconciliation
-
-Normalization completion does not mutate canonical rows directly. In the same short transaction that commits a new source record and provenance, the worker increments that search profile's corpus revision and enqueues one `decision_job` for the revision. Manual merge/split overrides use the same revision boundary.
-
-The decision worker then:
-
-1. atomically leases one runnable job;
-2. reads a strict, consistently ordered snapshot for the exact profile revision;
-3. releases the database before pure computation;
-4. normalizes addresses, units, phones, URLs, money, dates, and supplied photo metadata;
-5. evaluates bounded candidate pairs, exact links, weighted features, conflicts, and active overrides;
-6. forms connected components and stitches canonical fields by freshness, completeness, confidence, and source trust while retaining provenance;
-7. evaluates deterministic hard constraints, renormalized preference factors, and separate stale, confidence, and risk penalties;
-8. derives evidence-backed risk indicators and verification actions; and
-9. atomically applies the complete plan only if the corpus revision and lease still match.
-
-The apply transaction writes an immutable `decision_run`, pair evaluations, canonical decision history, score snapshots, risk snapshots, projection memberships, and one redacted activity event. Existing active canonical identities are reused when the member overlap is unambiguous. Obsolete projections are marked `superseded` and redirect to the survivor; raw and source records are never deleted. An identical job/result replay resolves to the existing run, while a changed corpus revision rejects stale application and is recomputed from a new job.
-
-Algorithms and inputs are independently versioned and hashed. The current closed versions are `decision-normalization.v1`, `listing-dedupe.v1`, `canonical-stitch.v1`, `listing-score.v2`, `listing-risk.v2`, and `decision-plan.v1`. The evaluator is pure and performs no network access. Remote images are not fetched: perceptual hashes are computed only from already-supplied, size-bounded bytes.
-
-### Implemented capture sequence
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant API as Capture route
-    participant P as SourcePolicyRegistry
-    participant C as Fixture/manual connector
-    participant DB as SQLite repositories
-    participant W as Normalization worker
-
-    U->>API: Strict capture request
-    API->>DB: Append capture.requested
-    API->>P: Evaluate exact connector/capability/operation
-    P-->>API: Allow or fail-closed denial
-    API->>DB: Append policy decision
-    alt denied
-        API->>DB: Append capture.failed
-        API-->>U: Typed safe error
-    else allowed
-        API->>C: Capture user-supplied/local fixture content
-        C-->>API: RawListingEnvelope
-        API->>DB: Transaction: immutable raw import + job + capture.completed
-        API-->>U: Accepted or duplicate-resolved status
-        W->>DB: Atomically lease normalization job
-        W->>W: Deterministic extraction; explicit unknowns
-        opt Live provider configured and unresolved fields remain
-            W->>W: Responses structured extraction; one repair maximum
-            W->>W: Deterministic evidence validation and closed merge
-        end
-        W->>DB: Transaction: source + provenance + immutable extraction + event + completion
-    end
-```
-
-The raw import and job idempotency keys are deterministic. Duplicate capture requests resolve to the existing raw row and at most one normalization job. Audit metadata contains hashes, opaque IDs, reason codes, and counts, not pasted bodies, full URLs, or contact values.
-
-Unknown values are represented explicitly. They are never coerced to false, zero, empty string, or an inferred fact.
-
-## AI boundary
-
-`LLMProvider` is provider-neutral. `packages/domain` owns the strict 20-field extraction vocabulary; `packages/ai` owns prompts, the official OpenAI Responses transport, typed errors, cancellation/timeout, evidence validation, and one repair; `packages/connectors` owns deterministic parsing and merge; the worker composes them. The production worker never creates the mock implicitly.
+## Calendar availability and hold boundary
 
 ```mermaid
 flowchart LR
-    Raw["Immutable raw evidence"]
-    Rules["Structured + deterministic rules"]
-    Missing["Only unresolved field requests"]
-    Provider["Optional LLMProvider"]
-    Validate["Strict schema + deterministic evidence checks"]
-    Merge["Closed-precedence merge"]
-    Tx["Short SQLite transaction"]
-    Detail["/captures/[rawListingId]"]
-
-    Raw --> Rules --> Missing
-    Missing -->|"provider absent or no gaps"| Merge
-    Missing -->|"live provider configured"| Provider --> Validate --> Merge
-    Merge --> Tx --> Detail
+  O["Incremental Calendar OAuth"] --> R["Vera weekly rules"]
+  R --> F["Primary-calendar free/busy"]
+  F --> W["Three proposed windows"]
+  W --> A["Exact payload-bound approval"]
+  A --> C["Final free/busy recheck"]
+  C --> H["Idempotent private tentative hold"]
 ```
 
-Every field is either known with value, confidence, and a bounded evidence snippet, or unknown with zero confidence and a closed reason. Known provider evidence must occur in the supplied record, confidence must be at least 7,000 basis points, and the provider may populate only requested fields. Deterministic values always win. Money requires an explicit currency and billing period. Base rent must be tied to an explicit rent label in its quoted evidence; every recurring fee must bind its label and amount in the same quoted line under explicit required, mandatory, or required-fee-list context. Cats and dogs remain separate; raw availability does not imply a date; contacts must occur exactly in evidence.
+For the founder release, Vera checks only the connected account's primary calendar and states that limit in the UI. It requests `calendar.freebusy` only when conflict checking is enabled. It requests `calendar.events.owned` separately when hold creation is enabled or first used; write access is never required to suggest times. Multi-calendar selection and `calendar.calendarlist.readonly` are not implemented.
 
-The OpenAI provider uses SDK 6.48.0 `responses.parse` plus `zodTextFormat`, `store: false`, no tools, caller cancellation, a 1–30 second validated timeout, and SDK `maxRetries: 0`. The model comes only from `VERA_LLM_MODEL`. Both key and model absent means deterministic-only; partial configuration fails visibly. The live integration test additionally requires `VERA_RUN_LIVE_LLM_TESTS=1`.
+Availability checking calls only the free/busy endpoint. Vera does not fetch event titles, descriptions, attendees, locations, or other event details, and does not persist raw busy intervals. It stores only a bounded check summary: state, calendars attempted and actually checked, check time, response hash/count, safe provider error, and the Vera rules used to generate proposals.
 
-Provider work never holds a database transaction. A successful job atomically writes the source record, complete provenance, one immutable `listing_extractions` row, safe completion event, and completed job. Failed provider calls write no partial source/extraction rows. Retryable failures use the durable queue; permanent failures dead-letter immediately. Shutdown cancellation leaves the lease recoverable.
+The Option C availability states are `checked`, `scope_not_granted`, `google_disconnected`, `google_temporarily_unavailable`, `stale`, and `vera_rules_only`. `stale` is derived at read time; the other provider outcomes are persisted. A missing grant, revoked/disconnected account, stale result, timeout, or provider failure is never interpreted as an empty calendar. Vera may propose rules-only windows, but labels them **Calendar conflicts not checked**, exposes Connect/Reconnect or Retry, and requires a visible warning before the user continues.
 
-The current prompt version is `listing-extraction.prompt.v1`; the current extraction semantics are `listing-extraction.v2`. Version 2 adds fail-closed monetary-role validation so recurring charges cannot be accepted as base rent and unlabeled or optional charges cannot be accepted as required recurring fees. Persisted `listing-extraction.v1` rows remain readable. The extraction row stores versions, exact input hash, requested fields, validated provider result when present, merged extraction, usage, latency, and repair count. Its raw-listing and source-record links are each unique.
+Immediately before a hold, Vera rechecks the selected interval when free/busy is available. A new conflict blocks creation and offers replacement windows. If the recheck cannot complete, continuing requires a new exact approval whose payload includes the explicit conflict-check override and reason. The created event uses a deterministic Vera event ID, is `tentative` and private, has no attendees or conference data, and uses `sendUpdates=none`. Founder-release reschedule and cancel actions update Vera's internal state only; they do not update or delete the Google event.
 
-Allowed AI work:
+## Connector and orchestration boundary
 
-- extract a candidate from messy user-supplied or email text;
-- identify missing facts and confidence;
-- draft questions from known facts;
-- summarize a reply into a proposed structured interpretation;
-- explain already-computed score and risk results.
+Acquisition mode and policy state remain independent:
 
-Disallowed AI work:
+- acquisition: `official_api`, `email_alert`, `local_browser`, `user_capture`, plus test-only `fixture`;
+- policy: `approved`, `user_triggered_only`, `experimental_personal`, `disabled`.
 
-- enforce source policy or approvals;
-- decide hard-constraint violations;
-- create an external effect;
-- invent listing facts;
-- infer protected traits;
-- issue a fraud verdict;
-- follow instructions embedded in listing content.
+Connectors declare supported operations rather than implementing a universal interface. Discover, capture, and detail fetch are optional. Every result is schema-validated, untrusted, correlated, hashed, and idempotent. Disabled or missing policy fails closed. An offline browser node produces visible `deferred_node_offline`; it is never an empty success and never advances a cursor.
 
-All structured output is Zod-validated and deterministically checked against evidence. Invalid output receives at most one repair attempt and then enters a visible typed failure state. There is no permissive parser or unvalidated fallback.
+### OpenClaw current-tab boundary
 
-## External actions
+The first real browser operation is deliberately smaller than saved-search monitoring:
 
-Approvals are single-use, expire after 15 minutes, and bind operation, connector, target, and a canonical payload hash. Editing the payload invalidates the approval.
-
-Gmail is split into alert-read and draft-create capabilities. The adapter exposes drafts.create only. It has no send method, and no send capability exists in the domain vocabulary.
-
-Calendar holds use a deterministic event ID, tentative status, an empty attendees list, no conferencing, and sendUpdates=none. A retry that finds the same event ID returns the existing result rather than creating a duplicate.
-
-## Error model
-
-Errors are typed into at least validation, policy denial, approval required/expired, manual action required, authentication, rate limit, transient provider, permanent provider, conflict/idempotency, and internal categories.
-
-Policy uncertainty is a denial, not an internal error. Connector errors never silently downgrade to a broader capability. The UI shows a safe recovery action: reconnect, approve, edit input, retry, or inspect evidence.
-
-## Stable toolchain baseline
-
-Versions were checked against the npm registry on 2026-07-17. Exact versions belong in the initial lockfile; automated upgrades should be reviewed rather than floated at runtime.
-
-| Concern            | Selection                                                                                        |
-| ------------------ | ------------------------------------------------------------------------------------------------ |
-| Runtime            | Node 24 LTS; package engines >=24 <25                                                            |
-| Workspace manager  | pnpm 11.14.0 with packageManager pinned                                                          |
-| Web                | Next.js 16.2.10 App Router, React and React DOM 19.2.7                                           |
-| Language           | TypeScript 6.0.3, strict, NodeNext for Node packages                                             |
-| Validation         | Zod 4.4.3                                                                                        |
-| Database           | SQLite, better-sqlite3 12.11.1, Drizzle ORM 0.45.2, Drizzle Kit 0.31.10                          |
-| Worker development | tsx 4.23.1; compiled ESM for startup                                                             |
-| Logging            | Pino 10.3.1 with application-owned redaction                                                     |
-| AI client          | openai 6.48.0 behind LLMProvider                                                                 |
-| Google client      | googleapis 173.0.0 behind narrow adapters                                                        |
-| Unit/integration   | Vitest 4.1.10 and @vitest/coverage-v8 4.1.10                                                     |
-| End to end         | @playwright/test 1.61.1                                                                          |
-| Lint/format        | ESLint 9.39.5, eslint-config-next 16.2.10, typescript-eslint 8.64.0, Prettier 3.9.5              |
-| CSS transform      | Next-managed PostCSS with workspace security override pinned to PostCSS 8.5.20                 |
-| Type packages      | @types/node 24.13.3, @types/react 19.2.17, @types/react-dom 19.2.3, @types/better-sqlite3 7.6.13 |
-
-Do not use TypeScript 7.0.2 yet. The current typescript-eslint 8.64.0 peer range is TypeScript >=4.8.4 and <6.1.0, so TypeScript 6.0.3 is the newest compatible stable line.
-
-Do not use ESLint 10.7.0 yet. Although eslint-config-next 16.2.10 accepts ESLint 10 at its top-level peer boundary, its current import, React, and accessibility plugins support ESLint only through major 9. ESLint 9.39.5 is the newest compatible stable release.
-
-CSS Modules and plain CSS are sufficient for the MVP. Do not add a component framework, state-management library, RPC framework, Redis queue, or ORM abstraction beyond Drizzle without a demonstrated need.
-
-## Exact root scripts
-
-The root package.json should contain these scripts:
-
-```json
-{
-  "scripts": {
-    "dev": "pnpm -r --parallel --stream --filter @vera/web --filter @vera/worker run dev",
-    "build": "pnpm -r --if-present run build && node scripts/build-railway-start.mjs",
-    "lint": "eslint . --max-warnings=0",
-    "typecheck": "tsc --noEmit -p tsconfig.json && pnpm -r --if-present run typecheck",
-    "test": "pnpm run test:unit && pnpm run test:integration && pnpm run test:e2e",
-    "test:unit": "vitest run --project unit",
-    "test:integration": "vitest run --project integration",
-    "test:e2e": "playwright test",
-    "db:generate": "pnpm --filter @vera/db run db:generate",
-    "db:migrate": "pnpm --filter @vera/db run db:migrate",
-    "db:seed": "pnpm --filter @vera/db run db:seed && pnpm --filter @vera/worker run run-once",
-    "worker:run-once": "pnpm --filter @vera/worker run run-once",
-    "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures",
-    "worker:start": "pnpm --filter @vera/worker run start"
-  }
-}
+```mermaid
+sequenceDiagram
+  participant U as Authenticated founder
+  participant W as Vera web
+  participant P as PostgreSQL
+  participant M as Maritime control plane
+  participant K as Vera worker
+  participant G as OpenClaw gateway
+  participant N as Selected local node/profile
+  U->>W: Confirm exact current Zillow URL
+  W->>P: Approval + queued user-owned SourceJob
+  W->>P: Pending expiring dispatch (hashes only)
+  W->>M: Wake exact worker agent (no listing payload)
+  W->>P: Accept expiring hashed dispatch
+  K->>P: Claim with SKIP LOCKED and recheck policy/node/profile
+  K->>G: nodes invoke browser.proxy: GET /tabs
+  G->>N: Read selected profile current tab
+  K->>G: nodes invoke browser.proxy: GET /snapshot
+  G-->>K: One bounded untrusted evidence envelope
+  K->>P: Attempt + acceptance + RawListing + normalization + audit + completion
 ```
 
-The delegated package scripts are:
+`OpenClawBrowserExecutionProvider` requires the worker-bundled CLI to report exactly `2026.6.33`, carries the gateway URL/token only in the child environment, executes with `shell:false`, and emits fixed `nodes invoke --node … --command browser.proxy` calls. Vera's application adapter can serialize only `GET /tabs` and `GET /snapshot` for the explicitly selected allowlisted profile. The worker never calls the legacy navigation method. Login, 2FA, CAPTCHA, consent, rate/bot challenge, redirect, active-URL mismatch, stale target, layout uncertainty, upload/download, camera/microphone, version mismatch, and policy uncertainty are typed non-success states.
 
-- @vera/web: dev runs next dev; build runs next build; start runs next start; typecheck runs tsc --noEmit.
-- @vera/worker: dev runs tsx watch src/index.ts; build runs tsc -b; start runs node dist/index.js; typecheck runs tsc --noEmit.
-- @vera/db: db:generate runs drizzle-kit generate; db:migrate and db:seed run their TypeScript entrypoints through Node's tsx import loader without starting the tsx IPC CLI.
-- Buildable library packages run tsc -b and expose compiled ESM with declaration files.
+This application restriction is not a transport-level read-only guarantee. OpenClaw `2026.6.33` does not provide a path-level allowlist within native `browser.proxy`, so another authorized proxy caller could exercise broader browser operations. The reviewed gateway/node configuration limits the effective node command set to `browser.proxy`, selects one profile, disables evaluation, and keeps the feature disabled and founder-only by default. A narrower node-side capture command is required before multi-user browser enrollment.
 
-Vitest uses named unit and integration projects. Integration tests create a unique temporary SQLite database per test worker, apply real migrations, and never touch the developer database. Playwright owns its seeded test database and starts both web and worker through its web-server configuration.
+The hosted authority stores five independent control layers: process-wide system kill switch, per-user browser enablement, per-user Zillow-source enablement, per-node disablement, and per-profile disablement. `browser_capture_acceptances` provides one immutable acceptance per user/job and one per invocation key. Acceptance is in the same transaction as immutable raw import, normalization enqueue, redacted audit, and job completion. Provider I/O occurs before that transaction.
 
-## Implementation sequence
+The current founder enrollment helper synchronizes a manually verified OpenClaw node/profile into Vera and gives it a five-minute heartbeat window. It does not pair or grant OpenClaw capability. Maritime deployment health is reconciled independently. A signed continuous node-enrollment channel remains a prerequisite before broader multi-user enrollment.
 
-1. Scaffold only the workspace, strict configs, package boundaries, health endpoint, minimal dashboard, and CI.
-2. Add domain schemas, migrations, repositories, append-only triggers, fixture seed, and SQLite job leases.
-3. Implement fixture and manual capture with no network fetch, deterministic-first structured extraction, an optional provider gap-fill boundary, and capture evidence detail.
-4. Implemented: new-record duplicate clustering/canonicalization, deterministic scoring/risk refresh, production-derived decision UI, operator override/job APIs, and decision-engine regression tests.
-5. Replace the local Maritime mock with a live adapter behind `MaritimeOrchestrator`: durable schedules, authenticated dispatch, bounded retries, health, notifications, and hosted secrets. Retain local fixture/manual execution for deterministic development.
-6. Implement Craigslist official `email_alert` ingestion behind the existing provider-neutral connector contract before automated browser sources.
-7. Replace the no-network browser mock with a registered local node and real OpenClaw adapter behind `BrowserExecutionProvider`, preserving manual login, exact saved-search limits, cursor commits, manual blockers, and `deferred_node_offline` visibility.
-8. Add source-specific Zillow and Facebook Marketplace `local_browser` connectors only as disabled-by-default `experimental_personal` entries after explicit review; preserve `user_triggered_only` direct capture.
-9. Add Google OAuth, Gmail draft creation behind disabled manifests, approved Calendar holds, and notifications without any autonomous send path.
+### Maritime durable execution
 
-Each milestone must remain usable with no credentials through sanitized fixtures and fake effect adapters.
+The hosted web persists an expiring dispatch with issuer, exact worker audience, unique nonce hash, job payload hash, and source-job reference before calling the server-only Maritime SDK. The SDK call receives only the worker agent ID. An accepted dispatch is atomically consumed once with the job claim; Maritime status never replaces the canonical PostgreSQL job state. Policy is checked at job creation, immediately before dispatch, and again by the worker. Kill switches can cancel queued work.
 
-## Implementation blockers and later gates
+Maritime's dashboard owns the supported five-minute UTC wake trigger. PostgreSQL `production_schedules` own per-user due state and idempotent run records for Gmail alert ingestion, reconciliation, notification fan-out, health, stale checks, and cleanup. Browser jobs are never scheduled in this release.
 
-There are no blockers to the already implemented local deterministic core. The normative Maritime/OpenClaw MVP topology still requires concrete infrastructure and source-specific decisions before live execution; documentation approval does not claim those components exist.
+### Notification boundary
 
-Before Maritime dispatch acceptance:
+Web Push subscriptions are encrypted at the application layer before PostgreSQL persistence. Deterministic fan-out requires enabled user/profile rules, a score threshold, passed hard constraints, freshness, risk policy, and duplicate suppression. Quiet hours and hourly limits defer deliveries. The lock-screen payload is fixed generic text plus a same-origin listing link; it contains no address, price, description, risk evidence, or contact detail.
 
-- deployment ownership, environment, and authenticated node-registration mechanism must be implemented;
-- live transport authentication, encryption, replay protection, revocation, node registration, health reporting, and secret ownership must pass acceptance tests;
-- an unavailable node must preserve the implemented `deferred_node_offline` semantics without a RawListing, success result, or cursor advance.
+The immutable pipeline remains:
 
-Before live Google acceptance:
+```text
+source evidence → normalization → field provenance → deduplication
+→ deterministic ranking/risk → notification → approved external action
+```
 
-- the founder must provide a Google Cloud project and desktop OAuth client configuration through local, uncommitted configuration;
-- a dedicated non-production test account must be selected;
-- the consent-screen/test-user and scope configuration must be confirmed.
+## Explicit offline demo
 
-Before any browser connector:
+`pnpm demo` starts a separate composition with a cryptographic launch capability and `@vera/db/demo`. A flag or database path cannot select SQLite from hosted code. The adapter is bound to one synthetic demo owner, preserves the twelve sanitized records and deterministic audit flow, and contains no users, sessions, accounts, OAuth credentials, browser cookies, or real personal data. A process-local, immutable, no-token Calendar capability fixture exists only to exercise scope-aware approval paths and is never presented as a connected Google account.
 
-- one exact source and saved-search flow must be named;
-- its current terms and technical constraints must be reviewed;
-- a dedicated user-controlled local OpenClaw profile and explicit manifest must be approved;
-- the connector must maintain a source cursor or last-seen listing ID, visit only newly discovered records, and deny broad crawling;
-- the connector must stop for manual login, 2FA, CAPTCHA, consent, camera, microphone, unexpected navigation, or layout changes.
+The demo worker is launched only by `scripts/demo-start.ts`. Normal `pnpm dev`, `worker:start`, Maritime, hosted web, staging, and production can construct PostgreSQL only and fail rather than falling back. Demo mode never imports the Maritime, OpenClaw, Gmail, or Web Push production compositions. Calendar behavior in demo mode uses the process-owned `MockCalendarClient` and makes no Google network request; simulated checks and holds must be labeled as such.
 
-Craigslist browser search remains `disabled`; its first live path is official `email_alert`. Zillow and Facebook Marketplace `local_browser` monitoring remain `experimental_personal` and disabled by default until their exact reviewed configurations are explicitly enabled. These gates block only the corresponding live connector, not fixture or `user_capture` development.
+## Compatibility constraint
+
+Existing domain objects for canonical listings and duplicate clusters predate explicit `searchProfileId` ownership. The PostgreSQL compatibility repository resolves exactly one search profile for those legacy write methods and fails if the user has zero or multiple profiles. Decision reconciliation already uses the job's explicit profile. Before supporting multiple active profiles per user, revise those domain write contracts to carry profile identity directly; do not infer it.
+
+## Deployment
+
+Railway or Vercel may host the single web instance. Maritime hosts the immutable Vera worker image and explicit OpenClaw gateway image. Both web and worker receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus the PostgreSQL runbook for deploy, backup, restore, and rollback.

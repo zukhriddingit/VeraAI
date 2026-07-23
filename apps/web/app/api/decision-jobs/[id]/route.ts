@@ -1,7 +1,7 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import { DecisionApiErrorResponseSchema, DecisionJobSummarySchema } from "@vera/domain";
 
 import { parseRouteEntityId } from "../../../../lib/route-entity-id";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,9 +11,9 @@ interface RouteContext {
   readonly params: Promise<{ id: string }>;
 }
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
+    const session = await requireVeraSession(request.headers);
     const id = parseRouteEntityId((await context.params).id);
     if (id === null) {
       return Response.json(
@@ -25,8 +25,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
         { status: 404, headers }
       );
     }
-    connection = openExistingDatabase();
-    const job = createSqliteRepositories(connection).decisionJobs.getById(id);
+    const job = await session.repositories.decisionJobs.getById(id);
     if (job === null) {
       return Response.json(
         DecisionApiErrorResponseSchema.parse({
@@ -51,7 +50,13 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       }),
       { status: 200, headers }
     );
-  } catch {
+  } catch (caught: unknown) {
+    if (caught instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
     return Response.json(
       DecisionApiErrorResponseSchema.parse({
         code: "database_unavailable",
@@ -60,7 +65,5 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       }),
       { status: 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

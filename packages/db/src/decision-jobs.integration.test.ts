@@ -12,7 +12,7 @@ import {
   seedDatabase,
   type VeraDatabaseConnection,
   type VeraRepositories
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const now = "2026-07-20T18:00:00.000Z";
 let temporaryDirectory = "";

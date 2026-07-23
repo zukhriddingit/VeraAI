@@ -17,7 +17,7 @@ import {
   seedDatabase,
   type VeraDatabaseConnection,
   type VeraRepositories
-} from "./index.ts";
+} from "./demo/index.ts";
 
 let temporaryDirectory: string;
 let connection: VeraDatabaseConnection;
@@ -54,7 +54,7 @@ describe("sanitized fixture seed", () => {
     expect(
       repositories.canonicalListings.listSummaries().filter((listing) => listing.duplicateCount > 0)
     ).toHaveLength(3);
-    expect(repositories.sourcePolicyManifests.listLatest()).toHaveLength(6);
+    expect(repositories.sourcePolicyManifests.listLatest()).toHaveLength(7);
     expect(
       repositories.sourcePolicyManifests.listLatest().map((manifest) => ({
         connectorId: manifest.connectorId,
@@ -94,6 +94,12 @@ describe("sanitized fixture seed", () => {
         policyState: "approved"
       },
       {
+        connectorId: "google.calendar.v1",
+        schemaVersion: 2,
+        acquisitionMode: "official_api",
+        policyState: "user_triggered_only"
+      },
+      {
         connectorId: "manual.capture.v1",
         schemaVersion: 2,
         acquisitionMode: "user_capture",
@@ -106,7 +112,7 @@ describe("sanitized fixture seed", () => {
         .filter((manifest) => manifest.enabled)
         .map((manifest) => manifest.connectorId)
         .sort()
-    ).toEqual(["fixture.feed.v1", "manual.capture.v1"]);
+    ).toEqual(["fixture.feed.v1", "google.calendar.v1", "manual.capture.v1"]);
     expect(
       SOURCE_FIXTURES.every(
         (fixture) =>

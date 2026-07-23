@@ -8,6 +8,34 @@
       "when": 1784602443558,
       "tag": "0000_smart_vin_gonzales",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1784661702895,
+      "tag": "0001_calendar_availability",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1784673227790,
+      "tag": "0002_openclaw_current_tab",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1784703052193,
+      "tag": "0003_maritime_execution_plane",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784746949081,
+      "tag": "0004_founder_security_hardening",
+      "breakpoints": true
     }
   ]
 }

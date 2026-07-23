@@ -11,7 +11,7 @@ import {
   openDatabase,
   openExistingDatabase,
   type VeraDatabaseConnection
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const temporaryDirectories: string[] = [];
 const openConnections: VeraDatabaseConnection[] = [];

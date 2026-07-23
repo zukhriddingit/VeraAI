@@ -151,6 +151,8 @@ The schema rejects attendees, conference data, a non-primary Calendar ID, notifi
 
 The deterministic event ID is `vera` plus a truncated lowercase SHA-256 hex digest over user ID, viewing ID, selected interval, and approved payload hash. Those characters fit Google's base32hex-compatible event-ID restrictions. The complete payload also includes an opaque `VERA-HOLD:<hold-id>` description marker. See Google's [events.insert reference](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert).
 
+The approved payload is a canonical Calendar hold effect payload containing every user-visible and provider-visible field plus the final-check warning/override state, but excluding the derived Google event ID. Vera reserves one `approval_pending` hold row before returning the first preview, so its hold ID and `VERA-HOLD:<hold-id>` marker remain stable across preview rebuilds and retries. Vera hashes that effect payload, derives the Google event ID from the hash, and only then constructs the strict provider insert request. This avoids circular hashing and prevents a regenerated marker from invalidating approval or idempotency.
+
 `getTentativeHold` exists only for idempotency and ambiguous-outcome recovery. It requests the exact deterministic event ID and returns a bounded projection: existence, ID, Vera marker, start/end, and status. It does not expose arbitrary event reads to application code.
 
 ## Calendar errors and timeouts
@@ -243,6 +245,8 @@ All states except fresh `checked` set `requiresConflictWarning=true`. The UI cop
 - otherwise: “Calendar conflicts not checked” plus the specific state and Connect, Reconnect, Retry, or Continue-with-warning action.
 
 An existing proposal becomes `stale` at read time five minutes after its successful check. It is not silently rewritten. Final hold creation always performs a new check regardless of proposal freshness.
+
+A stale proposal retains its original `google_freebusy` source, `primary` calendar ID, check ID, and check timestamp, while gaining the visible warning. Missing scope, disconnection, temporary failure, and intentionally disabled checking produce `vera_rules_only` windows with no checked Calendar IDs. This distinction preserves provenance without claiming that an aged result is currently conflict-free.
 
 ## Persisted model and migration
 

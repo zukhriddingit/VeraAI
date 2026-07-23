@@ -8,7 +8,6 @@ import {
 import {
   EncryptedCredentialEnvelopeSchema,
   type EncryptedCredentialEnvelope,
-  type IntegrationId,
   type IntegrationProvider,
   type VeraUserId
 } from "@vera/domain";
@@ -20,8 +19,8 @@ const NONCE_BYTES = 12;
 
 export interface CredentialContext {
   readonly userId: VeraUserId;
-  readonly integrationId: IntegrationId;
-  readonly provider: IntegrationProvider;
+  readonly integrationId: string;
+  readonly provider: IntegrationProvider | "web_push";
 }
 
 export interface CredentialKey {

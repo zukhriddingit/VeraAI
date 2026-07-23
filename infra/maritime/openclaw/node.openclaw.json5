@@ -1,0 +1,56 @@
+{
+  meta: {
+    lastTouchedVersion: "2026.6.33"
+  },
+  env: {
+    shellEnv: {
+      enabled: false
+    }
+  },
+  diagnostics: {
+    enabled: false
+  },
+  update: {
+    channel: "extended-stable",
+    checkOnStart: false,
+    auto: {
+      enabled: false
+    }
+  },
+  logging: {
+    level: "info",
+    consoleLevel: "info",
+    redactSensitive: "tools"
+  },
+  browser: {
+    enabled: true,
+    evaluateEnabled: false
+  },
+  plugins: {
+    enabled: true,
+    bundledDiscovery: "allowlist",
+    allow: ["browser"],
+    deny: [],
+    load: {
+      paths: []
+    },
+    slots: {
+      memory: "none"
+    },
+    entries: {
+      browser: {
+        enabled: true,
+        hooks: {
+          allowPromptInjection: false,
+          allowConversationAccess: false
+        }
+      }
+    }
+  },
+  nodeHost: {
+    browserProxy: {
+      enabled: true,
+      allowProfiles: ["vera-zillow"]
+    }
+  }
+}

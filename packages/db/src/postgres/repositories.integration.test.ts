@@ -2,7 +2,7 @@ import type { VeraUserId } from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
 import { sha256Text } from "../hashing.ts";
-import { DEMO_SEARCH_PROFILE, SOURCE_FIXTURES } from "../fixtures.ts";
+import { CANONICAL_FIXTURES, DEMO_SEARCH_PROFILE, SOURCE_FIXTURES } from "../fixtures.ts";
 import {
   createCorePostgresRepositories,
   createPostgresRepositoryProvider
@@ -119,6 +119,58 @@ describe("tenant-scoped PostgreSQL core repositories", () => {
 
       await expect(provider.forUser(aliceId).rawListings.count()).resolves.toBe(0);
       await expect(provider.forUser(aliceId).activityEvents.count()).resolves.toBe(0);
+    });
+  });
+
+  it("serializes concurrent lifecycle updates without duplicating audit events", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await insertUsers(db);
+      const provider = createPostgresRepositoryProvider(connection);
+      const repositories = provider.forUser(aliceId);
+      const sourceFixture = SOURCE_FIXTURES[7];
+      const canonicalFixture = CANONICAL_FIXTURES[3];
+      const transitionedAt = "2026-07-17T12:30:00.000Z";
+
+      await repositories.searchProfiles.insert(DEMO_SEARCH_PROFILE);
+      await repositories.rawListings.import(sourceFixture.capture);
+      await repositories.sourceRecords.insert(sourceFixture.sourceRecord);
+      await repositories.canonicalListings.insert(canonicalFixture.listing);
+
+      const attempts = await Promise.allSettled(
+        ["event-concurrent-shortlist-a", "event-concurrent-shortlist-b"].map((eventId) =>
+          provider.transaction(aliceId, async (transactionRepositories) => {
+            const listing = await transactionRepositories.canonicalListings.transitionLifecycle(
+              canonicalFixture.listing.id,
+              "shortlisted",
+              transitionedAt
+            );
+            await transactionRepositories.activityEvents.append({
+              id: eventId,
+              correlationId: `correlation-${eventId}`,
+              causationId: null,
+              actor: "user",
+              action: "listing.shortlisted",
+              targetType: "canonical_listing",
+              targetId: canonicalFixture.listing.id,
+              policyDecision: "not_applicable",
+              approvalId: null,
+              payloadHash: sha256Text(`shortlist:${canonicalFixture.listing.id}`),
+              outcome: "succeeded",
+              errorCategory: null,
+              metadata: { lifecycleState: "shortlisted" },
+              occurredAt: transitionedAt
+            });
+            return listing;
+          })
+        )
+      );
+
+      expect(attempts.filter(({ status }) => status === "fulfilled")).toHaveLength(1);
+      expect(attempts.filter(({ status }) => status === "rejected")).toHaveLength(1);
+      await expect(
+        repositories.canonicalListings.getById(canonicalFixture.listing.id)
+      ).resolves.toMatchObject({ lifecycleState: "shortlisted" });
+      await expect(repositories.activityEvents.count()).resolves.toBe(1);
     });
   });
 });
