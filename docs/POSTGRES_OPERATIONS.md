@@ -61,6 +61,13 @@ TEST_DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera_test pnpm 
 
 Install the PostgreSQL 18 `pg_dump`, `pg_restore`, `createdb`, and `dropdb` client tools on the operator host before running it. The script never invokes a shell, never prints a database URL or subprocess arguments, and reports only a redacted host/database label and safe counts. Managed staging restores remain a separate provider-console rehearsal before promotion.
 
+For founder staging, the managed restore and the local rehearsal each need an external evidence record:
+the snapshot/provider reference hash, source commit, candidate worker digest, UTC execution time,
+expected/observed safe counts, approval, and record content hash. Do not attach a database URL, dump,
+row sample, credentials, or raw provider logs. The rollback image gate passes only after a prior worker
+was tested against the migrated schema and its compatibility evidence hash is recorded; otherwise use
+the managed restore path rather than claiming image rollback is available.
+
 ## Rollback
 
 The founder release does not generate automatic down migrations. Choose one of these reviewed paths:

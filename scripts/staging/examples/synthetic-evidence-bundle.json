@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "synthetic": true,
+  "releaseId": "synthetic-release-001",
+  "environmentId": "synthetic-staging",
+  "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "candidateOpenclawImage": "ghcr.io/openclaw/openclaw@sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "createdAt": "2026-07-23T12:00:00Z",
+  "records": [
+    {
+      "schemaVersion": 1,
+      "synthetic": true,
+      "phaseId": "gateway_unauthenticated_request",
+      "releaseId": "synthetic-release-001",
+      "environmentId": "synthetic-staging",
+      "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+      "candidateOpenclawImage": null,
+      "executedAt": "2026-07-23T12:00:00Z",
+      "operatorReference": "synthetic-operator",
+      "expectedResult": "Gateway rejects unauthenticated requests",
+      "observedResult": "Gateway returned denied status",
+      "resultState": "passed_manual_evidence",
+      "evidenceReferences": [
+        {
+          "kind": "test_run",
+          "locator": "synthetic-run-001",
+          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+        }
+      ],
+      "approvalState": "approved",
+      "contentHash": "6987db56500c96c6e8b44cfead6809d07ce96349c3ce7e0b55292b65709c6453"
+    }
+  ],
+  "bundleHash": "2eb99cf33a0643d3f8aee62e062a00d16eb7f3bae465a5c0c7de606f9f6c30bf"
+}

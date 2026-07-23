@@ -21,7 +21,7 @@ describe("worker release workflow boundary", () => {
       "docker/build-push-action@v7"
     );
     const mutableImage = workflow.replace(
-      "tags: ${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}",
+      "tags: ${{ env.IMAGE_REPOSITORY }}:${{ env.RELEASE_SOURCE_SHA }}",
       "tags: ${{ env.IMAGE_REPOSITORY }}:latest"
     );
 
@@ -95,6 +95,31 @@ describe("worker release workflow boundary", () => {
     );
     expect(findWorkerReleaseWorkflowViolations(weakenedSigningDependency)).toContain(
       "Release job sign_attest must have exact needs: acceptance, build_scan."
+    );
+  });
+
+  it("requires default-branch workflow code and a trusted full source SHA", () => {
+    const branchWorkflow = workflow.replace(
+      "if: github.repository == 'zukhriddingit/VeraAI' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+      ""
+    );
+    const arbitrarySource = workflow.replace(
+      'git merge-base --is-ancestor "$source_sha" "origin/$DEFAULT_BRANCH"',
+      "true"
+    );
+    const shortSha = workflow.replace(
+      '[[ "$source_sha" =~ ^[a-f0-9]{40}$ ]]',
+      '[[ "$source_sha" =~ ^[a-f0-9]{7}$ ]]'
+    );
+
+    expect(findWorkerReleaseWorkflowViolations(branchWorkflow)).toContain(
+      "Worker release must execute workflow code only from the trusted default branch."
+    );
+    expect(findWorkerReleaseWorkflowViolations(arbitrarySource)).toContain(
+      "Worker release must restrict the selected source SHA to an ancestor of the default branch."
+    );
+    expect(findWorkerReleaseWorkflowViolations(shortSha)).toContain(
+      "Worker release must require a full hexadecimal source SHA."
     );
   });
 

@@ -60,6 +60,18 @@ export interface GatewayHttpSmokeResult {
   readonly checks: readonly GatewayHttpCheckResult[];
 }
 
+export interface GatewayWrongTokenSmokeResult {
+  readonly outcome: "passed" | "failed";
+  readonly code:
+    | "expected_denial"
+    | "unexpected_success"
+    | "unexpected_redirect"
+    | "unexpected_status"
+    | "request_timed_out"
+    | "request_failed";
+  readonly observedStatus?: number;
+}
+
 function cleanHttpsOrigin(rawValue: string | undefined, name: string): string {
   const value = rawValue?.trim() ?? "";
   if (!value) throw new Error(`${name} is required.`);
@@ -177,6 +189,57 @@ export async function runGatewayHttpSmoke(input: {
     outcome: checks.every(({ status }) => status === "passed") ? "passed" : "failed",
     checks
   };
+}
+
+export async function runGatewayWrongTokenSmoke(input: {
+  readonly gatewayUrl: string;
+  readonly fetchImplementation?: GatewayFetch;
+  readonly timeoutMilliseconds?: number;
+}): Promise<GatewayWrongTokenSmokeResult> {
+  const gatewayUrl = cleanHttpsOrigin(input.gatewayUrl, "gatewayUrl");
+  const timeoutMilliseconds = input.timeoutMilliseconds ?? 5000;
+  if (
+    !Number.isSafeInteger(timeoutMilliseconds) ||
+    timeoutMilliseconds < 1 ||
+    timeoutMilliseconds > 5000
+  ) {
+    throw new Error("Gateway smoke timeout must be between 1 and 5000 milliseconds.");
+  }
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMilliseconds);
+  try {
+    const response = await (input.fetchImplementation ?? (fetch as GatewayFetch))(
+      new URL("/tools/invoke", gatewayUrl),
+      {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          authorization: "Bearer vera-release-gate-invalid-token"
+        },
+        body: JSON.stringify({ probe: "vera_wrong_token_release_gate" }),
+        redirect: "error",
+        signal: controller.signal
+      }
+    );
+    if (response.status === 401 || response.status === 403) {
+      return { outcome: "passed", code: "expected_denial", observedStatus: response.status };
+    }
+    if (response.status >= 200 && response.status < 300) {
+      return { outcome: "failed", code: "unexpected_success", observedStatus: response.status };
+    }
+    if (response.status >= 300 && response.status < 400) {
+      return { outcome: "failed", code: "unexpected_redirect", observedStatus: response.status };
+    }
+    return { outcome: "failed", code: "unexpected_status", observedStatus: response.status };
+  } catch {
+    return {
+      outcome: "failed",
+      code: controller.signal.aborted ? "request_timed_out" : "request_failed"
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function main(): Promise<void> {

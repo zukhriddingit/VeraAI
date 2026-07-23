@@ -18,12 +18,16 @@ flowchart LR
   W -->|"agent-ID wake only"| M["Maritime control plane"]
   M --> K["Vera worker · one instance"]
   K --> P
-  K --> O["Pinned OpenClaw gateway · one instance"]
-  O --> N["Explicitly paired local node/profile"]
+  K -. "browser staging blocked" .-> O["Pinned OpenClaw gateway · not deployed"]
+  O -. "no approved WSS route" .-> N["Founder local node/profile"]
   N -. "manual login; local cookies" .-> S["Exact reviewed current listing tab"]
 ```
 
-The founder release is one region, one web instance, one Maritime worker, one managed PostgreSQL database, one pinned OpenClaw `2026.6.33` gateway, and one founder-controlled local node/profile. Maritime is the primary execution and trigger plane, while PostgreSQL remains canonical. Scheduled browser polling remains disabled.
+The founder-staging topology is one region, one web instance, one Maritime worker, and one managed
+PostgreSQL database. The founder-controlled local node/profile remains local; no OpenClaw gateway is
+deployed for browser staging because ADR 0012 selects the explicit ingress block. Maritime is the
+primary execution and trigger plane, while PostgreSQL remains canonical. Scheduled browser polling
+remains disabled.
 
 ## Workspace boundaries
 
@@ -95,7 +99,9 @@ Connectors declare supported operations rather than implementing a universal int
 
 ### OpenClaw current-tab boundary
 
-The first real browser operation is deliberately smaller than saved-search monitoring:
+The following is the future founder-only current-tab contract, deliberately smaller than saved-search
+monitoring. It is not active in Maritime staging until ADR 0012 is superseded by a documented ingress
+topology:
 
 ```mermaid
 sequenceDiagram
@@ -156,4 +162,8 @@ Existing domain objects for canonical listings and duplicate clusters predate ex
 
 ## Deployment
 
-Railway or Vercel may host the single web instance. Maritime hosts the immutable Vera worker image and explicit OpenClaw gateway image. Both web and worker receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus the PostgreSQL runbook for deploy, backup, restore, and rollback.
+Railway or Vercel may host the single web instance. Maritime may host the immutable Vera worker image;
+an explicit OpenClaw gateway image is future-only until the ingress ADR changes. Both web and worker
+receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled
+release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus
+the PostgreSQL runbook for deploy, backup, restore, and rollback.

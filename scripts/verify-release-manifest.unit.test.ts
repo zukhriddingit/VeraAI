@@ -41,8 +41,10 @@ function validManifest() {
       vulnerabilityReview: vulnerabilityReview()
     },
     rollback: {
-      workerImage: `ghcr.io/vera/worker@sha256:${hash("4")}`,
-      openclawImage: `ghcr.io/openclaw/openclaw@sha256:${hash("5")}`
+      reviewedWorkerImage: `ghcr.io/vera/worker@sha256:${hash("4")}`,
+      reviewedOpenclawImage: `ghcr.io/openclaw/openclaw@sha256:${hash("5")}`,
+      workerSchemaCompatible: true,
+      workerCompatibilityEvidenceSha256: hash("6")
     }
   } as const;
 }
@@ -164,42 +166,49 @@ describe("release manifest validation", () => {
     );
   });
 
-  it("requires real digest-qualified rollback artifacts distinct from the active release", () => {
+  it("requires real rollback worker identity and schema compatibility before image rollback", () => {
     const manifest = validManifest();
     const violations = validateReleaseManifest({
       ...manifest,
       rollback: {
-        workerImage: manifest.worker.image,
-        openclawImage: manifest.openclaw.image
+        reviewedWorkerImage: manifest.worker.image,
+        reviewedOpenclawImage: manifest.openclaw.image,
+        workerSchemaCompatible: false,
+        workerCompatibilityEvidenceSha256: "0".repeat(64)
       }
     });
 
     expect(violations).toEqual(
       expect.arrayContaining([
         expect.stringContaining("different immutable worker artifact"),
-        expect.stringContaining("different immutable OpenClaw artifact")
+        expect.stringContaining("workerSchemaCompatible must be true"),
+        expect.stringContaining("compatibility evidence")
       ])
     );
     expect(
       validateReleaseManifest({
         ...manifest,
         rollback: {
-          workerImage: "ghcr.io/vera/worker:previous",
-          openclawImage: "ghcr.io/openclaw/openclaw:previous"
+          reviewedWorkerImage: "ghcr.io/vera/worker:previous",
+          reviewedOpenclawImage: "ghcr.io/openclaw/openclaw:previous",
+          workerSchemaCompatible: true,
+          workerCompatibilityEvidenceSha256: hash("7")
         }
       })
     ).toEqual(
       expect.arrayContaining([
-        expect.stringContaining("rollback.workerImage"),
-        expect.stringContaining("rollback.openclawImage")
+        expect.stringContaining("rollback.reviewedWorkerImage"),
+        expect.stringContaining("rollback.reviewedOpenclawImage")
       ])
     );
     expect(
       validateReleaseManifest({
         ...manifest,
         rollback: {
-          workerImage: `ghcr.io/other/worker@sha256:${hash("6")}`,
-          openclawImage: `ghcr.io/other/openclaw@sha256:${hash("7")}`
+          reviewedWorkerImage: `ghcr.io/other/worker@sha256:${hash("8")}`,
+          reviewedOpenclawImage: `ghcr.io/other/openclaw@sha256:${hash("9")}`,
+          workerSchemaCompatible: true,
+          workerCompatibilityEvidenceSha256: hash("a")
         }
       })
     ).toEqual(

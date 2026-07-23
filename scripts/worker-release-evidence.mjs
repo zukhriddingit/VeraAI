@@ -284,7 +284,7 @@ async function main() {
   const workflowRef = process.env.GITHUB_WORKFLOW_REF ?? "";
   const evidence = createWorkerReleaseEvidence({
     image,
-    sourceCommit: process.env.GITHUB_SHA ?? "",
+    sourceCommit: process.env.RELEASE_SOURCE_SHA ?? "",
     createdAt: new Date().toISOString(),
     sbom,
     sbomBytes,

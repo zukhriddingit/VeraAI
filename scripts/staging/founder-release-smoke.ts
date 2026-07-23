@@ -1,67 +1,69 @@
-import { mkdir, writeFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { runGatewayHttpSmoke } from "./gateway-http-smoke.ts";
+import {
+  FOUNDER_STAGING_PHASES,
+  RELEASE_PHASE_RESULT_STATES,
+  ensurePrivateEvidenceDirectory,
+  loadPrivateEvidenceBundle,
+  validateEvidenceBundle,
+  type FounderStagingPhaseId,
+  type ReleaseEvidenceBundle,
+  type ReleaseEvidenceRecord,
+  type ReleasePhaseResultState
+} from "./release-evidence.ts";
+import { runGatewayHttpSmoke, runGatewayWrongTokenSmoke } from "./gateway-http-smoke.ts";
 
 export const FOUNDER_RELEASE_PHASES = [
-  { id: "release_manifest", label: "Release manifest verification", mandatory: true },
-  { id: "maritime_identity_status", label: "Maritime identity and status", mandatory: true },
-  { id: "deployed_image_digest", label: "Deployed image digest equality", mandatory: true },
-  { id: "worker_readiness", label: "Private worker readiness", mandatory: true },
-  { id: "openclaw_diagnostics", label: "OpenClaw diagnostics", mandatory: true },
-  { id: "gateway_unauthorized", label: "Gateway unauthenticated routes", mandatory: true },
-  { id: "paired_node", label: "Paired node and profile", mandatory: true },
-  { id: "founder_policy", label: "Founder allowlist and policy", mandatory: true },
-  {
-    id: "policy_disabled_cancellation",
-    label: "Disabled-policy cancellation",
-    mandatory: true
-  },
-  { id: "offline_node", label: "Offline-node deferral", mandatory: true },
-  { id: "manual_blocker", label: "Manual blocker", mandatory: true },
-  { id: "exact_current_tab_capture", label: "Exact current-tab capture", mandatory: true },
-  { id: "capture_replay_idempotency", label: "Capture replay idempotency", mandatory: true },
-  { id: "off_allowlist_denial", label: "Off-allowlist denial", mandatory: true },
-  { id: "result_integrity_denial", label: "Result integrity denial", mandatory: true },
-  { id: "gmail_ingestion", label: "Readonly Gmail ingestion", mandatory: true },
-  { id: "web_push_delivery", label: "Idempotent Web Push delivery", mandatory: true },
-  { id: "gateway_unavailable", label: "Gateway unavailable behavior", mandatory: true },
-  { id: "source_kill_switch", label: "Source kill switch", mandatory: true },
-  { id: "rollback_validation", label: "Rollback identity validation", mandatory: true }
-] as const;
+  { id: "gateway_unauthenticated_request", label: "Gateway unauthenticated request" },
+  { id: "gateway_wrong_token", label: "Gateway wrong token" },
+  { id: "maritime_worker_dispatch", label: "Maritime worker dispatch" },
+  { id: "founder_positive_current_tab_capture", label: "Founder positive current-tab capture" },
+  { id: "node_offline", label: "Node offline deferral" },
+  { id: "stale_heartbeat", label: "Stale heartbeat" },
+  { id: "manual_login_2fa_captcha_blocker", label: "Login, 2FA, CAPTCHA manual blocker" },
+  { id: "kill_switch_after_queueing", label: "Kill switch after queueing" },
+  { id: "worker_crash_after_browser_invocation", label: "Worker crash after browser invocation" },
+  { id: "duplicate_dispatch", label: "Duplicate dispatch" },
+  { id: "replayed_result", label: "Replayed result" },
+  { id: "gateway_restart", label: "Gateway restart" },
+  { id: "web_push_delivery", label: "Web Push delivery" },
+  { id: "web_push_deduplication", label: "Web Push deduplication" },
+  { id: "quiet_hours", label: "Quiet hours" },
+  { id: "provider_outage", label: "Provider outage" },
+  { id: "worker_image_rollback", label: "Worker image rollback" },
+  { id: "postgresql_restore", label: "PostgreSQL restore" },
+  { id: "gmail_readonly_verification", label: "Gmail readonly verification" },
+  { id: "calendar_freebusy_and_approved_hold", label: "Calendar free-busy and approved hold" }
+] as const satisfies readonly { readonly id: FounderStagingPhaseId; readonly label: string }[];
 
 export type FounderReleasePhaseId = (typeof FOUNDER_RELEASE_PHASES)[number]["id"];
-export type SmokePhaseStatus = "passed" | "failed" | "skipped_with_blocker" | "not_applicable";
+
+export interface FounderStagingIdentity {
+  readonly releaseId: string;
+  readonly environmentId: string;
+  readonly sourceCommit: string;
+  readonly candidateWorkerImage: string;
+  readonly candidateOpenclawImage: string;
+}
 
 export interface FounderStagingEnvironment {
   readonly enabled: true;
-  readonly releaseManifestPath: string;
-  readonly maritimeToken: string;
-  readonly maritimeWorkerAgentId: string;
-  readonly maritimeGatewayAgentId: string;
-  readonly stagingBaseUrl: string;
-  readonly playwrightStorageStatePath: string;
-  readonly founderUserId: string;
-  readonly approvedZillowUrl: string;
-  readonly openClawNodeId: string;
-  readonly openClawProfileId: string;
-  readonly gatewayWebSocketUrl: string;
-  readonly gatewayUrl: string;
-  readonly gatewayToken: string;
-  readonly gmailConfigured: boolean;
-  readonly webPushConfigured: boolean;
-  readonly sensitiveValues: readonly string[];
+  readonly identity?: FounderStagingIdentity;
+  readonly gatewayUrl?: string;
+  readonly evidencePath?: string;
+  readonly configurationIssues: readonly string[];
 }
 
 export interface SmokePhaseRunnerResult {
-  readonly status: SmokePhaseStatus;
+  readonly status: ReleasePhaseResultState;
   readonly code: string;
 }
 
 export interface SmokePhaseContext {
   readonly phaseId: FounderReleasePhaseId;
-  readonly environment?: FounderStagingEnvironment;
+  readonly identity: FounderStagingIdentity;
 }
 
 export type SmokePhaseRunner = (context: SmokePhaseContext) => Promise<SmokePhaseRunnerResult>;
@@ -69,357 +71,313 @@ export type SmokePhaseRunner = (context: SmokePhaseContext) => Promise<SmokePhas
 export interface SmokePhaseReport extends SmokePhaseRunnerResult {
   readonly id: FounderReleasePhaseId;
   readonly label: string;
-  readonly mandatory: boolean;
+  readonly mandatory: true;
+  readonly evidenceMode: "automated" | "manual_evidence" | "blocked";
 }
 
 export interface FounderReleaseSmokeReport {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly startedAt: string;
   readonly completedAt: string;
   readonly outcome: "passed" | "failed";
   readonly phases: readonly SmokePhaseReport[];
+  readonly evidenceViolations: readonly string[];
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
-const SAFE_CODE_PATTERN = /^[a-z0-9][a-z0-9_.:-]{0,95}$/u;
-const SENSITIVE_KEY_PATTERN =
+const SAFE_CODE = /^[a-z0-9][a-z0-9_.:-]{0,95}$/u;
+const SENSITIVE_KEY =
   /(?:access|refresh|gateway|maritime)?token|secret|password|cookie|authorization|credential|storage.?state|(?:node|agent|user|profile)id/iu;
 
-function requiredValue(
-  environment: NodeJS.ProcessEnv | Readonly<Record<string, string | undefined>>,
-  name: string,
-  maximumLength = 4096
-): string {
-  const value = environment[name]?.trim() ?? "";
-  if (!value) throw new Error(`${name} is required.`);
-  if (value.length > maximumLength || /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw new Error(`${name} is invalid.`);
-  }
-  return value;
-}
-
-function secureOrigin(value: string, name: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${name} must be a valid URL.`);
-  }
-  if (url.protocol !== "https:") throw new Error(`${name} must use HTTPS.`);
-  if (url.username || url.password) throw new Error(`${name} must not contain credentials.`);
-  if (url.search || url.hash || url.pathname !== "/") {
-    throw new Error(`${name} must be a clean HTTPS origin.`);
-  }
-  return url.href;
-}
-
-function secureWebSocketOrigin(value: string, name: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error(`${name} must be a valid URL.`);
-  }
-  if (url.protocol !== "wss:") throw new Error(`${name} must use WSS.`);
-  if (url.username || url.password || url.search || url.hash || url.pathname !== "/") {
-    throw new Error(`${name} must be a clean WSS origin.`);
-  }
-  return url.href;
-}
-
-function approvedZillowUrl(value: string): string {
-  let url: URL;
-  try {
-    url = new URL(value);
-  } catch {
-    throw new Error("VERA_OPENCLAW_APPROVED_ZILLOW_URL must be a valid URL.");
-  }
-  const hostname = url.hostname.toLowerCase();
-  if (
-    url.protocol !== "https:" ||
-    (hostname !== "zillow.com" && !hostname.endsWith(".zillow.com")) ||
-    !url.pathname.includes("/homedetails/") ||
-    url.username ||
-    url.password ||
-    url.hash
-  ) {
-    throw new Error("VERA_OPENCLAW_APPROVED_ZILLOW_URL must be an exact HTTPS Zillow listing URL.");
-  }
-  return url.href;
-}
-
-function optionalExactFlag(
+function optionalString(
   environment: NodeJS.ProcessEnv | Readonly<Record<string, string | undefined>>,
   name: string
-): boolean {
+): string | undefined {
   const value = environment[name]?.trim();
-  if (value === undefined || value === "" || value === "0") return false;
-  if (value === "1") return true;
-  throw new Error(`${name} must be exactly 0 or 1 when set.`);
+  return value ? value : undefined;
+}
+
+function optionalHttpsOrigin(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    if (
+      (url.protocol !== "https:" && url.protocol !== "wss:") ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      url.pathname !== "/"
+    ) {
+      return undefined;
+    }
+    if (url.protocol === "wss:") url.protocol = "https:";
+    return url.href;
+  } catch {
+    return undefined;
+  }
 }
 
 export function parseFounderStagingEnvironment(
-  environment: NodeJS.ProcessEnv | Readonly<Record<string, string | undefined>>,
-  options: { readonly workspaceRoot?: string } = {}
+  environment: NodeJS.ProcessEnv | Readonly<Record<string, string | undefined>>
 ): FounderStagingEnvironment {
   if (environment.VERA_FOUNDER_STAGING_SMOKE !== "1") {
     throw new Error("VERA_FOUNDER_STAGING_SMOKE must be exactly 1.");
   }
 
-  const releaseManifestPath = requiredValue(environment, "VERA_RELEASE_MANIFEST_PATH");
-  if (!releaseManifestPath.endsWith(".json")) {
-    throw new Error("VERA_RELEASE_MANIFEST_PATH must name a JSON manifest.");
+  const rawGatewayUrl = optionalString(environment, "OPENCLAW_GATEWAY_URL");
+  const gatewayUrl = optionalHttpsOrigin(rawGatewayUrl);
+  const identity = {
+    releaseId: optionalString(environment, "VERA_RELEASE_ID"),
+    environmentId: optionalString(environment, "VERA_RELEASE_ENVIRONMENT_ID"),
+    sourceCommit: optionalString(environment, "VERA_RELEASE_SOURCE_COMMIT"),
+    candidateWorkerImage: optionalString(environment, "VERA_CANDIDATE_WORKER_IMAGE"),
+    candidateOpenclawImage: optionalString(environment, "VERA_CANDIDATE_OPENCLAW_IMAGE")
+  };
+  const configurationIssues: string[] = [];
+  if (Object.values(identity).some((value) => value === undefined)) {
+    configurationIssues.push("release_identity_not_configured");
   }
-  const playwrightStorageStatePath = requiredValue(
-    environment,
-    "VERA_PLAYWRIGHT_STORAGE_STATE_PATH"
-  );
-  if (!isAbsolute(playwrightStorageStatePath) || !playwrightStorageStatePath.endsWith(".json")) {
-    throw new Error("VERA_PLAYWRIGHT_STORAGE_STATE_PATH must be an absolute JSON path.");
-  }
-  const workspaceRoot = resolve(options.workspaceRoot ?? process.cwd());
-  const storageRelativeToWorkspace = relative(workspaceRoot, resolve(playwrightStorageStatePath));
-  if (
-    storageRelativeToWorkspace === "" ||
-    (!storageRelativeToWorkspace.startsWith("..") && !isAbsolute(storageRelativeToWorkspace))
-  ) {
-    throw new Error("VERA_PLAYWRIGHT_STORAGE_STATE_PATH must remain outside the repository.");
-  }
-
-  const maritimeToken = requiredValue(environment, "MARITIME_TOKEN", 8192);
-  const maritimeWorkerAgentId = requiredValue(environment, "VERA_MARITIME_WORKER_AGENT_ID", 256);
-  const maritimeGatewayAgentId = requiredValue(environment, "VERA_MARITIME_GATEWAY_AGENT_ID", 256);
-  const stagingBaseUrl = secureOrigin(
-    requiredValue(environment, "VERA_STAGING_BASE_URL"),
-    "VERA_STAGING_BASE_URL"
-  );
-  const founderUserId = requiredValue(environment, "VERA_FOUNDER_USER_ID", 64);
-  if (!UUID_PATTERN.test(founderUserId)) {
-    throw new Error("VERA_FOUNDER_USER_ID must be a UUID.");
-  }
-  const listingUrl = approvedZillowUrl(
-    requiredValue(environment, "VERA_OPENCLAW_APPROVED_ZILLOW_URL")
-  );
-  const openClawNodeId = requiredValue(environment, "VERA_OPENCLAW_NODE_ID", 256);
-  const openClawProfileId = requiredValue(environment, "VERA_OPENCLAW_PROFILE_ID", 256);
-  const gatewayWebSocketUrl = secureWebSocketOrigin(
-    requiredValue(environment, "OPENCLAW_GATEWAY_URL"),
-    "OPENCLAW_GATEWAY_URL"
-  );
-  const gatewayUrl = new URL(gatewayWebSocketUrl);
-  gatewayUrl.protocol = "https:";
-  const gatewayToken = requiredValue(environment, "OPENCLAW_GATEWAY_TOKEN", 8192);
+  if (rawGatewayUrl && !gatewayUrl) configurationIssues.push("gateway_url_invalid");
+  const evidencePath = optionalString(environment, "VERA_RELEASE_EVIDENCE_PATH");
+  if (!evidencePath) configurationIssues.push("private_evidence_path_not_configured");
 
   return {
     enabled: true,
-    releaseManifestPath,
-    maritimeToken,
-    maritimeWorkerAgentId,
-    maritimeGatewayAgentId,
-    stagingBaseUrl,
-    playwrightStorageStatePath,
-    founderUserId,
-    approvedZillowUrl: listingUrl,
-    openClawNodeId,
-    openClawProfileId,
-    gatewayWebSocketUrl,
-    gatewayUrl: gatewayUrl.href,
-    gatewayToken,
-    gmailConfigured: optionalExactFlag(environment, "VERA_GMAIL_STAGING_TEST"),
-    webPushConfigured: optionalExactFlag(environment, "VERA_WEB_PUSH_STAGING_TEST"),
-    sensitiveValues: [
-      maritimeToken,
-      maritimeWorkerAgentId,
-      maritimeGatewayAgentId,
-      stagingBaseUrl,
-      playwrightStorageStatePath,
-      founderUserId,
-      listingUrl,
-      openClawNodeId,
-      openClawProfileId,
-      gatewayWebSocketUrl,
-      gatewayUrl.href,
-      gatewayToken
-    ]
+    identity: configurationIssues.includes("release_identity_not_configured")
+      ? undefined
+      : (identity as FounderStagingIdentity),
+    gatewayUrl,
+    evidencePath,
+    configurationIssues
   };
 }
 
-function validRunnerResult(value: SmokePhaseRunnerResult): boolean {
+function isValidRunnerResult(value: SmokePhaseRunnerResult): boolean {
+  return RELEASE_PHASE_RESULT_STATES.includes(value.status) && SAFE_CODE.test(value.code);
+}
+
+function isPassingState(status: ReleasePhaseResultState): boolean {
+  return status === "passed_automated" || status === "passed_manual_evidence";
+}
+
+function manualEvidenceByPhase(
+  input: unknown,
+  identity: FounderStagingIdentity
+): {
+  readonly records: ReadonlyMap<FounderReleasePhaseId, ReleaseEvidenceRecord>;
+  readonly violations: readonly string[];
+} {
+  const validation = validateEvidenceBundle(input, { requireAllPhases: false });
+  if (validation.length > 0 || !isEvidenceBundle(input))
+    return { records: new Map(), violations: validation };
+  if (
+    input.releaseId !== identity.releaseId ||
+    input.environmentId !== identity.environmentId ||
+    input.sourceCommit !== identity.sourceCommit ||
+    input.candidateWorkerImage !== identity.candidateWorkerImage ||
+    input.candidateOpenclawImage !== identity.candidateOpenclawImage
+  ) {
+    return { records: new Map(), violations: ["manual_evidence_identity_mismatch"] };
+  }
+  return {
+    records: new Map(input.records.map((record) => [record.phaseId, record] as const)),
+    violations: []
+  };
+}
+
+function isEvidenceBundle(value: unknown): value is ReleaseEvidenceBundle {
   return (
-    ["passed", "failed", "skipped_with_blocker", "not_applicable"].includes(value.status) &&
-    SAFE_CODE_PATTERN.test(value.code)
+    typeof value === "object" &&
+    value !== null &&
+    Array.isArray((value as ReleaseEvidenceBundle).records)
   );
+}
+
+function phaseFromManualEvidence(
+  record: ReleaseEvidenceRecord | undefined
+): SmokePhaseRunnerResult | null {
+  if (!record) return null;
+  if (record.resultState === "passed_manual_evidence") {
+    return { status: "passed_manual_evidence", code: "manual_evidence_validated" };
+  }
+  if (record.resultState === "passed_automated") {
+    return { status: "failed_assertion", code: "manual_evidence_claims_automated_result" };
+  }
+  return { status: record.resultState, code: "manual_evidence_nonpassing" };
 }
 
 export async function runFounderReleaseSmoke(input: {
   readonly phaseRunners: Partial<Record<FounderReleasePhaseId, SmokePhaseRunner>>;
-  readonly environment?: FounderStagingEnvironment;
+  readonly identity?: FounderStagingIdentity;
+  readonly manualEvidenceBundle?: unknown;
+  readonly evidenceViolations?: readonly string[];
+  readonly ingressApproved?: boolean;
   readonly now?: () => Date;
 }): Promise<FounderReleaseSmokeReport> {
   const now = input.now ?? (() => new Date());
   const startedAt = now().toISOString();
+  const initialEvidenceViolations = [...(input.evidenceViolations ?? [])];
+  const manualEvidence =
+    input.identity && input.manualEvidenceBundle
+      ? manualEvidenceByPhase(input.manualEvidenceBundle, input.identity)
+      : { records: new Map<FounderReleasePhaseId, ReleaseEvidenceRecord>(), violations: [] };
+  const evidenceViolations = [...initialEvidenceViolations, ...manualEvidence.violations];
   const phases: SmokePhaseReport[] = [];
 
   for (const phase of FOUNDER_RELEASE_PHASES) {
-    const runner = input.phaseRunners[phase.id];
     let result: SmokePhaseRunnerResult;
-    if (!runner) {
-      result = { status: "skipped_with_blocker", code: "phase_dependency_not_configured" };
+    let evidenceMode: SmokePhaseReport["evidenceMode"] = "manual_evidence";
+    if (!input.identity) {
+      result = { status: "blocked_missing_configuration", code: "release_identity_not_configured" };
+      evidenceMode = "blocked";
+    } else if (
+      phase.id === "founder_positive_current_tab_capture" &&
+      input.ingressApproved !== true
+    ) {
+      result = { status: "blocked_missing_configuration", code: "openclaw_ingress_unreviewed" };
+      evidenceMode = "blocked";
     } else {
-      try {
-        const context: SmokePhaseContext = input.environment
-          ? { phaseId: phase.id, environment: input.environment }
-          : { phaseId: phase.id };
-        const candidate = await runner(context);
-        result = validRunnerResult(candidate)
-          ? candidate
-          : { status: "failed", code: "invalid_phase_result" };
-      } catch {
-        result = { status: "failed", code: "phase_runner_threw" };
+      const runner = input.phaseRunners[phase.id];
+      const manualResult = phaseFromManualEvidence(manualEvidence.records.get(phase.id));
+      if (runner) {
+        evidenceMode = "automated";
+        try {
+          const candidate = await runner({ phaseId: phase.id, identity: input.identity });
+          result = isValidRunnerResult(candidate)
+            ? candidate
+            : { status: "failed_assertion", code: "invalid_phase_result" };
+        } catch {
+          result = { status: "failed_provider", code: "phase_runner_threw" };
+        }
+      } else if (manualResult) {
+        result = manualResult;
+      } else {
+        result = { status: "blocked_missing_configuration", code: "manual_evidence_required" };
+        evidenceMode = "blocked";
       }
     }
-    phases.push({ ...phase, ...result });
+    phases.push({ ...phase, mandatory: true, evidenceMode, ...result });
   }
 
-  const failed = phases.some(
-    ({ mandatory, status }) =>
-      status === "failed" ||
-      (mandatory && (status === "skipped_with_blocker" || status === "not_applicable"))
-  );
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     startedAt,
     completedAt: now().toISOString(),
-    outcome: failed ? "failed" : "passed",
-    phases
+    outcome: phases.every((phase) => isPassingState(phase.status)) ? "passed" : "failed",
+    phases,
+    evidenceViolations
   };
 }
 
-function replaceConfiguredSecrets(value: string, sensitiveValues: readonly string[]): string {
-  let result = value;
-  const orderedValues = [...new Set(sensitiveValues.filter((secret) => secret.length >= 3))].sort(
-    (left, right) => right.length - left.length
-  );
-  for (const secret of orderedValues) result = result.split(secret).join("[redacted]");
-  return result;
-}
-
-function sanitizeString(value: string, sensitiveValues: readonly string[]): string {
-  return replaceConfiguredSecrets(value, sensitiveValues)
+function redactString(value: string): string {
+  return value
     .replace(/Bearer\s+[^\s"']+/giu, "Bearer [redacted]")
     .replace(/postgres(?:ql)?:\/\/[^\s"']+/giu, "[redacted database url]")
     .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/giu, "[redacted email]")
-    .replace(/\+?\d[\d ()-]{7,}\d/gu, "[redacted phone]")
-    .replace(/https?:\/\/[^\s"'<>()]+/giu, (candidate) => {
-      try {
-        const url = new URL(candidate);
-        if (!url.search && !url.hash) return candidate;
-        url.search = "";
-        url.hash = "";
-        return url.href;
-      } catch {
-        return "[redacted url]";
-      }
-    });
+    .replace(/\+?\d[\d ()-]{7,}\d/gu, "[redacted phone]");
 }
 
-function sanitizeValue(value: unknown, sensitiveValues: readonly string[], key?: string): unknown {
-  if (key && SENSITIVE_KEY_PATTERN.test(key)) return "[redacted]";
-  if (typeof value === "string") return sanitizeString(value, sensitiveValues);
-  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item, sensitiveValues));
+function sanitize(value: unknown, key?: string): unknown {
+  if (key && SENSITIVE_KEY.test(key)) return "[redacted]";
+  if (typeof value === "string") return redactString(value);
+  if (Array.isArray(value)) return value.map((entry) => sanitize(entry));
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value).map(([childKey, childValue]) => [
         childKey,
-        sanitizeValue(childValue, sensitiveValues, childKey)
+        sanitize(childValue, childKey)
       ])
     );
   }
   return value;
 }
 
-export function serializeSafeSmokeReport(
-  report: unknown,
-  sensitiveValues: readonly string[] = []
-): string {
-  return JSON.stringify(sanitizeValue(report, sensitiveValues), null, 2);
+export function serializeSafeSmokeReport(report: unknown): string {
+  return JSON.stringify(sanitize(report), null, 2);
 }
 
-function markdownCell(value: unknown): string {
-  return String(value ?? "")
-    .replace(/\r?\n/gu, " ")
-    .replace(/\|/gu, "\\|")
-    .slice(0, 160);
-}
-
-export function renderSafeSmokeMarkdownReport(
-  report: unknown,
-  sensitiveValues: readonly string[] = []
-): string {
-  const sanitized = sanitizeValue(report, sensitiveValues);
-  const object = sanitized && typeof sanitized === "object" ? sanitized : {};
-  const record = object as { readonly outcome?: unknown; readonly phases?: unknown };
-  const phases = Array.isArray(record.phases) ? record.phases : [];
+export function renderSafeSmokeMarkdownReport(report: unknown): string {
+  const sanitized = sanitize(report) as { readonly outcome?: unknown; readonly phases?: unknown };
+  const phases = Array.isArray(sanitized.phases) ? sanitized.phases : [];
   const rows = phases.map((phase) => {
     const entry = phase && typeof phase === "object" ? (phase as Record<string, unknown>) : {};
-    return `| ${markdownCell(entry.id)} | ${markdownCell(entry.status)} | ${markdownCell(entry.code)} |`;
+    return `| ${String(entry.id ?? "").slice(0, 80)} | ${String(entry.status ?? "").slice(0, 80)} | ${String(entry.code ?? "").slice(0, 96)} |`;
   });
   return [
-    "# Founder staging smoke",
+    "# Founder staging release gate",
     "",
-    `Outcome: **${markdownCell(record.outcome)}**`,
+    `Outcome: **${String(sanitized.outcome ?? "failed")}**`,
     "",
-    "| Phase | Status | Safe code |",
+    "| Phase | Result | Safe code |",
     "| --- | --- | --- |",
     ...rows,
     ""
   ].join("\n");
 }
 
-async function writeSafeReports(
-  report: FounderReleaseSmokeReport,
-  sensitiveValues: readonly string[]
-): Promise<void> {
-  const directory = resolve("release-evidence/private");
-  await mkdir(directory, { recursive: true });
+async function writeSafeReports(report: FounderReleaseSmokeReport): Promise<void> {
+  const directory = await ensurePrivateEvidenceDirectory();
   await Promise.all([
     writeFile(
-      resolve(directory, "founder-staging-smoke.json"),
-      `${serializeSafeSmokeReport(report, sensitiveValues)}\n`,
-      { encoding: "utf8", mode: 0o600 }
+      resolve(directory, "founder-staging-gate-report.json"),
+      `${serializeSafeSmokeReport(report)}\n`,
+      {
+        encoding: "utf8",
+        mode: 0o600
+      }
     ),
     writeFile(
-      resolve(directory, "founder-staging-smoke.md"),
-      renderSafeSmokeMarkdownReport(report, sensitiveValues),
-      { encoding: "utf8", mode: 0o600 }
+      resolve(directory, "founder-staging-gate-report.md"),
+      renderSafeSmokeMarkdownReport(report),
+      {
+        encoding: "utf8",
+        mode: 0o600
+      }
     )
   ]);
 }
 
 async function main(): Promise<void> {
   if (process.env.VERA_FOUNDER_STAGING_SMOKE !== "1") {
-    process.stdout.write("Founder staging smoke skipped: explicit live flag absent.\n");
+    process.stdout.write("Founder staging release gate requires VERA_FOUNDER_STAGING_SMOKE=1.\n");
+    process.exitCode = 1;
     return;
   }
-
   const environment = parseFounderStagingEnvironment(process.env);
+  const loadedEvidence = environment.evidencePath
+    ? await loadPrivateEvidenceBundle({
+        evidencePath: environment.evidencePath,
+        requireAllPhases: false
+      })
+    : { bundle: null, violations: ["private_evidence_path_not_configured"] };
+  const phaseRunners: Partial<Record<FounderReleasePhaseId, SmokePhaseRunner>> = {};
+  if (environment.gatewayUrl) {
+    phaseRunners.gateway_unauthenticated_request = async () => {
+      const result = await runGatewayHttpSmoke({ gatewayUrl: environment.gatewayUrl ?? "" });
+      return result.outcome === "passed"
+        ? { status: "passed_automated", code: "gateway_unauthenticated_denied" }
+        : { status: "failed_assertion", code: "gateway_unauthenticated_failed" };
+    };
+    phaseRunners.gateway_wrong_token = async () => {
+      const result = await runGatewayWrongTokenSmoke({ gatewayUrl: environment.gatewayUrl ?? "" });
+      return result.outcome === "passed"
+        ? { status: "passed_automated", code: "gateway_wrong_token_denied" }
+        : { status: "failed_assertion", code: "gateway_wrong_token_failed" };
+    };
+  }
   const report = await runFounderReleaseSmoke({
-    environment,
-    phaseRunners: {
-      gateway_unauthorized: async () => {
-        const result = await runGatewayHttpSmoke({ gatewayUrl: environment.gatewayUrl });
-        return result.outcome === "passed"
-          ? { status: "passed", code: "gateway_negative_matrix_passed" }
-          : { status: "failed", code: "gateway_negative_matrix_failed" };
-      }
-    }
+    identity: environment.identity,
+    phaseRunners,
+    manualEvidenceBundle: loadedEvidence.bundle ?? undefined,
+    evidenceViolations: [...environment.configurationIssues, ...loadedEvidence.violations],
+    ingressApproved: false
   });
-  await writeSafeReports(report, environment.sensitiveValues);
-  process.stdout.write(`${serializeSafeSmokeReport(report, environment.sensitiveValues)}\n`);
+  await writeSafeReports(report);
+  process.stdout.write(`${serializeSafeSmokeReport(report)}\n`);
   if (report.outcome === "failed") process.exitCode = 1;
 }
 
 const invokedPath = process.argv[1];
-if (invokedPath && pathToFileURL(invokedPath).href === import.meta.url) {
-  await main();
-}
+if (invokedPath && pathToFileURL(resolve(invokedPath)).href === import.meta.url) await main();
+
+export { FOUNDER_STAGING_PHASES };

@@ -1,0 +1,128 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vera.example/schemas/founder-staging-evidence-v1.json",
+  "title": "Vera founder staging external evidence bundle",
+  "description": "External-only, sanitized founder-staging evidence. Synthetic records are never releasable.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "synthetic",
+    "releaseId",
+    "environmentId",
+    "sourceCommit",
+    "candidateWorkerImage",
+    "candidateOpenclawImage",
+    "createdAt",
+    "records",
+    "bundleHash"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "synthetic": { "type": "boolean" },
+    "releaseId": { "$ref": "#/$defs/opaqueId" },
+    "environmentId": { "$ref": "#/$defs/opaqueId" },
+    "sourceCommit": { "pattern": "^[a-f0-9]{40}$" },
+    "candidateWorkerImage": { "$ref": "#/$defs/imageDigest" },
+    "candidateOpenclawImage": { "$ref": "#/$defs/imageDigest" },
+    "createdAt": { "format": "date-time" },
+    "records": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/record" }
+    },
+    "bundleHash": { "$ref": "#/$defs/sha256" },
+    "signature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "opaqueId": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{2,100}$" },
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "imageDigest": { "type": "string", "pattern": "^[^\\s@]+@sha256:[a-f0-9]{64}$" },
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "locator", "sha256"],
+      "properties": {
+        "kind": {
+          "enum": [
+            "github_actions_artifact",
+            "managed_database_snapshot",
+            "private_object",
+            "sanitized_screenshot",
+            "test_run",
+            "workflow_run",
+            "deployment_digest"
+          ]
+        },
+        "locator": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{2,255}$" },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schemaVersion",
+        "synthetic",
+        "phaseId",
+        "releaseId",
+        "environmentId",
+        "sourceCommit",
+        "candidateWorkerImage",
+        "candidateOpenclawImage",
+        "executedAt",
+        "operatorReference",
+        "expectedResult",
+        "observedResult",
+        "resultState",
+        "evidenceReferences",
+        "approvalState",
+        "contentHash"
+      ],
+      "properties": {
+        "schemaVersion": { "const": 1 },
+        "synthetic": { "type": "boolean" },
+        "phaseId": { "type": "string" },
+        "releaseId": { "$ref": "#/$defs/opaqueId" },
+        "environmentId": { "$ref": "#/$defs/opaqueId" },
+        "sourceCommit": { "pattern": "^[a-f0-9]{40}$" },
+        "candidateWorkerImage": { "$ref": "#/$defs/imageDigest" },
+        "candidateOpenclawImage": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/imageDigest" }]
+        },
+        "executedAt": { "format": "date-time" },
+        "operatorReference": { "$ref": "#/$defs/opaqueId" },
+        "expectedResult": { "type": "string", "maxLength": 500 },
+        "observedResult": { "type": "string", "maxLength": 500 },
+        "resultState": {
+          "enum": [
+            "passed_automated",
+            "passed_manual_evidence",
+            "blocked_missing_configuration",
+            "failed_assertion",
+            "failed_provider",
+            "not_applicable_with_approved_reason"
+          ]
+        },
+        "evidenceReferences": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/reference" }
+        },
+        "approvalState": { "const": "approved" },
+        "contentHash": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "signerReference", "signedBundleHash", "value"],
+      "properties": {
+        "kind": { "enum": ["ci", "operator"] },
+        "signerReference": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/-]{2,255}$" },
+        "signedBundleHash": { "$ref": "#/$defs/sha256" },
+        "value": { "type": "string", "minLength": 16, "maxLength": 4096 }
+      }
+    }
+  }
+}
