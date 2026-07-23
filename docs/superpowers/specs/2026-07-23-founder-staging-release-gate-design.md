@@ -58,4 +58,3 @@ The final release manifest records candidate and reviewed rollback digests for w
 ## Validation and documentation
 
 Static validators reject mutable production references in release/staging deployment documentation and workflow source selection that fails the trusted-commit rules. Google procedures use manual evidence for real consent/account checks while retaining existing Gmail read-only and Calendar approval boundaries. The release procedures require copying the complete external evidence bundle to a restricted private artifact store and applying the retention/deletion policy in `PRIVACY_OPERATIONS.md`.
-

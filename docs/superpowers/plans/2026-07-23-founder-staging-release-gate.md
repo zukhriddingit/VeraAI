@@ -115,4 +115,3 @@
 - [ ] Run integration/PostgreSQL/E2E/build checks where the local toolchain permits; distinguish environment failures from product failures.
 - [ ] Review the diff for secrets, accidental mutable references, release side effects, and untracked evidence.
 - [ ] Report fixed findings, remaining live-evidence blockers, the complete phase matrix, rollout/rollback steps, and a `conditional go for founder-only staging` classification only if the local release gate is complete and the live gate remains explicitly pending.
-
