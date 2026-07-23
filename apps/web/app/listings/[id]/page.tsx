@@ -30,7 +30,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Listings</Link>
+        <Link href="/demo">Listings</Link>
         <Link href="/capture">Capture a listing</Link>
         <Link href="/activity">Activity</Link>
         <Link href="/connectors">Connector status</Link>

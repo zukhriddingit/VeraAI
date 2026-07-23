@@ -17,7 +17,7 @@ export default async function CaptureEvidencePage({ params }: CaptureEvidencePag
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Vera dashboard</Link>
+        <Link href="/demo">Vera dashboard</Link>
         <Link href="/capture">Capture another listing</Link>
         <Link href="/activity">Activity</Link>
         <Link href="/connectors">Connector status</Link>

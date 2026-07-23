@@ -18,7 +18,7 @@ export default async function ActivityPage() {
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Listings</Link>
+        <Link href="/demo">Listings</Link>
         <Link href="/capture">Capture a listing</Link>
         <Link href="/connectors">Connector status</Link>
       </nav>

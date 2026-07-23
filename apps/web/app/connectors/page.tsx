@@ -8,7 +8,7 @@ export default async function ConnectorsPage() {
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Vera dashboard</Link>
+        <Link href="/demo">Vera dashboard</Link>
         <Link href="/capture">Capture a listing</Link>
         <Link href="/activity">Activity</Link>
       </nav>

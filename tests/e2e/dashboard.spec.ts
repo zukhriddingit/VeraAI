@@ -8,10 +8,11 @@ test("dashboard identifies the isolated sanitized demo", async ({ page, request 
     status: "ok"
   });
 
-  await page.goto("/");
+  await page.goto("/demo");
+  await expect(page).toHaveURL(/\/demo$/u);
 
   await expect(page.locator(".demo-banner")).toContainText(
-    "Demo mode — sanitized fixture data; no live marketplace accounts connected."
+    "Demo mode - sanitized fixture data; no live marketplace accounts connected."
   );
   await expect(page.getByRole("heading", { name: "Harbor City September Search" })).toBeVisible();
   await expect(

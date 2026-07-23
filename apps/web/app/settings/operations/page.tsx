@@ -51,7 +51,7 @@ export default async function OperationsPage() {
   return (
     <main>
       <nav className="page-nav" aria-label="Operator navigation">
-        <Link href="/">Listings</Link>
+        <Link href="/demo">Listings</Link>
         <Link href="/settings/operations" aria-current="page">
           Operations
         </Link>

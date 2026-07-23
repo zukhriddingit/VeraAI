@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 async function ensureDemoSearch(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/demo");
   const run = page.getByRole("button", { name: "Run demo search" });
   if (await run.isVisible()) await run.click();
   await page.getByRole("button", { name: /All \d+/u }).click();

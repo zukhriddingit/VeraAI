@@ -38,7 +38,7 @@ export default async function NotificationSettingsPage() {
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Listings</Link>
+        <Link href="/demo">Listings</Link>
         <Link href="/settings/integrations">Integrations</Link>
         <Link href="/settings/notifications" aria-current="page">
           Notifications

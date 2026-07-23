@@ -18,7 +18,7 @@ export default async function BrowserAgentSettingsPage() {
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Listings</Link>
+        <Link href="/demo">Listings</Link>
         <Link href="/settings/integrations">Integrations</Link>
         <Link href="/settings/integrations/browser-agent" aria-current="page">
           Browser agent

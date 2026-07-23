@@ -3,10 +3,10 @@ import { expect, test } from "@playwright/test";
 test("offline golden path preserves evidence, explains risk, and records user control", async ({
   page
 }) => {
-  await page.goto("/");
+  await page.goto("/demo");
 
   await expect(page.locator(".demo-banner")).toContainText(
-    "Demo mode — sanitized fixture data; no live marketplace accounts connected."
+    "Demo mode - sanitized fixture data; no live marketplace accounts connected."
   );
   await expect(page.getByRole("heading", { name: "Harbor City September Search" })).toBeVisible();
   await expect(page.getByText("$2,600 target · $3,000 max")).toBeVisible();

@@ -357,7 +357,7 @@ export function ListingDetail({
         <Link className="primary-button link-button" href="/capture">
           Capture another listing
         </Link>
-        <Link className="secondary-button link-button" href="/">
+        <Link className="secondary-button link-button" href="/demo">
           Back to listing inbox
         </Link>
       </div>

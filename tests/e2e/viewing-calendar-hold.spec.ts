@@ -39,7 +39,7 @@ function isPostResponse(response: Response, suffix: RegExp): boolean {
 }
 
 async function revealDemoListings(page: Page): Promise<void> {
-  await page.goto("/");
+  await page.goto("/demo");
   const runSearch = page.getByRole("button", { name: "Run demo search" });
   if (await runSearch.isVisible()) await runSearch.click();
   await page.getByRole("button", { name: /All 8/u }).click();
