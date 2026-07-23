@@ -1,7 +1,7 @@
 # Privacy operations
 
 Status: founder-release runbook
-Reviewed: 2026-07-22
+Reviewed: 2026-07-23
 
 This document describes the data Vera actually handles. It is an operator runbook, not a claim that a local browser session makes the entire capture local. The founder release has one founder account, one Vera web instance, one Vera worker, one managed PostgreSQL database, one existing Maritime-hosted OpenClaw gateway, and one explicitly paired local browser node/profile.
 
@@ -11,7 +11,7 @@ This document describes the data Vera actually handles. It is an operator runboo
 | --- | --- | --- | --- | --- |
 | Vera identity and session state | Vera web | Browser to Vera over HTTPS | PostgreSQL | Server session cookie is secure, HTTP-only, and SameSite=Lax in production. No access token is stored in browser persistent storage. |
 | Search profile, shortlist state, and listing decisions | Vera user | Browser to Vera over HTTPS | PostgreSQL | Tenant-owned. Money is integer minor units; persisted instants are `timestamptz`. |
-| Listing source evidence and provenance | Fixture, user capture, Gmail alert, approved API, or browser capture | Connector to Vera worker | PostgreSQL | Raw evidence, source records, provenance, and activity history are append-only. Contact data is excluded from normal logs and audit metadata. |
+| Listing source evidence and provenance | Deterministic fixture in the explicit offline demo only; hosted user capture, Gmail alert, approved API, or founder browser capture | Connector to Vera worker | PostgreSQL for hosted data; isolated SQLite for the deterministic demo | Raw evidence, source records, provenance, and activity history are append-only. The hosted connector composition and policy seed exclude fixture acquisition. Contact data is excluded from normal logs and audit metadata. |
 | Marketplace password, cookie, local/session storage, profile, and password-manager data | Dedicated user-controlled browser profile | Must remain on the local node | Local machine only | Vera never asks for, types, uploads, stores, logs, or backs up these artifacts. Manual login, reauthentication, 2FA, CAPTCHA, and consent remain manual. |
 | Current-tab capture content | Exact allowlisted tab in the local profile | Local node through the configured OpenClaw gateway to the Vera worker | Accepted minimal listing evidence in PostgreSQL | The bounded result may include title, exact canonical URL, listing text, a small scalar metadata map, and hashes. It excludes screenshots, snapshots, tab lists, cookies, storage, profile paths, and CDP credentials. Page content therefore is not purely local. |
 | Google connection | Google OAuth web flow | Browser redirects; server-to-Google code/token exchange | PostgreSQL | Account subject, display email, scopes, status, expiry metadata, and AES-256-GCM-encrypted refresh token only. Authorization codes and access tokens are not durable. |

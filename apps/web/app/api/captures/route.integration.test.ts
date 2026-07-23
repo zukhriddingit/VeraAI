@@ -13,6 +13,12 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { POST } from "./route.ts";
 import {
+  clearApplicationForTesting,
+  registerApplication,
+  type VeraApplication
+} from "../../../lib/server/application-registry.ts";
+import { createDemoApplication } from "../../../lib/server/demo-application.ts";
+import {
   clearTestApplication,
   registerTestDemoRuntime
 } from "../../../test-support/demo-runtime.ts";
@@ -74,6 +80,43 @@ afterEach(() => {
 });
 
 describe.sequential("POST /api/captures", () => {
+  it("rejects fixture capture when the same repositories are composed as hosted", async () => {
+    const userId = "018f9f64-7b5a-7c91-a12e-000000000001";
+    clearApplicationForTesting();
+    const demoApplication = createDemoApplication(runtimeConnection!);
+    registerApplication({
+      ...demoApplication,
+      mode: "hosted",
+      auth: {
+        api: {
+          getSession: async () => ({ user: { id: userId }, session: {} })
+        }
+      } as unknown as VeraApplication["auth"],
+      demoUserId: null
+    });
+
+    const response = await POST(
+      jsonRequest({
+        kind: "fixture",
+        sanitized: true,
+        listing: {
+          source: "zillow",
+          sourceListingId: "hosted-fixture-rejected",
+          title: "Synthetic fixture must remain demo-only",
+          url: "https://zillow.example.invalid/fixtures/hosted-rejected"
+        }
+      })
+    );
+    const error = CaptureErrorResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(400);
+    expect(error.code).toBe("unsupported_connector");
+    withRepositories((repositories) => {
+      expect(repositories.rawListings.count()).toBe(12);
+      expect(repositories.normalizationJobs.count()).toBe(0);
+    });
+  });
+
   it("captures pasted text, applies policy, and queues normalization", async () => {
     const response = await POST(
       jsonRequest({

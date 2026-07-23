@@ -1,17 +1,18 @@
 # Vera Founder Release Readiness
 
-Date: 2026-07-22
+Date: 2026-07-23
 
-Current decision: **conditional founder staging**. Local application, PostgreSQL, policy, build,
-image, offline staging gates, and read-only Maritime inventory pass. Promotion is not approved
-until immutable registry release evidence and the live gateway/worker staging matrix are complete.
+Current decision: **conditional go for founder-only staging**. Local application, PostgreSQL,
+policy, build, image, offline staging gates, and read-only Maritime inventory pass. Promotion is
+not approved until immutable registry release evidence and the live gateway/worker staging matrix
+are complete.
 
 ## Verified locally
 
 - Node 24 workspace formatting, lint, 12 TypeScript projects, and all static safety verifiers pass.
-- Unit: 133 files and 944 tests pass.
-- Non-PostgreSQL integration: 34 files and 138 tests pass; one opt-in live test is skipped.
-- PostgreSQL integration: 16 files and 64 tests pass against the local PostgreSQL test database.
+- Unit: 134 files and 946 tests pass.
+- Non-PostgreSQL integration: 34 files and 139 tests pass; one opt-in live test is skipped.
+- PostgreSQL integration: 16 files and 65 tests pass against the local PostgreSQL test database.
 - Worker and Next.js production builds pass.
 - Playwright Chromium: six founder flows pass.
 - Local worker image: `sha256:302db8495e14e039f061be9601a0fdbe0ac58189f650dae03514bf6b863c4a13`.
@@ -42,6 +43,34 @@ until immutable registry release evidence and the live gateway/worker staging ma
   identity pinned to `zukhriddingit/VeraAI`, verifies the retained signed bundles, and requires the
   downloaded SPDX document to equal the verified SBOM predicate instead of trusting downloaded
   hashes. The workflow has not been dispatched yet.
+
+## Prompt 12 code review
+
+The final `main...ddcbe3f` diff review found and locally fixed two code-level release blockers:
+
+- hosted connector composition now excludes `fixture.feed.v1`, while the explicit deterministic
+  demo composition retains it; new hosted PostgreSQL policy seeds also exclude fixture acquisition
+  manifests;
+- a Maritime-dispatched source job whose worker crashes after consuming the dispatch can be
+  reclaimed after lease expiry by the same worker audience, without exceeding the attempt budget
+  or permitting two replacement workers to claim it.
+
+No schema migration was required. An older hosted database may retain a global fixture policy row;
+the hosted connector registry cannot execute it, and the seed neither deletes nor rewrites existing
+policy history. The complete post-remediation gate passes: formatting, ESLint, all static safety
+verifiers, 12 TypeScript projects, 134 unit files with 946 tests, 34 non-PostgreSQL integration
+files with 139 tests plus one opt-in live skip, 16 PostgreSQL integration files with 65 tests, six
+serial Playwright Chromium flows, and both worker and Next.js production builds.
+
+Capability truth for this release:
+
+- Gmail listing-alert ingestion is production code behind incremental `gmail.readonly`;
+- Gmail draft creation is not implemented, and no Gmail send capability exists;
+- Calendar free/busy and user-approved tentative holds are production code behind incremental
+  scopes;
+- Zillow current-tab capture is founder-only, experimental, disabled by default, and not approved
+  for untrusted multi-user access;
+- Maritime, OpenClaw, and Web Push live smoke evidence remains open.
 
 ## Promotion blockers
 

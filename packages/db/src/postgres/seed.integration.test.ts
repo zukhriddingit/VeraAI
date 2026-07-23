@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { SOURCE_POLICY_MANIFEST_FIXTURES } from "../fixtures.ts";
 import { createPostgresGlobalPolicyRepository } from "./policy-repository.ts";
-import { seedPostgresGlobalPolicy } from "./seed.ts";
+import { HOSTED_SOURCE_POLICY_MANIFESTS, seedPostgresGlobalPolicy } from "./seed.ts";
 import { withPostgresTestDatabase } from "./testing.ts";
 
 interface PrivateCounts extends Record<string, unknown> {
@@ -49,21 +49,25 @@ describe("PostgreSQL global policy seed", () => {
       const after = await privateTableCounts(db);
 
       expect(first).toEqual({
-        sourcePolicyManifests: SOURCE_POLICY_MANIFEST_FIXTURES.length,
-        inserted: SOURCE_POLICY_MANIFEST_FIXTURES.length
+        sourcePolicyManifests: HOSTED_SOURCE_POLICY_MANIFESTS.length,
+        inserted: HOSTED_SOURCE_POLICY_MANIFESTS.length
       });
       expect(second).toEqual({
-        sourcePolicyManifests: SOURCE_POLICY_MANIFEST_FIXTURES.length,
+        sourcePolicyManifests: HOSTED_SOURCE_POLICY_MANIFESTS.length,
         inserted: 0
       });
       expect(after).toEqual(before);
 
       const policies = await createPostgresGlobalPolicyRepository(db).list();
       expect(policies).toEqual(
-        [...SOURCE_POLICY_MANIFEST_FIXTURES].sort((left, right) =>
+        [...HOSTED_SOURCE_POLICY_MANIFESTS].sort((left, right) =>
           left.connectorId.localeCompare(right.connectorId)
         )
       );
+      expect(policies.every((policy) => policy.acquisitionMode !== "fixture")).toBe(true);
+      expect(
+        SOURCE_POLICY_MANIFEST_FIXTURES.some((policy) => policy.acquisitionMode === "fixture")
+      ).toBe(true);
     });
   });
 });

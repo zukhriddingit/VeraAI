@@ -20,7 +20,9 @@ export async function GET(request: Request): Promise<Response> {
   try {
     const context = await requireVeraSession(request.headers);
     const registry = await createPersistedPolicyRegistry(context.repositories);
-    const connectors = listSourceConnectors().map((connector) => connector.health(registry));
+    const connectors = listSourceConnectors(context.demoMode ? "demo" : "hosted").map((connector) =>
+      connector.health(registry)
+    );
     const result = ConnectorStatusCollectionResponseSchema.parse({
       connectors,
       count: connectors.length,

@@ -145,7 +145,7 @@ export async function runDemoSearch(
   if (replay) return replay;
   if (!(await seededFixturesAreValid(dependencies.repositories))) throw new DemoSearchStateError();
 
-  const connectors = listSourceConnectors();
+  const connectors = listSourceConnectors("demo");
   const policyRegistry = await createPersistedPolicyRegistry(dependencies.repositories);
   const createId = dependencies.capture?.createId ?? randomUUID;
 

@@ -1,7 +1,7 @@
 # PostgreSQL operations
 
 Status: founder-release runbook
-Reviewed: 2026-07-22
+Reviewed: 2026-07-23
 
 ## Local setup
 
@@ -35,7 +35,7 @@ Before applying them, inspect the `0001` preflight result for duplicate `(user_i
 2. Confirm `DATABASE_URL` names the intended environment.
 3. Take or verify a recent managed PostgreSQL snapshot immediately before migration and record its identifier.
 4. Run `pnpm db:migrate` once as a controlled release step.
-5. Run `pnpm db:seed`; this changes global sanitized source policy only. Its JSON result reports the total manifest count and the number actually inserted; a second run must report `inserted: 0` and never create or update a user-owned row.
+5. Run `pnpm db:seed`; this inserts global hosted source policy only and excludes every `fixture` acquisition manifest. Its JSON result reports the total manifest count and the number actually inserted; a second run must report `inserted: 0` and never create or update a user-owned row. An older database may retain a historical global fixture-policy row; hosted connector composition cannot execute it, and the seed does not delete or rewrite existing policy history.
 6. Verify `/api/health` returns 200 and `/api/ready` returns `status: ready` with a current migration.
 7. Start one web instance and one worker instance in the same region as the database.
 

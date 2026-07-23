@@ -91,7 +91,8 @@ export function createPostgresWorkerQueue(connection: PostgresConnection): Syste
             .select({
               userId: sourceJobs.userId,
               jobId: sourceJobs.id,
-              dispatchId: maritimeDispatches.id
+              dispatchId: maritimeDispatches.id,
+              dispatchState: maritimeDispatches.state
             })
             .from(maritimeDispatches)
             .innerJoin(
@@ -103,12 +104,21 @@ export function createPostgresWorkerQueue(connection: PostgresConnection): Syste
             )
             .where(
               and(
-                eq(maritimeDispatches.state, "accepted"),
                 eq(maritimeDispatches.audience, input.audience),
-                gt(maritimeDispatches.expiresAt, now),
-                eq(sourceJobs.status, "dispatched"),
                 lt(sourceJobs.attempts, sourceJobs.maxAttempts),
-                or(isNull(sourceJobs.leaseExpiresAt), lte(sourceJobs.leaseExpiresAt, now))
+                or(
+                  and(
+                    eq(maritimeDispatches.state, "accepted"),
+                    gt(maritimeDispatches.expiresAt, now),
+                    eq(sourceJobs.status, "dispatched"),
+                    or(isNull(sourceJobs.leaseExpiresAt), lte(sourceJobs.leaseExpiresAt, now))
+                  ),
+                  and(
+                    eq(maritimeDispatches.state, "consumed"),
+                    eq(sourceJobs.status, "running"),
+                    lte(sourceJobs.leaseExpiresAt, now)
+                  )
+                )
               )
             )
             .orderBy(asc(maritimeDispatches.issuedAt), asc(sourceJobs.userId), asc(sourceJobs.id))
@@ -116,16 +126,19 @@ export function createPostgresWorkerQueue(connection: PostgresConnection): Syste
             .for("update", { skipLocked: true });
           const candidate = candidates[0];
           if (!candidate) return null;
-          await tx
-            .update(maritimeDispatches)
-            .set({ state: "consumed", consumedAt: now, updatedAt: now })
-            .where(
-              and(
-                eq(maritimeDispatches.userId, candidate.userId),
-                eq(maritimeDispatches.id, candidate.dispatchId),
-                eq(maritimeDispatches.state, "accepted")
-              )
-            );
+          const recovering = candidate.dispatchState === "consumed";
+          if (!recovering) {
+            await tx
+              .update(maritimeDispatches)
+              .set({ state: "consumed", consumedAt: now, updatedAt: now })
+              .where(
+                and(
+                  eq(maritimeDispatches.userId, candidate.userId),
+                  eq(maritimeDispatches.id, candidate.dispatchId),
+                  eq(maritimeDispatches.state, "accepted")
+                )
+              );
+          }
           const rows = await tx
             .update(sourceJobs)
             .set({
@@ -139,7 +152,9 @@ export function createPostgresWorkerQueue(connection: PostgresConnection): Syste
               and(
                 eq(sourceJobs.userId, candidate.userId),
                 eq(sourceJobs.id, candidate.jobId),
-                eq(sourceJobs.status, "dispatched")
+                recovering
+                  ? and(eq(sourceJobs.status, "running"), lte(sourceJobs.leaseExpiresAt, now))
+                  : eq(sourceJobs.status, "dispatched")
               )
             )
             .returning();

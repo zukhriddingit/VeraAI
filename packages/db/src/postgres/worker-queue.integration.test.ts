@@ -3,7 +3,13 @@ import { describe, expect, it } from "vitest";
 
 import { DEMO_SEARCH_PROFILE, SOURCE_FIXTURES } from "../fixtures.ts";
 import { createCorePostgresRepositories } from "./repositories.ts";
-import { decisionJobs, normalizationJobs, sourceJobs, users } from "./schema.ts";
+import {
+  decisionJobs,
+  maritimeDispatches,
+  normalizationJobs,
+  sourceJobs,
+  users
+} from "./schema.ts";
 import { withPostgresTestDatabase } from "./testing.ts";
 import { createPostgresWorkerQueue } from "./worker-queue.ts";
 
@@ -152,6 +158,116 @@ describe("PostgreSQL system worker queue", () => {
         leaseExpiresAt: "2026-07-20T12:03:00.000Z"
       });
       expect(exhausted).toBeNull();
+    });
+  });
+
+  it("reclaims a lease-expired Maritime-dispatched job without consuming it twice", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await seedOwner(db);
+      await db.insert(sourceJobs).values({
+        userId,
+        id: "source-maritime-recoverable",
+        correlationId: "source-maritime-recoverable-correlation",
+        connectorId: "zillow.current-tab.v1",
+        source: "zillow",
+        acquisitionMode: "local_browser",
+        manifestVersion: 1,
+        trigger: "manual",
+        capability: "browser.capture",
+        approvalId: null,
+        operation: "capture.current_tab",
+        payload: {
+          acquisitionMode: "local_browser",
+          captureKind: "current_tab",
+          nodeId: "node-maritime-recovery",
+          profileId: "profile-maritime-recovery",
+          expectedUrl: "https://www.zillow.com/homedetails/Test/12345_zpid/",
+          canonicalUrl: "https://www.zillow.com/homedetails/Test/12345_zpid/",
+          limits: {
+            maxPages: 1,
+            maxRecords: 1,
+            maxBytes: 250_000,
+            maxDurationMilliseconds: 30_000,
+            maxConcurrency: 1
+          }
+        },
+        payloadHash: "f".repeat(64),
+        idempotencyKey: "1".repeat(64),
+        status: "dispatched",
+        attempts: 0,
+        maxAttempts: 2,
+        availableAt: new Date(now),
+        createdAt: new Date(now),
+        updatedAt: new Date(now)
+      });
+      await db.insert(maritimeDispatches).values({
+        userId,
+        id: "dispatch-maritime-recoverable",
+        sourceJobId: "source-maritime-recoverable",
+        issuer: "vera-control-plane",
+        audience: "vera-worker",
+        nonceHash: "2".repeat(64),
+        payloadHash: "f".repeat(64),
+        state: "accepted",
+        maritimeAgentId: "vera-worker",
+        maritimeRunId: "run-maritime-recoverable",
+        issuedAt: new Date(now),
+        expiresAt: new Date("2026-07-20T12:05:00.000Z"),
+        acceptedAt: new Date(now),
+        consumedAt: null,
+        rejectedAt: null,
+        rejectionCode: null,
+        createdAt: new Date(now),
+        updatedAt: new Date(now)
+      });
+
+      const firstQueue = createPostgresWorkerQueue(connection);
+      const initial = await firstQueue.claimNextDispatchedSourceJob({
+        leaseOwner: "worker-before-crash",
+        audience: "vera-worker",
+        now,
+        leaseExpiresAt
+      });
+      expect(initial?.job).toMatchObject({
+        id: "source-maritime-recoverable",
+        status: "running",
+        attempts: 1
+      });
+
+      const left = createPostgresWorkerQueue(connection);
+      const right = createPostgresWorkerQueue(connection);
+      const recoveryInput = {
+        leaseOwner: "replacement-worker",
+        audience: "vera-worker",
+        now: "2026-07-20T12:06:00.000Z",
+        leaseExpiresAt: "2026-07-20T12:07:00.000Z"
+      };
+      const recoveries = await Promise.all([
+        left.claimNextDispatchedSourceJob(recoveryInput),
+        right.claimNextDispatchedSourceJob(recoveryInput)
+      ]);
+
+      expect(recoveries.filter(Boolean)).toHaveLength(1);
+      expect(recoveries.find(Boolean)?.job).toMatchObject({
+        id: "source-maritime-recoverable",
+        status: "running",
+        attempts: 2
+      });
+      const dispatchRows = await db.select().from(maritimeDispatches);
+      expect(dispatchRows).toHaveLength(1);
+      expect(dispatchRows[0]).toMatchObject({
+        state: "consumed",
+        consumedAt: new Date(now)
+      });
+
+      await expect(
+        firstQueue.claimNextDispatchedSourceJob({
+          leaseOwner: "worker-after-budget",
+          audience: "vera-worker",
+          now: "2026-07-20T12:08:00.000Z",
+          leaseExpiresAt: "2026-07-20T12:09:00.000Z"
+        })
+      ).resolves.toBeNull();
     });
   });
 });

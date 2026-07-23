@@ -40,7 +40,7 @@ export async function POST(request: Request): Promise<Response> {
       userId: context.userId,
       repositoryProvider: context.repositoryProvider,
       repositories: context.repositories,
-      connectors: listSourceConnectors(),
+      connectors: listSourceConnectors(context.demoMode ? "demo" : "hosted"),
       policyRegistry: await createPersistedPolicyRegistry(context.repositories),
       now: () => new Date(),
       createId: randomUUID
