@@ -2,7 +2,13 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { createSqliteRepositories, migrateDatabase, openDatabase } from "@vera/db";
+import {
+  DEMO_USER_ID,
+  createDemoRepositoryProvider,
+  createSqliteRepositories,
+  migrateDatabase,
+  openDatabase
+} from "@vera/db/demo";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { runDemoSearch } from "./demo-search-service.ts";
@@ -29,23 +35,36 @@ function database() {
   directories.push(directory);
   const connection = openDatabase({ filePath: join(directory, "vera.sqlite") });
   migrateDatabase(connection);
-  return { directory, connection, repositories: createSqliteRepositories(connection) };
+  const syncRepositories = createSqliteRepositories(connection);
+  const provider = createDemoRepositoryProvider(connection);
+  return {
+    directory,
+    connection,
+    syncRepositories,
+    provider,
+    repositories: provider.forUser(DEMO_USER_ID)
+  };
 }
 
 describe.sequential("cockpit initial read model", () => {
-  it("stages zero listings until the deterministic demo search completes", () => {
-    const { connection, repositories } = database();
+  it("stages zero listings until the deterministic demo search completes", async () => {
+    const { connection, repositories, syncRepositories, provider } = database();
     try {
-      seedAndEvaluateProductionEvidence(repositories);
-      const staged = projectCockpitInitialState(repositories, { demoMode: true, now });
+      seedAndEvaluateProductionEvidence(syncRepositories);
+      const staged = await projectCockpitInitialState(repositories, { demoMode: true, now });
       expect(staged).toMatchObject({
         kind: "ready",
         demoStatus: { status: "not_run" },
         listingCollection: { count: 0 }
       });
 
-      runDemoSearch({ repositories, now });
-      const completed = projectCockpitInitialState(repositories, { demoMode: true, now });
+      await runDemoSearch({
+        userId: DEMO_USER_ID,
+        repositoryProvider: provider,
+        repositories,
+        now
+      });
+      const completed = await projectCockpitInitialState(repositories, { demoMode: true, now });
       expect(completed).toMatchObject({
         kind: "ready",
         demoStatus: { status: "completed" },
@@ -56,11 +75,11 @@ describe.sequential("cockpit initial read model", () => {
     }
   });
 
-  it("returns all current listings outside demo mode", () => {
-    const { connection, repositories } = database();
+  it("returns all current listings outside demo mode", async () => {
+    const { connection, repositories, syncRepositories } = database();
     try {
-      seedAndEvaluateProductionEvidence(repositories);
-      const state = projectCockpitInitialState(repositories, { demoMode: false, now });
+      seedAndEvaluateProductionEvidence(syncRepositories);
+      const state = await projectCockpitInitialState(repositories, { demoMode: false, now });
       expect(state).toMatchObject({
         kind: "ready",
         demoMode: false,
@@ -72,13 +91,10 @@ describe.sequential("cockpit initial read model", () => {
     }
   });
 
-  it("renders a safe recovery model when the database is absent", () => {
-    const directory = mkdtempSync(join(tmpdir(), "vera-cockpit-missing-"));
-    directories.push(directory);
-    process.env.VERA_DATA_DIR = directory;
-    process.env.VERA_DEMO_MODE = "1";
-
-    expect(loadCockpitInitialState()).toEqual({
+  it("renders a safe recovery model when the repository is unavailable", async () => {
+    const { connection, repositories } = database();
+    connection.close();
+    await expect(loadCockpitInitialState(repositories, true)).resolves.toEqual({
       kind: "unavailable",
       demoMode: true,
       message: "Demo data is not ready. Run pnpm demo:reset and pnpm demo:seed."

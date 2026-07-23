@@ -1,0 +1,2250 @@
+{
+  "version": "6",
+  "dialect": "sqlite",
+  "id": "65c49368-6e85-4de1-bc38-408d1393021c",
+  "prevId": "05754984-6e86-465d-8573-07bef07f775e",
+  "tables": {
+    "activity_events": {
+      "name": "activity_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "causation_id": {
+          "name": "causation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "action": {
+          "name": "action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "policy_decision": {
+          "name": "policy_decision",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "approval_id": {
+          "name": "approval_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "outcome": {
+          "name": "outcome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "error_category": {
+          "name": "error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "activity_events_correlation_idx": {
+          "name": "activity_events_correlation_idx",
+          "columns": ["correlation_id", "occurred_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "activity_events_approval_id_approvals_id_fk": {
+          "name": "activity_events_approval_id_approvals_id_fk",
+          "tableFrom": "activity_events",
+          "tableTo": "approvals",
+          "columnsFrom": ["approval_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "activity_events_actor_allowed": {
+          "name": "activity_events_actor_allowed",
+          "value": "\"activity_events\".\"actor\" IN ('user', 'vera', 'connector', 'system')"
+        },
+        "activity_events_policy_allowed": {
+          "name": "activity_events_policy_allowed",
+          "value": "\"activity_events\".\"policy_decision\" IN ('not_applicable', 'authorized', 'denied')"
+        },
+        "activity_events_outcome_allowed": {
+          "name": "activity_events_outcome_allowed",
+          "value": "\"activity_events\".\"outcome\" IN ('recorded', 'authorized', 'denied', 'succeeded', 'failed')"
+        }
+      }
+    },
+    "approvals": {
+      "name": "approvals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "actor": {
+          "name": "actor",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "operation": {
+          "name": "operation",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_type": {
+          "name": "target_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "target_id": {
+          "name": "target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_hash": {
+          "name": "payload_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "used_at": {
+          "name": "used_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "approvals_actor_user_only": {
+          "name": "approvals_actor_user_only",
+          "value": "\"approvals\".\"actor\" = 'user'"
+        },
+        "approvals_state_allowed": {
+          "name": "approvals_state_allowed",
+          "value": "\"approvals\".\"state\" IN ('pending', 'used', 'expired', 'revoked')"
+        }
+      }
+    },
+    "canonical_field_sources": {
+      "name": "canonical_field_sources",
+      "columns": {
+        "canonical_listing_id": {
+          "name": "canonical_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_path": {
+          "name": "field_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_provenance_id": {
+          "name": "field_provenance_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "canonical_field_sources_provenance_idx": {
+          "name": "canonical_field_sources_provenance_idx",
+          "columns": ["field_provenance_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "canonical_field_sources_canonical_listing_id_canonical_listings_id_fk": {
+          "name": "canonical_field_sources_canonical_listing_id_canonical_listings_id_fk",
+          "tableFrom": "canonical_field_sources",
+          "tableTo": "canonical_listings",
+          "columnsFrom": ["canonical_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "canonical_field_sources_field_provenance_id_field_provenance_id_fk": {
+          "name": "canonical_field_sources_field_provenance_id_field_provenance_id_fk",
+          "tableFrom": "canonical_field_sources",
+          "tableTo": "field_provenance",
+          "columnsFrom": ["field_provenance_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "canonical_field_sources_canonical_listing_id_field_path_pk": {
+          "columns": ["canonical_listing_id", "field_path"],
+          "name": "canonical_field_sources_canonical_listing_id_field_path_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "canonical_listing_sources": {
+      "name": "canonical_listing_sources",
+      "columns": {
+        "canonical_listing_id": {
+          "name": "canonical_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "listing_source_record_id": {
+          "name": "listing_source_record_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "is_primary": {
+          "name": "is_primary",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "canonical_listing_sources_source_unique": {
+          "name": "canonical_listing_sources_source_unique",
+          "columns": ["listing_source_record_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "canonical_listing_sources_canonical_listing_id_canonical_listings_id_fk": {
+          "name": "canonical_listing_sources_canonical_listing_id_canonical_listings_id_fk",
+          "tableFrom": "canonical_listing_sources",
+          "tableTo": "canonical_listings",
+          "columnsFrom": ["canonical_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "canonical_listing_sources_listing_source_record_id_listing_source_records_id_fk": {
+          "name": "canonical_listing_sources_listing_source_record_id_listing_source_records_id_fk",
+          "tableFrom": "canonical_listing_sources",
+          "tableTo": "listing_source_records",
+          "columnsFrom": ["listing_source_record_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {
+        "canonical_listing_sources_canonical_listing_id_listing_source_record_id_pk": {
+          "columns": ["canonical_listing_id", "listing_source_record_id"],
+          "name": "canonical_listing_sources_canonical_listing_id_listing_source_record_id_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "canonical_listings": {
+      "name": "canonical_listings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "duplicate_cluster_id": {
+          "name": "duplicate_cluster_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "primary_source_record_id": {
+          "name": "primary_source_record_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "address_line_1": {
+          "name": "address_line_1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_unit": {
+          "name": "address_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_city": {
+          "name": "address_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_region": {
+          "name": "address_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_postal_code": {
+          "name": "address_postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_country_code": {
+          "name": "address_country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "monthly_rent_cents": {
+          "name": "monthly_rent_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recurring_fees_cents": {
+          "name": "recurring_fees_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bedrooms_half_units": {
+          "name": "bedrooms_half_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bathrooms_half_units": {
+          "name": "bathrooms_half_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "square_feet": {
+          "name": "square_feet",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "property_type": {
+          "name": "property_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "available_on": {
+          "name": "available_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_term_months": {
+          "name": "lease_term_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pet_policy": {
+          "name": "pet_policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'null'"
+        },
+        "amenities": {
+          "name": "amenities",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lifecycle_state": {
+          "name": "lifecycle_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completeness_basis_points": {
+          "name": "completeness_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "freshest_observed_at": {
+          "name": "freshest_observed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "canonical_listings_duplicate_cluster_unique": {
+          "name": "canonical_listings_duplicate_cluster_unique",
+          "columns": ["duplicate_cluster_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "canonical_listings_duplicate_cluster_id_duplicate_clusters_id_fk": {
+          "name": "canonical_listings_duplicate_cluster_id_duplicate_clusters_id_fk",
+          "tableFrom": "canonical_listings",
+          "tableTo": "duplicate_clusters",
+          "columnsFrom": ["duplicate_cluster_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "canonical_listings_primary_source_record_id_listing_source_records_id_fk": {
+          "name": "canonical_listings_primary_source_record_id_listing_source_records_id_fk",
+          "tableFrom": "canonical_listings",
+          "tableTo": "listing_source_records",
+          "columnsFrom": ["primary_source_record_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "canonical_listings_lifecycle_allowed": {
+          "name": "canonical_listings_lifecycle_allowed",
+          "value": "\"canonical_listings\".\"lifecycle_state\" IN (\n        'new', 'shortlisted', 'draft_ready', 'draft_created', 'draft_rejected', 'replied',\n        'follow_up_due', 'tour_proposed', 'tour_scheduled', 'toured', 'applying', 'passed',\n        'dismissed', 'stale', 'unavailable'\n      )"
+        },
+        "canonical_listings_completeness_range": {
+          "name": "canonical_listings_completeness_range",
+          "value": "\"canonical_listings\".\"completeness_basis_points\" BETWEEN 0 AND 10000"
+        },
+        "canonical_listings_money_nonnegative": {
+          "name": "canonical_listings_money_nonnegative",
+          "value": "(\"canonical_listings\".\"monthly_rent_cents\" IS NULL OR \"canonical_listings\".\"monthly_rent_cents\" >= 0)\n        AND (\"canonical_listings\".\"recurring_fees_cents\" IS NULL OR \"canonical_listings\".\"recurring_fees_cents\" >= 0)"
+        }
+      }
+    },
+    "contact_workflows": {
+      "name": "contact_workflows",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "canonical_listing_id": {
+          "name": "canonical_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "recipient_reference": {
+          "name": "recipient_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "missing_fact_questions": {
+          "name": "missing_fact_questions",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "draft_reference": {
+          "name": "draft_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "contact_workflows_listing_unique": {
+          "name": "contact_workflows_listing_unique",
+          "columns": ["canonical_listing_id"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "contact_workflows_canonical_listing_id_canonical_listings_id_fk": {
+          "name": "contact_workflows_canonical_listing_id_canonical_listings_id_fk",
+          "tableFrom": "contact_workflows",
+          "tableTo": "canonical_listings",
+          "columnsFrom": ["canonical_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "contact_workflows_state_allowed": {
+          "name": "contact_workflows_state_allowed",
+          "value": "\"contact_workflows\".\"state\" IN ('not_started', 'questions_ready', 'draft_ready', 'draft_created', 'reply_received', 'closed')"
+        }
+      }
+    },
+    "duplicate_clusters": {
+      "name": "duplicate_clusters",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "cluster_key": {
+          "name": "cluster_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "algorithm_version": {
+          "name": "algorithm_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason_codes": {
+          "name": "reason_codes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "duplicate_clusters_key_unique": {
+          "name": "duplicate_clusters_key_unique",
+          "columns": ["cluster_key"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "field_provenance": {
+      "name": "field_provenance",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "listing_source_record_id": {
+          "name": "listing_source_record_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "raw_listing_id": {
+          "name": "raw_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "field_path": {
+          "name": "field_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "extraction_method": {
+          "name": "extraction_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_basis_points": {
+          "name": "confidence_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "value_status": {
+          "name": "value_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'known'"
+        },
+        "unknown_reason": {
+          "name": "unknown_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evidence_excerpt": {
+          "name": "evidence_excerpt",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "field_provenance_source_field_unique": {
+          "name": "field_provenance_source_field_unique",
+          "columns": ["listing_source_record_id", "field_path"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "field_provenance_listing_source_record_id_listing_source_records_id_fk": {
+          "name": "field_provenance_listing_source_record_id_listing_source_records_id_fk",
+          "tableFrom": "field_provenance",
+          "tableTo": "listing_source_records",
+          "columnsFrom": ["listing_source_record_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "field_provenance_raw_listing_id_raw_listings_id_fk": {
+          "name": "field_provenance_raw_listing_id_raw_listings_id_fk",
+          "tableFrom": "field_provenance",
+          "tableTo": "raw_listings",
+          "columnsFrom": ["raw_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "field_provenance_confidence_range": {
+          "name": "field_provenance_confidence_range",
+          "value": "\"field_provenance\".\"confidence_basis_points\" BETWEEN 0 AND 10000"
+        },
+        "field_provenance_method_allowed": {
+          "name": "field_provenance_method_allowed",
+          "value": "\"field_provenance\".\"extraction_method\" IN ('fixture_structured', 'manual', 'rule', 'ai')"
+        },
+        "field_provenance_value_status_allowed": {
+          "name": "field_provenance_value_status_allowed",
+          "value": "\"field_provenance\".\"value_status\" IN ('known', 'unknown')"
+        },
+        "field_provenance_unknown_consistency": {
+          "name": "field_provenance_unknown_consistency",
+          "value": "(\n        \"field_provenance\".\"value_status\" = 'known'\n        AND \"field_provenance\".\"unknown_reason\" IS NULL\n      ) OR (\n        \"field_provenance\".\"value_status\" = 'unknown'\n        AND \"field_provenance\".\"confidence_basis_points\" = 0\n        AND \"field_provenance\".\"unknown_reason\" IN (\n          'missing_evidence', 'unrecognized_format', 'not_applicable'\n        )\n      )"
+        }
+      }
+    },
+    "listing_photos": {
+      "name": "listing_photos",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "listing_source_record_id": {
+          "name": "listing_source_record_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "fixture_asset_label": {
+          "name": "fixture_asset_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "byte_hash": {
+          "name": "byte_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "perceptual_hash": {
+          "name": "perceptual_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "listing_photos_source_position_unique": {
+          "name": "listing_photos_source_position_unique",
+          "columns": ["listing_source_record_id", "position"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "listing_photos_listing_source_record_id_listing_source_records_id_fk": {
+          "name": "listing_photos_listing_source_record_id_listing_source_records_id_fk",
+          "tableFrom": "listing_photos",
+          "tableTo": "listing_source_records",
+          "columnsFrom": ["listing_source_record_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "listing_photos_reference_required": {
+          "name": "listing_photos_reference_required",
+          "value": "\"listing_photos\".\"source_url\" IS NOT NULL OR \"listing_photos\".\"fixture_asset_label\" IS NOT NULL"
+        },
+        "listing_photos_position_nonnegative": {
+          "name": "listing_photos_position_nonnegative",
+          "value": "\"listing_photos\".\"position\" >= 0"
+        }
+      }
+    },
+    "listing_scores": {
+      "name": "listing_scores",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "canonical_listing_id": {
+          "name": "canonical_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "search_profile_id": {
+          "name": "search_profile_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "algorithm_version": {
+          "name": "algorithm_version",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "input_hash": {
+          "name": "input_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "total_score_basis_points": {
+          "name": "total_score_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "factors": {
+          "name": "factors",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "reason_codes": {
+          "name": "reason_codes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "computed_at": {
+          "name": "computed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "listing_scores_snapshot_unique": {
+          "name": "listing_scores_snapshot_unique",
+          "columns": [
+            "canonical_listing_id",
+            "search_profile_id",
+            "algorithm_version",
+            "input_hash"
+          ],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "listing_scores_canonical_listing_id_canonical_listings_id_fk": {
+          "name": "listing_scores_canonical_listing_id_canonical_listings_id_fk",
+          "tableFrom": "listing_scores",
+          "tableTo": "canonical_listings",
+          "columnsFrom": ["canonical_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        },
+        "listing_scores_search_profile_id_search_profiles_id_fk": {
+          "name": "listing_scores_search_profile_id_search_profiles_id_fk",
+          "tableFrom": "listing_scores",
+          "tableTo": "search_profiles",
+          "columnsFrom": ["search_profile_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "listing_scores_total_range": {
+          "name": "listing_scores_total_range",
+          "value": "\"listing_scores\".\"total_score_basis_points\" BETWEEN -10000 AND 10000"
+        }
+      }
+    },
+    "listing_source_records": {
+      "name": "listing_source_records",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "raw_listing_id": {
+          "name": "raw_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_listing_id": {
+          "name": "source_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_posted_at": {
+          "name": "source_posted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "contact_channel": {
+          "name": "contact_channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'unknown'"
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "address_line_1": {
+          "name": "address_line_1",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_unit": {
+          "name": "address_unit",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_city": {
+          "name": "address_city",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_region": {
+          "name": "address_region",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_postal_code": {
+          "name": "address_postal_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "address_country_code": {
+          "name": "address_country_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "monthly_rent_cents": {
+          "name": "monthly_rent_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "recurring_fees_cents": {
+          "name": "recurring_fees_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bedrooms_half_units": {
+          "name": "bedrooms_half_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "bathrooms_half_units": {
+          "name": "bathrooms_half_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "square_feet": {
+          "name": "square_feet",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "property_type": {
+          "name": "property_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "available_on": {
+          "name": "available_on",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_term_months": {
+          "name": "lease_term_months",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pet_policy": {
+          "name": "pet_policy",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false,
+          "default": "'null'"
+        },
+        "amenities": {
+          "name": "amenities",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "extraction_confidence_basis_points": {
+          "name": "extraction_confidence_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completeness_basis_points": {
+          "name": "completeness_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "listing_source_records_raw_listing_unique": {
+          "name": "listing_source_records_raw_listing_unique",
+          "columns": ["raw_listing_id"],
+          "isUnique": true
+        },
+        "listing_source_records_source_idx": {
+          "name": "listing_source_records_source_idx",
+          "columns": ["source"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "listing_source_records_raw_listing_id_raw_listings_id_fk": {
+          "name": "listing_source_records_raw_listing_id_raw_listings_id_fk",
+          "tableFrom": "listing_source_records",
+          "tableTo": "raw_listings",
+          "columnsFrom": ["raw_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "listing_source_records_confidence_range": {
+          "name": "listing_source_records_confidence_range",
+          "value": "\"listing_source_records\".\"extraction_confidence_basis_points\" BETWEEN 0 AND 10000"
+        },
+        "listing_source_records_completeness_range": {
+          "name": "listing_source_records_completeness_range",
+          "value": "\"listing_source_records\".\"completeness_basis_points\" BETWEEN 0 AND 10000"
+        },
+        "listing_source_records_money_nonnegative": {
+          "name": "listing_source_records_money_nonnegative",
+          "value": "(\"listing_source_records\".\"monthly_rent_cents\" IS NULL OR \"listing_source_records\".\"monthly_rent_cents\" >= 0)\n        AND (\"listing_source_records\".\"recurring_fees_cents\" IS NULL OR \"listing_source_records\".\"recurring_fees_cents\" >= 0)"
+        },
+        "listing_source_records_contact_channel_allowed": {
+          "name": "listing_source_records_contact_channel_allowed",
+          "value": "\"listing_source_records\".\"contact_channel\" IN (\n        'email', 'phone', 'platform_message', 'website_form', 'other', 'unknown'\n      )"
+        }
+      }
+    },
+    "normalization_jobs": {
+      "name": "normalization_jobs",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "raw_listing_id": {
+          "name": "raw_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "job_type": {
+          "name": "job_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'normalize_listing'"
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "available_at": {
+          "name": "available_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "attempts": {
+          "name": "attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 0
+        },
+        "max_attempts": {
+          "name": "max_attempts",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "lease_owner": {
+          "name": "lease_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "lease_expires_at": {
+          "name": "lease_expires_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error_code": {
+          "name": "last_error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_error_category": {
+          "name": "last_error_category",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "causation_id": {
+          "name": "causation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "normalization_jobs_raw_listing_unique": {
+          "name": "normalization_jobs_raw_listing_unique",
+          "columns": ["raw_listing_id"],
+          "isUnique": true
+        },
+        "normalization_jobs_idempotency_key_unique": {
+          "name": "normalization_jobs_idempotency_key_unique",
+          "columns": ["idempotency_key"],
+          "isUnique": true
+        },
+        "normalization_jobs_claim_idx": {
+          "name": "normalization_jobs_claim_idx",
+          "columns": ["state", "available_at", "created_at"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "normalization_jobs_raw_listing_id_raw_listings_id_fk": {
+          "name": "normalization_jobs_raw_listing_id_raw_listings_id_fk",
+          "tableFrom": "normalization_jobs",
+          "tableTo": "raw_listings",
+          "columnsFrom": ["raw_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "normalization_jobs_type_allowed": {
+          "name": "normalization_jobs_type_allowed",
+          "value": "\"normalization_jobs\".\"job_type\" = 'normalize_listing'"
+        },
+        "normalization_jobs_state_allowed": {
+          "name": "normalization_jobs_state_allowed",
+          "value": "\"normalization_jobs\".\"state\" IN ('queued', 'leased', 'completed', 'retryable', 'dead_letter')"
+        },
+        "normalization_jobs_attempts_valid": {
+          "name": "normalization_jobs_attempts_valid",
+          "value": "\"normalization_jobs\".\"attempts\" >= 0 AND \"normalization_jobs\".\"max_attempts\" > 0 AND \"normalization_jobs\".\"attempts\" <= \"normalization_jobs\".\"max_attempts\""
+        },
+        "normalization_jobs_attempt_state_consistency": {
+          "name": "normalization_jobs_attempt_state_consistency",
+          "value": "(\n        \"normalization_jobs\".\"state\" = 'queued' AND \"normalization_jobs\".\"attempts\" = 0\n      ) OR (\n        \"normalization_jobs\".\"state\" IN ('leased', 'completed') AND \"normalization_jobs\".\"attempts\" >= 1\n      ) OR (\n        \"normalization_jobs\".\"state\" = 'retryable'\n        AND \"normalization_jobs\".\"attempts\" >= 1\n        AND \"normalization_jobs\".\"attempts\" < \"normalization_jobs\".\"max_attempts\"\n      ) OR (\n        \"normalization_jobs\".\"state\" = 'dead_letter'\n        AND \"normalization_jobs\".\"attempts\" = \"normalization_jobs\".\"max_attempts\"\n      )"
+        },
+        "normalization_jobs_lease_consistency": {
+          "name": "normalization_jobs_lease_consistency",
+          "value": "(\n        \"normalization_jobs\".\"state\" = 'leased'\n        AND \"normalization_jobs\".\"lease_owner\" IS NOT NULL\n        AND \"normalization_jobs\".\"lease_expires_at\" IS NOT NULL\n      ) OR (\n        \"normalization_jobs\".\"state\" <> 'leased'\n        AND \"normalization_jobs\".\"lease_owner\" IS NULL\n        AND \"normalization_jobs\".\"lease_expires_at\" IS NULL\n      )"
+        },
+        "normalization_jobs_completion_consistency": {
+          "name": "normalization_jobs_completion_consistency",
+          "value": "(\n        \"normalization_jobs\".\"state\" = 'completed'\n        AND \"normalization_jobs\".\"completed_at\" IS NOT NULL\n      ) OR (\n        \"normalization_jobs\".\"state\" <> 'completed'\n        AND \"normalization_jobs\".\"completed_at\" IS NULL\n      )"
+        },
+        "normalization_jobs_error_pair_consistency": {
+          "name": "normalization_jobs_error_pair_consistency",
+          "value": "(\"normalization_jobs\".\"last_error_code\" IS NULL) = (\"normalization_jobs\".\"last_error_category\" IS NULL)"
+        },
+        "normalization_jobs_error_state_consistency": {
+          "name": "normalization_jobs_error_state_consistency",
+          "value": "(\n        \"normalization_jobs\".\"state\" IN ('queued', 'completed')\n        AND \"normalization_jobs\".\"last_error_code\" IS NULL\n      ) OR (\n        \"normalization_jobs\".\"state\" IN ('retryable', 'dead_letter')\n        AND \"normalization_jobs\".\"last_error_code\" IS NOT NULL\n      ) OR \"normalization_jobs\".\"state\" = 'leased'"
+        }
+      }
+    },
+    "raw_listings": {
+      "name": "raw_listings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_listing_id": {
+          "name": "source_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "capture_method": {
+          "name": "capture_method",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "observed_at": {
+          "name": "observed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_posted_at": {
+          "name": "source_posted_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "raw_text": {
+          "name": "raw_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "raw_json": {
+          "name": "raw_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "capture_metadata": {
+          "name": "capture_metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content_hash": {
+          "name": "content_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "idempotency_key": {
+          "name": "idempotency_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "raw_listings_idempotency_key_unique": {
+          "name": "raw_listings_idempotency_key_unique",
+          "columns": ["idempotency_key"],
+          "isUnique": true
+        },
+        "raw_listings_source_identity_idx": {
+          "name": "raw_listings_source_identity_idx",
+          "columns": ["source", "source_listing_id"],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "raw_listings_evidence_required": {
+          "name": "raw_listings_evidence_required",
+          "value": "\"raw_listings\".\"raw_text\" IS NOT NULL OR \"raw_listings\".\"raw_json\" IS NOT NULL"
+        },
+        "raw_listings_capture_method_allowed": {
+          "name": "raw_listings_capture_method_allowed",
+          "value": "\"raw_listings\".\"capture_method\" IN ('fixture', 'manual_text', 'manual_structured')"
+        }
+      }
+    },
+    "risk_signals": {
+      "name": "risk_signals",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "canonical_listing_id": {
+          "name": "canonical_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "severity": {
+          "name": "severity",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confidence_basis_points": {
+          "name": "confidence_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "evidence": {
+          "name": "evidence",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "verification_action": {
+          "name": "verification_action",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "risk_signals_listing_code_unique": {
+          "name": "risk_signals_listing_code_unique",
+          "columns": ["canonical_listing_id", "code"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {
+        "risk_signals_canonical_listing_id_canonical_listings_id_fk": {
+          "name": "risk_signals_canonical_listing_id_canonical_listings_id_fk",
+          "tableFrom": "risk_signals",
+          "tableTo": "canonical_listings",
+          "columnsFrom": ["canonical_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "risk_signals_confidence_range": {
+          "name": "risk_signals_confidence_range",
+          "value": "\"risk_signals\".\"confidence_basis_points\" BETWEEN 0 AND 10000"
+        },
+        "risk_signals_severity_allowed": {
+          "name": "risk_signals_severity_allowed",
+          "value": "\"risk_signals\".\"severity\" IN ('info', 'low', 'medium', 'high')"
+        },
+        "risk_signals_status_allowed": {
+          "name": "risk_signals_status_allowed",
+          "value": "\"risk_signals\".\"status\" IN ('open', 'verified', 'dismissed')"
+        }
+      }
+    },
+    "search_profiles": {
+      "name": "search_profiles",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "location_text": {
+          "name": "location_text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "center_latitude_microdegrees": {
+          "name": "center_latitude_microdegrees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "center_longitude_microdegrees": {
+          "name": "center_longitude_microdegrees",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "radius_meters": {
+          "name": "radius_meters",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "minimum_bedrooms_half_units": {
+          "name": "minimum_bedrooms_half_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "minimum_bathrooms_half_units": {
+          "name": "minimum_bathrooms_half_units",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "target_monthly_total_cents": {
+          "name": "target_monthly_total_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "absolute_monthly_maximum_cents": {
+          "name": "absolute_monthly_maximum_cents",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "move_in_earliest": {
+          "name": "move_in_earliest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "move_in_latest": {
+          "name": "move_in_latest",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "pet_requirements": {
+          "name": "pet_requirements",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "commute_anchors": {
+          "name": "commute_anchors",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "hard_constraints": {
+          "name": "hard_constraints",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "weighted_preferences": {
+          "name": "weighted_preferences",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "notification_rules": {
+          "name": "notification_rules",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {
+        "search_profiles_name_version_unique": {
+          "name": "search_profiles_name_version_unique",
+          "columns": ["name", "version"],
+          "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "search_profiles_version_positive": {
+          "name": "search_profiles_version_positive",
+          "value": "\"search_profiles\".\"version\" > 0"
+        },
+        "search_profiles_budget_nonnegative": {
+          "name": "search_profiles_budget_nonnegative",
+          "value": "(\"search_profiles\".\"target_monthly_total_cents\" IS NULL OR \"search_profiles\".\"target_monthly_total_cents\" >= 0)\n        AND (\"search_profiles\".\"absolute_monthly_maximum_cents\" IS NULL OR \"search_profiles\".\"absolute_monthly_maximum_cents\" >= 0)"
+        }
+      }
+    },
+    "source_policy_manifests": {
+      "name": "source_policy_manifests",
+      "columns": {
+        "schema_version": {
+          "name": "schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "connector_id": {
+          "name": "connector_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "display_name": {
+          "name": "display_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Sanitized source label'"
+        },
+        "version": {
+          "name": "version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "execution": {
+          "name": "execution",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "capabilities": {
+          "name": "capabilities",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "allowed_operations": {
+          "name": "allowed_operations",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "allowed_domains": {
+          "name": "allowed_domains",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "allowed_origins": {
+          "name": "allowed_origins",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "allowed_http_methods": {
+          "name": "allowed_http_methods",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "requires_user_session": {
+          "name": "requires_user_session",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "requires_approval": {
+          "name": "requires_approval",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "minimum_interval_seconds": {
+          "name": "minimum_interval_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "max_concurrency": {
+          "name": "max_concurrency",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 1
+        },
+        "global_kill_switch_key": {
+          "name": "global_kill_switch_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'integrations.disabled'"
+        },
+        "connector_kill_switch_key": {
+          "name": "connector_kill_switch_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'integrations.legacy_source_labels'"
+        },
+        "data_classification": {
+          "name": "data_classification",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'synthetic'"
+        },
+        "redaction_rules": {
+          "name": "redaction_rules",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[\"raw_content_from_logs\",\"full_urls_from_logs\",\"contact_details_from_logs\",\"credentials_from_logs\"]'"
+        },
+        "manual_blocker_behavior": {
+          "name": "manual_blocker_behavior",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'stop_and_request_user_action'"
+        },
+        "owner": {
+          "name": "owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'Vera maintainers'"
+        },
+        "reviewed_at": {
+          "name": "reviewed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'2026-07-17'"
+        },
+        "decision_record": {
+          "name": "decision_record",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'docs/DECISIONS/0004-fail-closed-connectors.md'"
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {
+        "source_policy_manifests_connector_id_version_pk": {
+          "columns": ["connector_id", "version"],
+          "name": "source_policy_manifests_connector_id_version_pk"
+        }
+      },
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "source_policy_manifests_version_positive": {
+          "name": "source_policy_manifests_version_positive",
+          "value": "\"source_policy_manifests\".\"version\" > 0"
+        },
+        "source_policy_manifests_schema_version_supported": {
+          "name": "source_policy_manifests_schema_version_supported",
+          "value": "\"source_policy_manifests\".\"schema_version\" = 1"
+        },
+        "source_policy_manifests_execution_allowed": {
+          "name": "source_policy_manifests_execution_allowed",
+          "value": "\"source_policy_manifests\".\"execution\" IN ('manual', 'scheduled')"
+        },
+        "source_policy_manifests_scheduling_consistency": {
+          "name": "source_policy_manifests_scheduling_consistency",
+          "value": "\"source_policy_manifests\".\"execution\" <> 'scheduled' OR \"source_policy_manifests\".\"minimum_interval_seconds\" IS NOT NULL"
+        },
+        "source_policy_manifests_concurrency_positive": {
+          "name": "source_policy_manifests_concurrency_positive",
+          "value": "\"source_policy_manifests\".\"max_concurrency\" > 0"
+        }
+      }
+    },
+    "viewings": {
+      "name": "viewings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "canonical_listing_id": {
+          "name": "canonical_listing_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "proposed_windows": {
+          "name": "proposed_windows",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "confirmed_window": {
+          "name": "confirmed_window",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "time_zone": {
+          "name": "time_zone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "calendar_reference": {
+          "name": "calendar_reference",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "notes": {
+          "name": "notes",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "metadata": {
+          "name": "metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "viewings_canonical_listing_id_canonical_listings_id_fk": {
+          "name": "viewings_canonical_listing_id_canonical_listings_id_fk",
+          "tableFrom": "viewings",
+          "tableTo": "canonical_listings",
+          "columnsFrom": ["canonical_listing_id"],
+          "columnsTo": ["id"],
+          "onDelete": "restrict",
+          "onUpdate": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {
+        "viewings_state_allowed": {
+          "name": "viewings_state_allowed",
+          "value": "\"viewings\".\"state\" IN ('proposed', 'selected', 'hold_approved', 'hold_created', 'confirmed', 'completed', 'cancelled')"
+        }
+      }
+    }
+  },
+  "views": {},
+  "enums": {},
+  "_meta": {
+    "schemas": {},
+    "tables": {},
+    "columns": {}
+  },
+  "internal": {
+    "indexes": {}
+  }
+}

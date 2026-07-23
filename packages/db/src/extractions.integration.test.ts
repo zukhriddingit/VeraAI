@@ -19,7 +19,7 @@ import {
   openDatabase,
   type VeraDatabaseConnection,
   type VeraRepositories
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const now = "2026-07-17T13:00:00.000Z";
 const completedAt = "2026-07-17T13:01:00.000Z";

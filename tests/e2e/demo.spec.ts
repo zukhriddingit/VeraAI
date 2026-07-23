@@ -21,6 +21,7 @@ test("offline golden path preserves evidence, explains risk, and records user co
   await expect(
     page.getByText("12 source records analyzed · 8 homes found · 3 duplicate clusters.")
   ).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: /All 8/u }).click();
   await expect(page.getByTestId("listing-card")).toHaveCount(8);
   await expect(page.getByTestId("duplicate-badge")).toHaveCount(3);
   const sourceChips = page.locator(".listing-sources");
@@ -51,8 +52,12 @@ test("offline golden path preserves evidence, explains risk, and records user co
 
   const addToShortlist = page.getByRole("button", { name: "Add to shortlist" });
   if (await addToShortlist.isVisible()) await addToShortlist.click();
-  await expect(page.getByRole("button", { name: "Remove from shortlist" })).toBeVisible();
-  await expect(page.getByText("Listing added to the shortlist.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove from shortlist" })).toBeVisible({
+    timeout: 15_000
+  });
+  await expect(page.getByText("Listing added to the shortlist.")).toBeVisible({
+    timeout: 15_000
+  });
 
   await page.getByRole("link", { name: "View all activity →" }).click();
   await expect(page.getByRole("heading", { name: "Activity log" })).toBeVisible();

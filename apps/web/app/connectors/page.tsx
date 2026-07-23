@@ -1,8 +1,10 @@
 import Link from "next/link";
 
+import { requireVeraPageSession } from "../../lib/server/page-session";
 import { ConnectorStatusList } from "./connector-status";
 
-export default function ConnectorsPage() {
+export default async function ConnectorsPage() {
+  await requireVeraPageSession();
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">

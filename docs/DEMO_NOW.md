@@ -1,7 +1,9 @@
 # Vera offline Ship Season demo
 
-Status: recording-ready deterministic slice  
-Updated: 2026-07-18
+Status: archived deadline recording path; current commands remain valid
+Updated: 2026-07-22
+
+Hosted persistence is PostgreSQL. This recording path is the explicitly isolated sanitized SQLite demo; it is not a production connector, identity store, or hosted fallback. `VERA_DEMO_MODE=1` alone cannot construct the demo adapter.
 
 ## What this demo is
 
@@ -113,16 +115,12 @@ Safe wording:
 Do not say that Vera searched a live marketplace, logged into an account, contacted a landlord,
 verified a listing, detected fraud, sent a message, or scheduled a viewing.
 
-## Railway demo
+## Hosted boundary
 
-The public deployment is one fixture-only Railway service with one `/data` volume and one replica.
-Runtime startup validates the volume, forces `VERA_DEMO_MODE=1`, removes live-model configuration,
-migrates and idempotently seeds SQLite, then supervises the worker and web server. Missing or
-unexpected storage fails startup; there is no ephemeral database fallback.
-
-Build: `pnpm build`  
-Start: `pnpm deploy:railway`  
-Health: `/api/health`
+This archived recording path is local and deterministic. It is not the hosted release topology.
+Railway or Vercel may host the single web process, but PostgreSQL is canonical and Maritime owns the
+production worker and pinned OpenClaw gateway. Use `infra/maritime/README.md` for current operator
+commands; no deployment occurs as part of the demo commands above.
 
 ## Known limitations and next steps
 
@@ -131,13 +129,14 @@ Health: `/api/health`
   outputs; new-record probabilistic deduplication and continuous rescoring are not implemented.
 - Demo search is intentionally local and idempotent. It performs no network request.
 - Manual capture is the only user-authorized ingestion surface; its URL remains inert provenance.
-- Maritime remains the future primary orchestrator, and OpenClaw remains the future replaceable local
-  browser adapter. Neither is implemented here.
-- Gmail drafts, Calendar holds, live marketplace connectors, and all autonomous external actions are
-  absent. **Prepare outreach — coming next** is intentionally disabled.
+- Maritime dispatch and a pinned OpenClaw bridge are implemented only in hosted composition and are
+  intentionally absent from this deterministic demo.
+- Calendar holds are simulated locally and implemented for hosted Google Calendar. Gmail alert
+  ingestion is implemented, but Gmail draft creation remains absent. **Prepare outreach — coming
+  next** is intentionally disabled.
 
-The next product milestone should implement new-record clustering and deterministic score/risk
-refresh behind the existing provenance and policy boundaries before adding any live source.
+The current production implementation now includes deterministic reconciliation, hosted scheduling,
+and one unsupported founder-only browser capture. Public browser monitoring remains disabled.
 
 ## Acceptance commands
 

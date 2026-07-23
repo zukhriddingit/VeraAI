@@ -3,10 +3,16 @@ packages:
   - packages/*
 
 overrides:
+  "@esbuild-kit/core-utils>esbuild": 0.25.12
   postcss: 8.5.20
+  sharp: 0.35.3
 
 allowBuilds:
+  "@google/genai": false
   better-sqlite3: true
   esbuild: true
+  openclaw: false
+  protobufjs: true
   sharp: true
+  tree-sitter-bash: true
   unrs-resolver: true

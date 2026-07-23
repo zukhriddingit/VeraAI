@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { normalizeRawListing, RawListingEnvelopeSchema } from "@vera/connectors";
-import { createSqliteRepositories, migrateDatabase, openDatabase, seedDatabase } from "@vera/db";
+import {
+  createSqliteRepositories,
+  migrateDatabase,
+  openDatabase,
+  seedDatabase
+} from "@vera/db/demo";
 import {
   CaptureAcceptedResponseSchema,
   CaptureErrorResponseSchema,
@@ -20,12 +25,20 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { POST } from "../route.ts";
 import { GET } from "./route.ts";
+import {
+  clearTestApplication,
+  registerTestDemoRuntime
+} from "../../../../test-support/demo-runtime.ts";
 
 const originalDataDirectory = process.env.VERA_DATA_DIR;
 const completedAt = "2099-07-17T18:00:00.000Z";
 let directory = "";
+let runtimeConnection: ReturnType<typeof openDatabase> | null = null;
 
 afterEach(() => {
+  runtimeConnection?.close();
+  runtimeConnection = null;
+  clearTestApplication();
   if (originalDataDirectory === undefined) delete process.env.VERA_DATA_DIR;
   else process.env.VERA_DATA_DIR = originalDataDirectory;
   if (directory) rmSync(directory, { recursive: true, force: true });
@@ -43,12 +56,14 @@ function initializeDatabase(): void {
   } finally {
     connection.close();
   }
+  runtimeConnection = registerTestDemoRuntime(join(directory, "vera.sqlite"));
 }
 
 async function capture(input: unknown): Promise<CaptureAcceptedResponse> {
   const response = await POST(
     new Request("http://127.0.0.1/api/captures", {
       method: "POST",
+      headers: { "Content-Type": "application/json", Origin: "http://127.0.0.1" },
       body: JSON.stringify(input)
     })
   );
@@ -434,7 +449,8 @@ describe.sequential("GET /api/captures/:rawListingId", () => {
       retryable: false
     });
 
-    rmSync(directory, { recursive: true, force: true });
+    runtimeConnection?.close();
+    runtimeConnection = null;
     const unavailableResponse = await status("raw-listing-unavailable");
     expect(unavailableResponse.status).toBe(503);
     expect(CaptureErrorResponseSchema.parse(await unavailableResponse.json())).toMatchObject({

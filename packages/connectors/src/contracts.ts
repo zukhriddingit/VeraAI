@@ -441,6 +441,7 @@ export type ConnectorHealth = ConnectorStatus;
 
 export interface ConnectorContext {
   readonly correlationId: string;
+  readonly signal?: AbortSignal;
   now(): Date;
   createId(): string;
 }

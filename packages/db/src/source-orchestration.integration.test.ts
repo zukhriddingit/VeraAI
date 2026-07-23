@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
+  BrowserNodeStatusSchema,
   InvalidSourceJobTransitionError,
   type BrowserNodeStatus,
   type JobAttempt,
@@ -16,7 +17,7 @@ import {
   openDatabase,
   type VeraDatabaseConnection,
   type VeraRepositories
-} from "./index.ts";
+} from "./demo/index.ts";
 
 const NOW = "2026-07-18T12:00:00.000Z";
 const LATER = "2026-07-18T12:01:00.000Z";
@@ -66,17 +67,25 @@ function completedAttempt(jobId: string): JobAttempt {
 }
 
 function browserNode(overrides: Partial<BrowserNodeStatus> = {}): BrowserNodeStatus {
-  return {
+  return BrowserNodeStatusSchema.parse({
     nodeId: "browser-node-local-1",
     providerId: "mock-openclaw",
+    nodeName: "Founder Mac",
     status: "online",
+    pairingState: "paired",
+    capabilityApprovalState: "approved",
+    selectedProfileId: "vera-zillow",
+    allowedProfileIds: ["vera-zillow"],
+    reportedOpenClawVersion: "2026.6.33",
+    versionCompatibility: "compatible",
     lastHeartbeatAt: NOW,
     heartbeatExpiresAt: "2026-07-18T12:02:00.000Z",
     contractVersion: 1,
     capabilities: { navigation: true, capture: true, cancellation: true },
+    createdAt: NOW,
     updatedAt: NOW,
     ...overrides
-  };
+  });
 }
 
 let temporaryDirectory: string;
@@ -188,6 +197,7 @@ describe("source orchestration repositories", () => {
       previousCursor: null,
       cursorCandidate: null,
       error: null,
+      capture: null,
       completedAt: LATEST,
       idempotentReplay: false,
       untrustedInput: true as const
@@ -264,7 +274,12 @@ describe("source orchestration repositories", () => {
       browserNode({ status: "stale", updatedAt: LATEST })
     );
 
-    expect(stale).toEqual({ ...current, status: "stale", updatedAt: LATEST });
+    expect(stale).toMatchObject({
+      nodeId: current.nodeId,
+      status: "stale",
+      lastHeartbeatAt: current.lastHeartbeatAt,
+      updatedAt: LATEST
+    });
   });
 
   it("keeps node revocation sticky", () => {

@@ -34,14 +34,38 @@ export const DeferredJobReasonSchema = z.enum([
 ]);
 
 export const ManualActionBlockerSchema = z.enum([
-  "login",
-  "reauthentication",
-  "two_factor_authentication",
-  "captcha",
-  "consent",
-  "camera_permission",
-  "microphone_permission"
+  "login_required",
+  "two_factor_required",
+  "captcha_required",
+  "consent_required",
+  "rate_or_bot_challenge",
+  "unexpected_redirect",
+  "active_url_mismatch",
+  "stale_snapshot",
+  "layout_incompatible",
+  "unsupported_page",
+  "browser_profile_unavailable",
+  "node_pairing_required",
+  "capability_approval_required",
+  "node_offline",
+  "version_incompatible",
+  "download_or_upload_requested",
+  "camera_or_microphone_requested",
+  "policy_uncertain",
+  "user_intervention_required"
 ]);
+
+export const BrowserCaptureKindSchema = z.enum(["saved_search", "current_tab"]);
+
+export const BrowserProfileIdSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(120)
+  .regex(
+    /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/u,
+    "Browser profile identifiers must be safe opaque names, not filesystem paths."
+  );
 
 export const ConnectorCursorSchema = z
   .object({
@@ -139,7 +163,7 @@ export const SafeBrowserUrlSchema = z
     }
   });
 
-export const SourceJobPayloadSchema = z.discriminatedUnion("acquisitionMode", [
+export const SourceJobPayloadSchema = z.union([
   z
     .object({
       acquisitionMode: z.literal("fixture"),
@@ -159,16 +183,34 @@ export const SourceJobPayloadSchema = z.discriminatedUnion("acquisitionMode", [
       committedCursor: ConnectorCursorSchema.nullable()
     })
     .strict(),
-  z
-    .object({
-      acquisitionMode: z.literal("local_browser"),
-      nodeId: EntityIdSchema,
-      savedSearchId: EntityIdSchema,
-      savedSearchUrl: SafeBrowserUrlSchema,
-      committedCursor: ConnectorCursorSchema.nullable(),
-      limits: BrowserCaptureLimitsSchema
-    })
-    .strict()
+  z.union([
+    z
+      .object({
+        acquisitionMode: z.literal("local_browser"),
+        captureKind: z.literal("saved_search").optional(),
+        nodeId: EntityIdSchema,
+        savedSearchId: EntityIdSchema,
+        savedSearchUrl: SafeBrowserUrlSchema,
+        committedCursor: ConnectorCursorSchema.nullable(),
+        limits: BrowserCaptureLimitsSchema
+      })
+      .strict(),
+    z
+      .object({
+        acquisitionMode: z.literal("local_browser"),
+        captureKind: z.literal("current_tab"),
+        nodeId: EntityIdSchema,
+        profileId: BrowserProfileIdSchema,
+        expectedUrl: SafeBrowserUrlSchema,
+        canonicalUrl: SafeBrowserUrlSchema,
+        limits: BrowserCaptureLimitsSchema.extend({
+          maxPages: z.literal(1),
+          maxRecords: z.literal(1),
+          maxConcurrency: z.literal(1)
+        })
+      })
+      .strict()
+  ])
 ]);
 
 export const SourceJobSafeErrorSchema = z
@@ -191,6 +233,19 @@ export const ManualActionRequiredSchema = z
   .strict();
 
 export const BrowserNodeStateSchema = z.enum(["online", "offline", "stale", "revoked"]);
+export const BrowserNodePairingStateSchema = z.enum([
+  "not_paired",
+  "pairing_pending",
+  "paired",
+  "revoked"
+]);
+export const BrowserCapabilityApprovalStateSchema = z.enum([
+  "not_approved",
+  "approval_pending",
+  "approved",
+  "revoked"
+]);
+export const BrowserVersionCompatibilitySchema = z.enum(["unknown", "compatible", "incompatible"]);
 
 export const BrowserNodeCapabilitiesSchema = z
   .object({
@@ -204,11 +259,22 @@ export const BrowserNodeStatusSchema = z
   .object({
     nodeId: EntityIdSchema,
     providerId: EntityIdSchema,
+    nodeName: z.string().trim().min(1).max(120).default("Unnamed browser node"),
     status: BrowserNodeStateSchema,
+    pairingState: BrowserNodePairingStateSchema.default("not_paired"),
+    capabilityApprovalState: BrowserCapabilityApprovalStateSchema.default("not_approved"),
+    selectedProfileId: BrowserProfileIdSchema.nullable().default(null),
+    allowedProfileIds: z.array(BrowserProfileIdSchema).max(20).default([]),
+    reportedOpenClawVersion: z.string().trim().min(1).max(80).nullable().default(null),
+    expectedOpenClawVersion: z.literal("2026.6.33").default("2026.6.33"),
+    versionCompatibility: BrowserVersionCompatibilitySchema.default("unknown"),
     lastHeartbeatAt: IsoDateTimeSchema,
     heartbeatExpiresAt: IsoDateTimeSchema,
+    lastSuccessfulCaptureAt: IsoDateTimeSchema.nullable().default(null),
+    disabledAt: IsoDateTimeSchema.nullable().default(null),
     contractVersion: z.number().int().positive().max(1_000),
     capabilities: BrowserNodeCapabilitiesSchema,
+    createdAt: IsoDateTimeSchema.optional(),
     updatedAt: IsoDateTimeSchema
   })
   .strict()
@@ -225,6 +291,66 @@ export const BrowserNodeStatusSchema = z
         code: "custom",
         path: ["updatedAt"],
         message: "Node update time cannot precede the heartbeat."
+      });
+    }
+    if (new Set(node.allowedProfileIds).size !== node.allowedProfileIds.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["allowedProfileIds"],
+        message: "Allowed browser profile identifiers must be unique."
+      });
+    }
+    if (
+      node.selectedProfileId !== null &&
+      !node.allowedProfileIds.includes(node.selectedProfileId)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["selectedProfileId"],
+        message: "The selected browser profile must be explicitly allowlisted."
+      });
+    }
+    if (node.createdAt !== undefined && Date.parse(node.updatedAt) < Date.parse(node.createdAt)) {
+      context.addIssue({
+        code: "custom",
+        path: ["createdAt"],
+        message: "Browser node creation time cannot follow its update time."
+      });
+    }
+    if (
+      node.lastSuccessfulCaptureAt !== null &&
+      Date.parse(node.lastSuccessfulCaptureAt) > Date.parse(node.updatedAt)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["lastSuccessfulCaptureAt"],
+        message: "Last capture time cannot follow the node update time."
+      });
+    }
+  })
+  .transform((node) => ({
+    ...node,
+    createdAt: node.createdAt ?? node.updatedAt
+  }));
+
+export const BrowserCaptureResultIdentitySchema = z
+  .object({
+    attemptId: EntityIdSchema,
+    nodeId: EntityIdSchema,
+    profileId: BrowserProfileIdSchema,
+    canonicalUrl: SafeBrowserUrlSchema,
+    invocationIdempotencyKey: Sha256Schema,
+    contentHash: Sha256Schema,
+    acceptedRawListingId: EntityIdSchema.nullable(),
+    acceptedAt: IsoDateTimeSchema.nullable()
+  })
+  .strict()
+  .superRefine((identity, context) => {
+    if ((identity.acceptedRawListingId === null) !== (identity.acceptedAt === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["acceptedAt"],
+        message: "Accepted capture identity requires both raw-listing ID and acceptance time."
       });
     }
   });
@@ -247,6 +373,7 @@ export const SourceJobResultSchema = z
     previousCursor: ConnectorCursorSchema.nullable(),
     cursorCandidate: ConnectorCursorSchema.nullable(),
     error: SourceJobSafeErrorSchema.nullable(),
+    capture: BrowserCaptureResultIdentitySchema.nullable().default(null),
     completedAt: IsoDateTimeSchema,
     idempotentReplay: z.boolean(),
     untrustedInput: z.literal(true)
@@ -258,6 +385,13 @@ export const SourceJobResultSchema = z
         code: "custom",
         path: ["error"],
         message: "Completed source-job results cannot carry an error."
+      });
+    }
+    if (result.acquisitionMode !== "local_browser" && result.capture !== null) {
+      context.addIssue({
+        code: "custom",
+        path: ["capture"],
+        message: "Only local-browser results can carry browser capture identity."
       });
     }
     if (result.status !== "completed") {
@@ -519,6 +653,7 @@ export const ALLOWED_SOURCE_JOB_TRANSITIONS = {
     "completed",
     "retryable_failed",
     "permanently_failed",
+    "deferred_node_offline",
     "manual_action_required",
     "cancelled_by_policy"
   ],
@@ -567,14 +702,20 @@ export function isBrowserNodeStale(nodeInput: BrowserNodeStatus, now: Date): boo
 
 export type ConnectorCursor = z.infer<typeof ConnectorCursorSchema>;
 export type BrowserCaptureLimits = z.infer<typeof BrowserCaptureLimitsSchema>;
+export type BrowserCaptureKind = z.infer<typeof BrowserCaptureKindSchema>;
+export type BrowserProfileId = z.infer<typeof BrowserProfileIdSchema>;
 export type SourceJobPayload = z.infer<typeof SourceJobPayloadSchema>;
 export type SourceJobSafeError = z.infer<typeof SourceJobSafeErrorSchema>;
 export type ManualActionBlocker = z.infer<typeof ManualActionBlockerSchema>;
 export type ManualActionRequired = z.infer<typeof ManualActionRequiredSchema>;
 export type DeferredJobReason = z.infer<typeof DeferredJobReasonSchema>;
 export type BrowserNodeState = z.infer<typeof BrowserNodeStateSchema>;
+export type BrowserNodePairingState = z.infer<typeof BrowserNodePairingStateSchema>;
+export type BrowserCapabilityApprovalState = z.infer<typeof BrowserCapabilityApprovalStateSchema>;
+export type BrowserVersionCompatibility = z.infer<typeof BrowserVersionCompatibilitySchema>;
 export type BrowserNodeCapabilities = z.infer<typeof BrowserNodeCapabilitiesSchema>;
 export type BrowserNodeStatus = z.infer<typeof BrowserNodeStatusSchema>;
+export type BrowserCaptureResultIdentity = z.infer<typeof BrowserCaptureResultIdentitySchema>;
 export type SourceJobResultStatus = z.infer<typeof SourceJobResultStatusSchema>;
 export type SourceJobResult = z.infer<typeof SourceJobResultSchema>;
 export type SourceJobStatus = z.infer<typeof SourceJobStatusSchema>;

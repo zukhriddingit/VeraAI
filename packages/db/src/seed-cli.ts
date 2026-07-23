@@ -1,12 +1,14 @@
-import { createSqliteRepositories } from "./sqlite-repositories.ts";
-import { openExistingDatabase } from "./connection.ts";
-import { seedEvidenceDatabase } from "./seed.ts";
+import { parsePostgresConfig } from "./postgres/config.ts";
+import { openPostgresConnection } from "./postgres/connection.ts";
+import { seedPostgresGlobalPolicy } from "./postgres/seed.ts";
 
-const connection = openExistingDatabase();
+const connection = openPostgresConnection(parsePostgresConfig(process.env));
 
 try {
-  const result = seedEvidenceDatabase(createSqliteRepositories(connection));
-  process.stdout.write(`${JSON.stringify({ event: "seed_completed", ...result })}\n`);
+  const result = await seedPostgresGlobalPolicy(connection);
+  process.stdout.write(
+    `${JSON.stringify({ event: "postgres_policy_seed_completed", ...result })}\n`
+  );
 } finally {
-  connection.close();
+  await connection.close();
 }

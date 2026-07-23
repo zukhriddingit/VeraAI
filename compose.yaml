@@ -1,0 +1,25 @@
+name: vera
+
+services:
+  postgres:
+    image: postgres:18.4-alpine
+    container_name: vera-postgres
+    environment:
+      POSTGRES_DB: vera
+      POSTGRES_USER: vera
+      POSTGRES_PASSWORD: vera_dev_only
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - vera-postgres-data:/var/lib/postgresql
+      - ./infra/postgres/init/001-create-test-db.sql:/docker-entrypoint-initdb.d/001-create-test-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vera -d vera"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+      start_period: 5s
+    restart: unless-stopped
+
+volumes:
+  vera-postgres-data:

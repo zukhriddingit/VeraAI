@@ -1,4 +1,5 @@
 import {
+  BrowserNodeStatusSchema,
   SourceJobPayloadSchema,
   SourceJobSchema,
   type Approval,
@@ -23,10 +24,17 @@ const NOW = "2026-07-18T12:00:00.000Z";
 const LATER = "2026-07-18T12:05:00.000Z";
 const TARGET_URL = "https://www.zillow.com/homes/for_rent/";
 
-const onlineNode: BrowserNodeStatus = {
+const onlineNode: BrowserNodeStatus = BrowserNodeStatusSchema.parse({
   nodeId: "node-local-1",
   providerId: "mock-openclaw",
+  nodeName: "Founder Mac",
   status: "online",
+  pairingState: "paired",
+  capabilityApprovalState: "approved",
+  selectedProfileId: "vera-zillow",
+  allowedProfileIds: ["vera-zillow"],
+  reportedOpenClawVersion: "2026.6.33",
+  versionCompatibility: "compatible",
   lastHeartbeatAt: NOW,
   heartbeatExpiresAt: LATER,
   contractVersion: 1,
@@ -35,8 +43,9 @@ const onlineNode: BrowserNodeStatus = {
     capture: true,
     cancellation: true
   },
+  createdAt: NOW,
   updatedAt: NOW
-};
+});
 
 const browserManifest = {
   schemaVersion: 2,
@@ -394,7 +403,10 @@ describe("LocalMockMaritimeOrchestrator policy and node handling", () => {
         completedAt: null
       });
       expect(deferred.payload).toEqual(scheduled.payload);
-      if (deferred.payload.acquisitionMode === "local_browser") {
+      if (
+        deferred.payload.acquisitionMode === "local_browser" &&
+        "committedCursor" in deferred.payload
+      ) {
         expect(deferred.payload.committedCursor).toEqual(
           validBrowserJobInput.payload.committedCursor
         );
@@ -464,13 +476,25 @@ describe("LocalMockMaritimeOrchestrator execution outcomes", () => {
   });
 
   it.each([
-    "login",
-    "reauthentication",
-    "two_factor_authentication",
-    "captcha",
-    "consent",
-    "camera_permission",
-    "microphone_permission"
+    "login_required",
+    "two_factor_required",
+    "captcha_required",
+    "consent_required",
+    "rate_or_bot_challenge",
+    "unexpected_redirect",
+    "active_url_mismatch",
+    "stale_snapshot",
+    "layout_incompatible",
+    "unsupported_page",
+    "browser_profile_unavailable",
+    "node_pairing_required",
+    "capability_approval_required",
+    "node_offline",
+    "version_incompatible",
+    "download_or_upload_requested",
+    "camera_or_microphone_requested",
+    "policy_uncertain",
+    "user_intervention_required"
   ] satisfies readonly ManualActionBlocker[])(
     "surfaces %s as manual_action_required with no output or cursor advancement",
     async (blocker) => {

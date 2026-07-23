@@ -1,12 +1,14 @@
 import Link from "next/link";
 
 import { loadCockpitInitialState } from "../lib/cockpit-read-model";
+import { requireVeraPageSession } from "../lib/server/page-session";
 import { DemoSearch } from "./demo-search";
 
 export const dynamic = "force-dynamic";
 
-export default function HomePage() {
-  const initialState = loadCockpitInitialState();
+export default async function HomePage() {
+  const context = await requireVeraPageSession();
+  const initialState = await loadCockpitInitialState(context.repositories, context.demoMode);
 
   return (
     <main className="cockpit-main">
@@ -21,6 +23,7 @@ export default function HomePage() {
             <Link href="/capture">Capture a listing</Link>
             <Link href="/activity">Activity</Link>
             <Link href="/connectors">Source status</Link>
+            <Link href="/settings/integrations">Settings</Link>
           </nav>
         </div>
         <div className="cockpit-hero-copy">

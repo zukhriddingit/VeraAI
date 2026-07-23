@@ -1,0 +1,318 @@
+name: Release immutable Vera worker
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: release-worker-${{ github.sha }}
+  cancel-in-progress: false
+
+jobs:
+  acceptance:
+    name: Re-run full acceptance gate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_DB: vera_test
+          POSTGRES_USER: vera
+          POSTGRES_PASSWORD: vera_dev_only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vera -d vera_test"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 20
+
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.14.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install frozen dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Verify exact source and static boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | grep -Fx "$GITHUB_SHA"
+          git diff --exit-code -- .
+          git diff --cached --exit-code -- .
+          pnpm format:check
+          pnpm verify:calendar-boundaries
+          pnpm verify:db-boundaries
+          pnpm verify:browser-boundaries
+          pnpm verify:gmail-boundaries
+          pnpm verify:web-mutation-boundaries
+          pnpm verify:maritime-boundaries
+          pnpm verify:worker-image-boundaries
+          pnpm verify:worker-release-workflow
+          pnpm verify:openclaw-config
+          pnpm maritime:validate
+
+      - name: Lint and typecheck
+        run: pnpm lint && pnpm typecheck
+
+      - name: Run deterministic test suite
+        run: pnpm test
+
+      - name: Run PostgreSQL integration suite
+        run: pnpm test:integration:postgres
+        env:
+          TEST_DATABASE_URL: postgresql://vera:vera_dev_only@127.0.0.1:5432/vera_test
+
+      - name: Build production applications
+        run: pnpm build
+
+  build_scan:
+    name: Build and scan worker artifact
+    needs: acceptance
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/vera-worker
+    outputs:
+      image_digest: ${{ steps.build.outputs.digest }}
+      image_ref: ${{ steps.image.outputs.image_ref }}
+
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Verify immutable source context
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | grep -Fx "$GITHUB_SHA"
+          git diff --exit-code -- .
+          git diff --cached --exit-code -- .
+          mkdir -p release-evidence/worker
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build and push commit-bound worker
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          pull: true
+          push: true
+          tags: ${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          provenance: mode=max
+          sbom: true
+
+      - name: Resolve immutable worker reference
+        id: image
+        shell: bash
+        env:
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          printf 'WORKER_IMAGE_REF=%s@%s\n' "$IMAGE_REPOSITORY" "$IMAGE_DIGEST" >> "$GITHUB_ENV"
+          printf 'image_ref=%s@%s\n' "$IMAGE_REPOSITORY" "$IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Install pinned Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.72.0
+          cache: false
+
+      - name: Generate SBOM and vulnerability evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          trivy --config /dev/null image --quiet --ignorefile /dev/null --list-all-pkgs \
+            --format spdx-json --output release-evidence/worker/worker.spdx.json \
+            "$WORKER_IMAGE_REF"
+          trivy --config /dev/null image --quiet --ignorefile /dev/null --list-all-pkgs \
+            --scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 0 \
+            --format json --output release-evidence/worker/trivy-vulnerabilities.json \
+            "$WORKER_IMAGE_REF"
+          trivy version --format json > release-evidence/worker/trivy-version.json
+
+      - name: Enforce scan coverage and zero critical or high findings
+        run: node scripts/worker-release-evidence.mjs check-scan
+
+      - name: Preserve pre-signing evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vera-worker-scan-${{ github.sha }}
+          path: release-evidence/worker/
+          if-no-files-found: warn
+          retention-days: 30
+
+  sign_attest:
+    name: Sign and attest verified worker
+    needs:
+      - acceptance
+      - build_scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE_REPOSITORY: ghcr.io/${{ github.repository_owner }}/vera-worker
+      IMAGE_DIGEST: ${{ needs.build_scan.outputs.image_digest }}
+      WORKER_IMAGE_REF: ${{ needs.build_scan.outputs.image_ref }}
+      WORKER_CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+
+    steps:
+      - name: Check out exact release commit
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Restore scan evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: vera-worker-scan-${{ github.sha }}
+          path: release-evidence/worker
+
+      - name: Revalidate immutable evidence inputs
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | grep -Fx "$GITHUB_SHA"
+          [[ "$IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$WORKER_IMAGE_REF" == "$IMAGE_REPOSITORY@$IMAGE_DIGEST" ]]
+          node scripts/worker-release-evidence.mjs check-scan
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Attest build provenance
+        id: provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.IMAGE_REPOSITORY }}
+          subject-digest: ${{ env.IMAGE_DIGEST }}
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest worker SBOM
+        id: sbom_attestation
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.IMAGE_REPOSITORY }}
+          subject-digest: ${{ env.IMAGE_DIGEST }}
+          sbom-path: release-evidence/worker/worker.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Preserve signed attestation bundles
+        shell: bash
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom_attestation.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$PROVENANCE_BUNDLE"
+          test -s "$SBOM_BUNDLE"
+          cp -- "$PROVENANCE_BUNDLE" release-evidence/worker/provenance-bundle.json
+          cp -- "$SBOM_BUNDLE" release-evidence/worker/sbom-bundle.json
+
+      - name: Install pinned Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and verify worker digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$WORKER_IMAGE_REF"
+          cosign verify "$WORKER_IMAGE_REF" \
+            --certificate-identity "$WORKER_CERTIFICATE_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            > release-evidence/worker/cosign-verification.json
+
+      - name: Verify GitHub provenance and SBOM attestations
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          SBOM_PREDICATE_TYPE="$(node scripts/worker-release-evidence.mjs predicate-type)"
+          gh attestation verify "oci://$WORKER_IMAGE_REF" \
+            --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "$WORKER_CERTIFICATE_IDENTITY" \
+            --source-digest "$GITHUB_SHA" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-worker.yml" \
+            --format json \
+            > release-evidence/worker/provenance-verification.json
+          gh attestation verify "oci://$WORKER_IMAGE_REF" \
+            --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "$WORKER_CERTIFICATE_IDENTITY" \
+            --source-digest "$GITHUB_SHA" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-worker.yml" \
+            --predicate-type "$SBOM_PREDICATE_TYPE" \
+            --format json \
+            > release-evidence/worker/sbom-verification.json
+
+      - name: Write sanitized worker release evidence
+        env:
+          WORKER_ATTESTATION_URL: ${{ steps.provenance.outputs.attestation-url }}
+        run: node scripts/worker-release-evidence.mjs write
+
+      - name: Upload final release evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vera-worker-release-${{ github.sha }}
+          path: release-evidence/worker/
+          if-no-files-found: warn
+          retention-days: 30

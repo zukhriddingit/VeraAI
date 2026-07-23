@@ -44,7 +44,7 @@ Use a TypeScript monorepo with clear boundaries:
 - `apps/web`: Next.js dashboard and local API routes.
 - `apps/worker`: deterministic ingestion, normalization, scoring, and local-browser execution workers; Maritime owns the primary orchestration lifecycle.
 - `packages/domain`: Zod schemas, state machines, shared types, and business invariants.
-- `packages/db`: SQLite schema, migrations, repositories, and seed data.
+- `packages/db`: PostgreSQL schema, migrations, repositories, and hosted seed data; SQLite is isolated under `@vera/db/demo` for the deterministic offline demo only.
 - `packages/connectors`: `SourceConnector` adapters for `official_api`, `email_alert`, `local_browser`, and `user_capture`; OpenClaw is the default replaceable executor behind `local_browser` connectors.
 - `packages/ai`: provider-neutral structured extraction and outreach drafting.
 - `packages/policy`: source capability registry, approval rules, and kill switches.
@@ -52,9 +52,9 @@ Use a TypeScript monorepo with clear boundaries:
 - `packages/testing`: sanitized fixtures, factories, and test helpers.
 - `infra/maritime`: primary orchestration/deployment assets for monitoring jobs, scheduled triggers, durable job state, retries, agent health, notifications, and hosted secrets.
 
-Prefer `pnpm` workspaces. Use current stable dependencies, strict TypeScript, Zod validation at process boundaries, SQLite for the local MVP, Drizzle ORM, Vitest for unit/integration tests, and Playwright for end-to-end browser tests.
+Prefer `pnpm` workspaces. Use current stable dependencies, strict TypeScript, Zod validation at process boundaries, PostgreSQL for hosted development/staging/production, narrowly isolated SQLite for deterministic demo tests, Drizzle ORM, Vitest for unit/integration tests, and Playwright for end-to-end browser tests.
 
-The normative MVP topology uses a Maritime-hosted orchestrator to dispatch approved browser work to a registered local node. The local node uses OpenClaw by default behind a replaceable browser-executor interface. Authenticated sessions, cookies, and browser-profile contents remain in a dedicated user-controlled local profile; the user signs in manually, and Vera never asks for, records, types, uploads, or transmits third-party passwords. The current repository still runs fixture and user-capture jobs through its local SQLite worker and does not yet implement Maritime dispatch, the OpenClaw bridge, email-alert acquisition, or the four-mode connector contract.
+The normative MVP topology uses a Maritime-hosted orchestrator to dispatch approved work to a PostgreSQL-backed worker and approved browser work through a pinned OpenClaw gateway to a registered local node. Authenticated sessions, cookies, and browser-profile contents remain in a dedicated user-controlled local profile; the user signs in manually, and Vera never asks for, records, types, uploads, or transmits third-party passwords. The current repository implements the four-mode connector/job contracts, production-shaped Maritime dispatch, Gmail alert ingestion, and one founder-only OpenClaw current-tab bridge. Public browser monitoring and broad platform connectors remain disabled.
 
 ## Core domain invariants
 
@@ -199,7 +199,7 @@ Every feature task must add or update tests.
 Minimum layers:
 
 - Unit tests for normalization, matching features, scoring, risk signals, and policy decisions.
-- Repository integration tests against a temporary SQLite database.
+- Repository integration tests against temporary PostgreSQL schemas for hosted behavior and separate SQLite tests for the explicit demo adapter.
 - Contract tests for every connector using sanitized fixtures.
 - Mock-provider tests for AI schemas and retry behavior.
 - End-to-end tests for the golden flow: create profile → ingest → dedupe → shortlist → create draft preview → create tentative hold → inspect audit log.

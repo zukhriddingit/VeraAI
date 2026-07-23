@@ -4,13 +4,14 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "node --import tsx --watch src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "build": "node build.mjs",
     "start": "node dist/index.js",
-    "serve:e2e": "node --import tsx src/index.ts",
-    "health": "node --import tsx src/index.ts health",
-    "noop": "node --import tsx src/index.ts noop",
-    "run-once": "node --import tsx src/index.ts run-once",
+    "serve": "node dist/index.js serve",
+    "serve:e2e": "tsx src/index.ts",
+    "health": "tsx src/index.ts health",
+    "noop": "tsx src/index.ts noop",
+    "run-once": "tsx src/index.ts run-once",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -18,7 +19,12 @@
     "@vera/connectors": "workspace:*",
     "@vera/db": "workspace:*",
     "@vera/domain": "workspace:*",
+    "@vera/notifications": "workspace:*",
+    "@vera/policy": "workspace:*",
     "@vera/scoring": "workspace:*",
-    "pino": "10.3.1"
+    "openclaw": "2026.6.33",
+    "pg": "8.22.0",
+    "pino": "10.3.1",
+    "sharp": "0.35.3"
   }
 }

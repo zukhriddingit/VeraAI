@@ -1,9 +1,11 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { getCalendarIntegrationStatus } from "../../../lib/calendar-service";
 import { getListingDetail } from "../../../lib/listing-presentation";
 import { parseRouteEntityId } from "../../../lib/route-entity-id";
+import { requireVeraPageSession } from "../../../lib/server/page-session";
+import { getHostedApplication } from "../../../lib/server/application";
 import { ListingDetail } from "./listing-detail";
 
 export const dynamic = "force-dynamic";
@@ -13,16 +15,17 @@ interface ListingDetailPageProps {
 }
 
 export default async function ListingDetailPage({ params }: ListingDetailPageProps) {
+  const context = await requireVeraPageSession();
   const listingId = parseRouteEntityId((await params).id);
   if (listingId === null) notFound();
-  const connection = openExistingDatabase();
-  let initialDetail: ReturnType<typeof getListingDetail>;
-  try {
-    initialDetail = getListingDetail(createSqliteRepositories(connection), listingId);
-  } finally {
-    connection.close();
-  }
+  const initialDetail = await getListingDetail(context.repositories, listingId);
   if (initialDetail === null) notFound();
+  const application = getHostedApplication();
+  const calendarStatus = await getCalendarIntegrationStatus(
+    context.repositories,
+    application.calendar.configurationState,
+    new Date().toISOString()
+  );
 
   return (
     <main>
@@ -31,6 +34,7 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
         <Link href="/capture">Capture a listing</Link>
         <Link href="/activity">Activity</Link>
         <Link href="/connectors">Connector status</Link>
+        <Link href="/settings/integrations">Settings</Link>
       </nav>
       <header className="subpage-hero evidence-hero">
         <p className="eyebrow">Canonical listing evidence</p>
@@ -40,7 +44,12 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
           deciding what to do next.
         </p>
       </header>
-      <ListingDetail listingId={listingId} initialDetail={initialDetail} />
+      <ListingDetail
+        listingId={listingId}
+        initialDetail={initialDetail}
+        demoMode={context.demoMode}
+        holdCapabilityState={calendarStatus.holdCreation.state}
+      />
     </main>
   );
 }

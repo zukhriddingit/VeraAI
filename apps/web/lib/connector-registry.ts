@@ -3,12 +3,18 @@ import {
   ManualCaptureConnector,
   type CaptureSourceConnector
 } from "@vera/connectors";
-import type { VeraRepositories } from "@vera/db/runtime";
+import type { UserRepositories } from "@vera/db";
 import { SourcePolicyRegistry } from "@vera/policy";
 
-const connectors = Object.freeze([
+export type ConnectorCompositionMode = "hosted" | "demo";
+
+const manualConnector = new ManualCaptureConnector();
+const hostedConnectors = Object.freeze([
+  manualConnector
+]) satisfies readonly CaptureSourceConnector[];
+const demoConnectors = Object.freeze([
   new FixtureConnector(),
-  new ManualCaptureConnector()
+  manualConnector
 ]) satisfies readonly CaptureSourceConnector[];
 
 function activeKillSwitches(environment: NodeJS.ProcessEnv): ReadonlySet<string> {
@@ -20,15 +26,17 @@ function activeKillSwitches(environment: NodeJS.ProcessEnv): ReadonlySet<string>
   );
 }
 
-export function listSourceConnectors(): readonly CaptureSourceConnector[] {
-  return connectors;
+export function listSourceConnectors(
+  mode: ConnectorCompositionMode
+): readonly CaptureSourceConnector[] {
+  return mode === "demo" ? demoConnectors : hostedConnectors;
 }
 
-export function createPersistedPolicyRegistry(
-  repositories: VeraRepositories,
+export async function createPersistedPolicyRegistry(
+  repositories: UserRepositories,
   environment: NodeJS.ProcessEnv = process.env
-): SourcePolicyRegistry {
-  return new SourcePolicyRegistry(repositories.sourcePolicyManifests.listLatest(), {
+): Promise<SourcePolicyRegistry> {
+  return new SourcePolicyRegistry(await repositories.sourcePolicyManifests.listLatest(), {
     activeKillSwitches: activeKillSwitches(environment)
   });
 }

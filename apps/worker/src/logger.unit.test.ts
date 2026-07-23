@@ -1,7 +1,8 @@
 import { LLMRateLimitError } from "@vera/ai";
+import type { DestinationStream } from "pino";
 import { describe, expect, it } from "vitest";
 
-import { safeWorkerErrorFields } from "./logger.ts";
+import { createWorkerLogger, safeWorkerErrorFields } from "./logger.ts";
 
 describe("safe worker error logging", () => {
   it("keeps only typed provider metadata and never error messages or raw values", () => {
@@ -27,5 +28,39 @@ describe("safe worker error logging", () => {
       providerId: null,
       model: null
     });
+  });
+
+  it("sanitizes every nested binding before structured serialization", () => {
+    let output = "";
+    const destination: DestinationStream = {
+      write(chunk: string) {
+        output += chunk;
+      }
+    };
+    const logger = createWorkerLogger(destination);
+
+    logger.warn(
+      {
+        correlationId: "correlation-1",
+        safeCode: "gmail_timeout",
+        retryable: true,
+        provider: {
+          authorization: "Bearer synthetic-secret",
+          contact: { email: "person@example.test", phone: "+1 617 555 1212" }
+        }
+      },
+      "Provider operation failed safely."
+    );
+
+    const record = JSON.parse(output) as Record<string, unknown>;
+    expect(record).toMatchObject({
+      service: "vera-worker",
+      correlationId: "correlation-1",
+      safeCode: "gmail_timeout",
+      retryable: true
+    });
+    expect(output).not.toContain("synthetic-secret");
+    expect(output).not.toContain("person@example.test");
+    expect(output).not.toContain("617 555 1212");
   });
 });

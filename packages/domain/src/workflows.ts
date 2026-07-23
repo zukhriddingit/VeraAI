@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { IanaTimeZoneSchema, ProposedViewingWindowSchema } from "./calendar.ts";
 import { EntityIdSchema, IsoDateTimeSchema, JsonValueSchema, Sha256Schema } from "./primitives.ts";
 
 export const ContactWorkflowStateSchema = z.enum([
@@ -26,6 +27,43 @@ export const ContactWorkflowSchema = z
   .strict();
 
 export const ApprovalStateSchema = z.enum(["pending", "used", "expired", "revoked"]);
+
+export const ALLOWED_APPROVAL_TRANSITIONS = {
+  pending: ["used", "expired", "revoked"],
+  used: [],
+  expired: [],
+  revoked: []
+} as const satisfies Record<
+  z.infer<typeof ApprovalStateSchema>,
+  readonly z.infer<typeof ApprovalStateSchema>[]
+>;
+
+export class InvalidApprovalTransitionError extends Error {
+  readonly current: ApprovalState;
+  readonly requested: ApprovalState;
+
+  constructor(current: ApprovalState, requested: ApprovalState) {
+    super(`Approval cannot transition from ${current} to ${requested}.`);
+    this.name = "InvalidApprovalTransitionError";
+    this.current = current;
+    this.requested = requested;
+  }
+}
+
+export function transitionApprovalState(
+  currentInput: ApprovalState,
+  requestedInput: ApprovalState
+): ApprovalState {
+  const current = ApprovalStateSchema.parse(currentInput);
+  const requested = ApprovalStateSchema.parse(requestedInput);
+  const allowed: readonly ApprovalState[] = ALLOWED_APPROVAL_TRANSITIONS[current];
+
+  if (!allowed.includes(requested)) {
+    throw new InvalidApprovalTransitionError(current, requested);
+  }
+
+  return requested;
+}
 
 export const ApprovalSchema = z
   .object({
@@ -81,13 +119,69 @@ export const ViewingStateSchema = z.enum([
   "cancelled"
 ]);
 
+function proposedWindowIntervalKey(window: {
+  readonly startsAt: string;
+  readonly endsAt: string;
+}): string {
+  return `${window.startsAt}/${window.endsAt}`;
+}
+
+function proposedWindowsDeepEqual(
+  left: z.infer<typeof ProposedViewingWindowSchema>,
+  right: z.infer<typeof ProposedViewingWindowSchema>
+): boolean {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+export const ALLOWED_VIEWING_TRANSITIONS = {
+  proposed: ["selected", "cancelled"],
+  selected: ["hold_approved", "proposed", "cancelled"],
+  hold_approved: ["hold_created", "selected", "cancelled"],
+  hold_created: ["confirmed", "cancelled"],
+  confirmed: ["completed", "cancelled"],
+  completed: [],
+  cancelled: []
+} as const satisfies Record<
+  z.infer<typeof ViewingStateSchema>,
+  readonly z.infer<typeof ViewingStateSchema>[]
+>;
+
+export class InvalidViewingTransitionError extends Error {
+  readonly current: ViewingState;
+  readonly requested: ViewingState;
+
+  constructor(current: ViewingState, requested: ViewingState) {
+    super(`Viewing cannot transition from ${current} to ${requested}.`);
+    this.name = "InvalidViewingTransitionError";
+    this.current = current;
+    this.requested = requested;
+  }
+}
+
+export function transitionViewingState(
+  currentInput: ViewingState,
+  requestedInput: ViewingState
+): ViewingState {
+  const current = ViewingStateSchema.parse(currentInput);
+  const requested = ViewingStateSchema.parse(requestedInput);
+  const allowed: readonly ViewingState[] = ALLOWED_VIEWING_TRANSITIONS[current];
+
+  if (!allowed.includes(requested)) {
+    throw new InvalidViewingTransitionError(current, requested);
+  }
+
+  return requested;
+}
+
 export const ViewingSchema = z
   .object({
     id: EntityIdSchema,
     canonicalListingId: EntityIdSchema,
-    proposedWindows: z.array(ViewingWindowSchema),
+    proposedWindows: z.array(ProposedViewingWindowSchema).max(100),
+    selectedWindow: ProposedViewingWindowSchema.nullable(),
     confirmedWindow: ViewingWindowSchema.nullable(),
-    timeZone: z.string().trim().min(1).max(120),
+    supersedesViewingId: EntityIdSchema.nullable(),
+    timeZone: IanaTimeZoneSchema,
     calendarReference: z.string().trim().min(1).max(300).nullable(),
     state: ViewingStateSchema,
     notes: z.string().trim().min(1).max(5_000).nullable(),
@@ -95,7 +189,102 @@ export const ViewingSchema = z
     createdAt: IsoDateTimeSchema,
     updatedAt: IsoDateTimeSchema
   })
-  .strict();
+  .strict()
+  .superRefine((viewing, context) => {
+    if (viewing.supersedesViewingId === viewing.id) {
+      context.addIssue({
+        code: "custom",
+        message: "A Viewing cannot supersede itself.",
+        path: ["supersedesViewingId"]
+      });
+    }
+
+    const intervalKeys = viewing.proposedWindows.map(proposedWindowIntervalKey);
+    if (new Set(intervalKeys).size !== intervalKeys.length) {
+      context.addIssue({
+        code: "custom",
+        message: "Proposed Viewing intervals must be unique.",
+        path: ["proposedWindows"]
+      });
+    }
+
+    for (const [index, window] of viewing.proposedWindows.entries()) {
+      if (window.timeZone !== viewing.timeZone) {
+        context.addIssue({
+          code: "custom",
+          message: "Every proposed window must use the Viewing timezone.",
+          path: ["proposedWindows", index, "timeZone"]
+        });
+      }
+    }
+
+    const selectedWindowRequired = [
+      "selected",
+      "hold_approved",
+      "hold_created",
+      "confirmed",
+      "completed"
+    ].includes(viewing.state);
+    if (
+      (selectedWindowRequired && viewing.selectedWindow === null) ||
+      (viewing.state === "proposed" && viewing.selectedWindow !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The Viewing state and selected window must agree.",
+        path: ["selectedWindow"]
+      });
+    }
+
+    if (
+      viewing.selectedWindow !== null &&
+      !viewing.proposedWindows.some((window) =>
+        proposedWindowsDeepEqual(window, viewing.selectedWindow as typeof window)
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "The selected window must be one of the persisted proposed windows.",
+        path: ["selectedWindow"]
+      });
+    }
+
+    const confirmedWindowRequired = viewing.state === "confirmed" || viewing.state === "completed";
+    if (
+      (confirmedWindowRequired && viewing.confirmedWindow === null) ||
+      (!["confirmed", "completed", "cancelled"].includes(viewing.state) &&
+        viewing.confirmedWindow !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only a confirmed or completed Viewing requires a confirmed window.",
+        path: ["confirmedWindow"]
+      });
+    }
+
+    const calendarReferenceRequired = ["hold_created", "confirmed", "completed"].includes(
+      viewing.state
+    );
+    if (
+      (calendarReferenceRequired && viewing.calendarReference === null) ||
+      (["proposed", "selected", "hold_approved"].includes(viewing.state) &&
+        viewing.calendarReference !== null)
+    ) {
+      context.addIssue({
+        code: "custom",
+        message: "Only a Viewing with a created hold requires a Calendar reference.",
+        path: ["calendarReference"]
+      });
+    }
+
+    if (Date.parse(viewing.updatedAt) < Date.parse(viewing.createdAt)) {
+      context.addIssue({
+        code: "custom",
+        message: "A Viewing cannot be updated before it is created.",
+        path: ["updatedAt"]
+      });
+    }
+  });
 
 export type ContactWorkflow = z.infer<typeof ContactWorkflowSchema>;
 export type ContactWorkflowState = z.infer<typeof ContactWorkflowStateSchema>;

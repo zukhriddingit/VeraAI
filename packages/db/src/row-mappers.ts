@@ -5,6 +5,7 @@ import {
   CanonicalListingSchema,
   ContactWorkflowSchema,
   DuplicateClusterSchema,
+  EntityIdSchema,
   FieldProvenanceSchema,
   JobAttemptSchema,
   ListingPhotoSchema,
@@ -17,6 +18,7 @@ import {
   SearchProfileSchema,
   SourceJobSchema,
   SourcePolicyManifestSchema,
+  ProposedViewingWindowSchema,
   ViewingSchema,
   type ActivityEvent,
   type Approval,
@@ -36,6 +38,7 @@ import {
   type SearchProfile,
   type SourceJob,
   type SourcePolicyManifest,
+  type ProposedViewingWindow,
   type Viewing
 } from "@vera/domain";
 
@@ -288,7 +291,73 @@ export function mapApprovalRow(row: ApprovalRow): Approval {
 }
 
 export function mapViewingRow(row: ViewingRow): Viewing {
-  return ViewingSchema.parse(row);
+  const emptyWeeklyIntervals = {
+    "1": [],
+    "2": [],
+    "3": [],
+    "4": [],
+    "5": [],
+    "6": [],
+    "7": []
+  } as const;
+  const mapWindow = (value: unknown): ProposedViewingWindow => {
+    const current = ProposedViewingWindowSchema.safeParse(value);
+    if (current.success) return current.data;
+    if (typeof value !== "object" || value === null) {
+      throw new Error("Persisted demo Viewing contains an invalid proposed window.");
+    }
+    const legacy = value as { readonly startsAt?: unknown; readonly endsAt?: unknown };
+    return ProposedViewingWindowSchema.parse({
+      startsAt: legacy.startsAt,
+      endsAt: legacy.endsAt,
+      timeZone: row.timeZone,
+      availabilitySource: "vera_rules_only",
+      state: "vera_rules_only",
+      availabilityCheckId: null,
+      checkedAt: null,
+      calendarsChecked: [],
+      requiresConflictWarning: true,
+      rules: {
+        timeZone: row.timeZone,
+        weeklyIntervals: emptyWeeklyIntervals,
+        durationMinutes: 60,
+        minimumNoticeMinutes: 0,
+        travelMinutes: 0,
+        bufferMinutes: 0,
+        remindersMinutesBeforeStart: [],
+        conflictCheckingEnabled: false,
+        calendarIds: [],
+        schemaVersion: 1
+      },
+      generatorVersion: "legacy.v0"
+    });
+  };
+  const proposedWindows = row.proposedWindows.map(mapWindow);
+  const persistedSelection = ProposedViewingWindowSchema.safeParse(
+    row.metadata.calendarSelectedWindow
+  );
+  const selectedWindow = [
+    "selected",
+    "hold_approved",
+    "hold_created",
+    "confirmed",
+    "completed"
+  ].includes(row.state)
+    ? persistedSelection.success
+      ? persistedSelection.data
+      : (proposedWindows[0] ?? null)
+    : null;
+  const persistedSupersedesViewingId = EntityIdSchema.safeParse(
+    row.metadata.calendarSupersedesViewingId
+  );
+  return ViewingSchema.parse({
+    ...row,
+    proposedWindows,
+    selectedWindow,
+    supersedesViewingId: persistedSupersedesViewingId.success
+      ? persistedSupersedesViewingId.data
+      : null
+  });
 }
 
 export function mapActivityEventRow(row: ActivityEventRow): ActivityEvent {

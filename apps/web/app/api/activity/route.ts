@@ -1,21 +1,26 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import { DemoUnavailableResponseSchema } from "@vera/domain";
 
 import { getActivityCollection } from "../../../lib/listing-presentation";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "no-store, max-age=0", "Content-Type": "application/json" };
 
-export async function GET(): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
+export async function GET(request: Request): Promise<Response> {
   try {
-    connection = openExistingDatabase();
-    return Response.json(getActivityCollection(createSqliteRepositories(connection)), {
+    const context = await requireVeraSession(request.headers);
+    return Response.json(await getActivityCollection(context.repositories), {
       status: 200,
       headers
     });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
     return Response.json(
       DemoUnavailableResponseSchema.parse({
         code: "demo_unavailable",
@@ -23,7 +28,5 @@ export async function GET(): Promise<Response> {
       }),
       { status: 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

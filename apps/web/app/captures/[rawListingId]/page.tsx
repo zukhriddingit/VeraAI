@@ -2,6 +2,7 @@ import { EntityIdSchema } from "@vera/domain";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { requireVeraPageSession } from "../../../lib/server/page-session";
 import { CaptureEvidence } from "./capture-evidence";
 
 interface CaptureEvidencePageProps {
@@ -9,6 +10,7 @@ interface CaptureEvidencePageProps {
 }
 
 export default async function CaptureEvidencePage({ params }: CaptureEvidencePageProps) {
+  await requireVeraPageSession();
   const parsedId = EntityIdSchema.safeParse((await params).rawListingId);
   if (!parsedId.success) notFound();
 

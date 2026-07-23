@@ -5,24 +5,27 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./fixtures": "./src/fixtures.ts",
-    "./runtime": "./src/runtime.ts"
+    "./demo": "./src/demo/index.ts",
+    "./fixtures": "./src/fixtures.ts"
   },
   "scripts": {
     "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
-    "db:migrate": "node --import tsx src/migrate-cli.ts",
-    "db:seed": "node --import tsx src/seed-cli.ts",
+    "db:migrate": "tsx src/migrate-cli.ts",
+    "db:seed": "tsx src/seed-cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@vera/domain": "workspace:*",
-    "better-sqlite3": "12.11.1",
-    "drizzle-orm": "0.45.2"
+    "drizzle-orm": "0.45.2",
+    "pg": "8.22.0",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "@types/better-sqlite3": "7.6.13",
+    "@types/pg": "8.20.0",
     "@vera/scoring": "workspace:*",
     "@vera/testing": "workspace:*",
+    "better-sqlite3": "12.11.1",
     "drizzle-kit": "0.31.10"
   }
 }

@@ -6,3 +6,5 @@ playwright-report/
 test-results/
 pnpm-lock.yaml
 docs/
+packages/db/drizzle/meta/
+packages/db/drizzle-demo/meta/

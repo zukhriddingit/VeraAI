@@ -1,195 +1,108 @@
 # Vera
 
-Vera is a local-first, renter-controlled housing-search copilot. This repository implements Milestones 1 and 2 plus provider-neutral Milestone 3 extraction: a Next.js dashboard, typed health boundary, separate Node worker, strict domain model, migrated SQLite store, transactional repositories, sanitized provenance-preserving fixtures, fail-closed source policy, local fixture/manual capture, deterministic-first structured extraction, and field-level evidence explanations.
+Vera is a renter-controlled housing-search copilot: it preserves listing evidence, normalizes and deduplicates records, ranks homes against explicit preferences, surfaces evidence-backed risk indicators, and keeps every external action under user control.
 
-The fixture source labels and manual provenance URLs do not access Zillow, Facebook Marketplace, Craigslist, or Apartments.com. The only enabled source connectors read sanitized local fixtures or content pasted/entered by the user. No OAuth flow, browser automation, external action, or arbitrary URL fetch is implemented. Live model extraction is optional and fail-closed; the default runtime performs deterministic extraction with zero model calls.
+Hosted Vera uses PostgreSQL as its only persistence engine. Better Auth provides hosted identity with Google `openid`, `email`, and `profile` scopes only. Calendar uses a separate Google Web Application OAuth client and requests free/busy and owned-event access incrementally; access to either capability is optional. The sanitized offline demo remains available through an explicit SQLite-only launch path and is never a hosted fallback.
 
 ## Requirements
 
 - Node.js 24 LTS
 - pnpm 11.14.0
-- Chromium installed through Playwright for browser tests
+- Docker with Compose for local PostgreSQL
+- Playwright Chromium for browser tests
 
-The repository includes .node-version for version managers that support it.
+Install dependencies and Chromium:
 
-Verify the runtime before installing:
-
-```bash
-node --version
-pnpm --version
-```
-
-The expected major versions are Node 24 and pnpm 11.14. If pnpm is unavailable, install the pinned version with your preferred version manager or:
-
-```bash
-npm install --global pnpm@11.14.0
-```
-
-## Clean-clone setup
-
-```bash
+```sh
 pnpm install --frozen-lockfile
 pnpm exec playwright install chromium
-pnpm db:migrate
-pnpm db:seed
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm build
 ```
 
-The application and automated tests require no credentials. Keep local environment files outside Git; .env.example contains the only supported names for this milestone.
+## Deterministic demo
 
-## Run locally
+The fastest credential-free path uses only sanitized fixtures:
 
-Start the dashboard and worker together:
+```sh
+pnpm demo:reset
+pnpm demo:seed
+pnpm demo
+```
 
-```bash
+Open <http://127.0.0.1:3000>. The explicit demo launcher injects a one-process launch capability; setting `VERA_DEMO_MODE=1` or `VERA_DEMO_DATA_DIR` by itself cannot activate SQLite from a hosted entry point.
+
+## Hosted local development
+
+Start the local database, migrate, and seed global source policies:
+
+```sh
+pnpm postgres:up
+DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera pnpm db:migrate
+DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera pnpm db:seed
+```
+
+Configure the hosted server in your shell or secret manager:
+
+```sh
+export DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera
+export BETTER_AUTH_SECRET="$(openssl rand -hex 32)"
+export VERA_PUBLIC_BASE_URL=http://127.0.0.1:3000
+export VERA_AUTH_GOOGLE_CLIENT_ID=your-development-web-client-id
+export VERA_AUTH_GOOGLE_CLIENT_SECRET=your-development-web-client-secret
 pnpm dev
 ```
 
-Open http://127.0.0.1:3000. The dashboard displays eight canonical listings stitched from twelve sanitized source records. Use `/capture` to submit user-supplied text or structured JSON and `/connectors` to inspect the enabled, disabled, or policy-denied state of every persisted manifest. Captures are accepted by `POST /api/captures`; `GET /api/captures/{rawListingId}` exposes safe processing status and `/captures/{rawListingId}` explains each known or unknown field, evidence snippet, method, and confidence. New captures remain source records; this milestone does not fabricate canonical listings.
+Use separate Google Web Application clients for Vera identity and integration access. Register the exact Calendar callback `http://127.0.0.1:3000/api/integrations/google/calendar/callback`, configure the `VERA_GOOGLE_INTEGRATION_*` values and credential-encryption key described in [Google integration setup](docs/GOOGLE_INTEGRATION_SETUP.md), and never reuse production credentials locally. `pnpm db:seed` creates no user, session, search profile, listing, job, or activity event.
 
-Run the worker's finite diagnostic commands:
+## Commands
 
-```bash
-pnpm worker:health
-pnpm worker:noop
-pnpm worker:run-once
-```
+| Command                           | Purpose                                                                        |
+| --------------------------------- | ------------------------------------------------------------------------------ |
+| `pnpm postgres:up`                | Start the local PostgreSQL 18.4 container                                      |
+| `pnpm postgres:down`              | Stop local Compose services without deleting the volume                        |
+| `pnpm postgres:reset`             | Guarded destructive reset of the exact local `vera` Compose database           |
+| `pnpm db:generate`                | Generate a reviewed PostgreSQL Drizzle migration                               |
+| `pnpm db:migrate`                 | Apply canonical PostgreSQL migrations from `packages/db/drizzle`               |
+| `pnpm db:seed`                    | Idempotently upsert global source-policy manifests only                        |
+| `pnpm dev`                        | Start hosted web and PostgreSQL worker processes                               |
+| `pnpm worker:start`               | Start the compiled PostgreSQL worker                                           |
+| `pnpm verify:db-boundaries`       | Reject hosted imports of the SQLite demo adapter                               |
+| `pnpm verify:calendar-boundaries` | Reject broad Calendar scopes, notifications, and unsupported event methods     |
+| `pnpm verify:browser-boundaries`  | Reject OpenClaw navigation, side-effect, secret, and demo-boundary regressions |
+| `pnpm verify:maritime-boundaries` | Reject Maritime payload, version, runtime-CLI, and client-secret regressions   |
+| `pnpm maritime:validate`          | Validate pinned worker/gateway deployment assets without network access        |
+| `pnpm openclaw:version`           | Verify the pinned OpenClaw `2026.6.33` CLI                                     |
+| `pnpm openclaw:register-node`     | Synchronize one manually verified founder node/profile; source stays disabled  |
+| `pnpm lint`                       | Run ESLint with zero warnings                                                  |
+| `pnpm typecheck`                  | Typecheck every workspace                                                      |
+| `pnpm test:unit`                  | Run deterministic unit tests                                                   |
+| `pnpm test:integration`           | Run explicit SQLite/demo and web contract tests                                |
+| `pnpm test:integration:postgres`  | Run PostgreSQL constraints, isolation, transactions, and concurrency tests     |
+| `pnpm test:e2e`                   | Run the deterministic Playwright flow                                          |
+| `pnpm build`                      | Build the Next.js web app and Node worker                                      |
 
-Run the compiled worker after a build:
+## Persistence boundaries
 
-```bash
-pnpm build
-pnpm worker:start -- health
-```
+- `@vera/db` exposes PostgreSQL configuration, connection, migration, repository, policy, encryption, and worker-queue boundaries.
+- Every private PostgreSQL aggregate carries `user_id`. Composite foreign keys prevent a child owned by one user from referencing another user's parent.
+- Application services receive repositories already bound to the authenticated session user; route bodies and query parameters cannot select an owner.
+- Worker claim methods are the only cross-user interface. They return the owning user with one leased job, then processing narrows to that user's repositories.
+- Raw listings, activity events, job attempts, decision histories, and other evidentiary rows are append-only where required.
+- `@vera/db/demo` is the explicit deterministic SQLite adapter. It has one fixed synthetic owner and no hosted identity or integration-credential tables.
 
-The default compiled worker command is long-running and stops gracefully on SIGINT or SIGTERM:
+See [OpenClaw founder setup](docs/OPENCLAW_FOUNDER_SETUP.md), [Google integration setup](docs/GOOGLE_INTEGRATION_SETUP.md), [PostgreSQL operations](docs/POSTGRES_OPERATIONS.md), [architecture](docs/ARCHITECTURE.md), [data model](docs/DATA_MODEL.md), and [security](docs/SECURITY.md).
 
-```bash
-pnpm worker:start
-```
+The first real browser path is an unsupported, disabled-by-default founder experiment: an authenticated user may capture one already-open exact Zillow listing tab through a selected local OpenClaw `2026.6.33` node/profile. It performs no navigation or site action. Use `pnpm verify:browser-boundaries` to check the static safety surface; the default test suite never invokes OpenClaw.
 
-## Root commands
+## Deployment assumptions
 
-| Command               | Purpose                                                               |
-| --------------------- | --------------------------------------------------------------------- |
-| pnpm dev              | Run the local web and polling worker processes                        |
-| pnpm build            | Build every buildable workspace project                               |
-| pnpm lint             | Run ESLint with zero warnings allowed                                 |
-| pnpm typecheck        | Typecheck root configuration and every workspace project              |
-| pnpm format           | Format supported files with Prettier                                  |
-| pnpm format:check     | Verify formatting without writing                                     |
-| pnpm test             | Run unit, integration, and Playwright tests                           |
-| pnpm test:unit        | Run domain, policy, connector, hashing, and worker unit tests         |
-| pnpm test:integration | Run SQLite, capture-route, and normalization-worker integration tests |
-| pnpm test:e2e         | Run dashboard and manual-capture browser tests                        |
-| pnpm db:generate      | Generate a Drizzle SQL migration for review                           |
-| pnpm db:migrate       | Create or upgrade the configured SQLite database                      |
-| pnpm db:seed          | Insert idempotent sanitized fixtures and policy manifests             |
-| pnpm worker:health    | Emit a typed worker health report and exit                            |
-| pnpm worker:noop      | Run one no-op job with a correlation ID and exit                      |
-| pnpm worker:run-once  | Process at most one normalization job and exit                        |
-| pnpm worker:start     | Start the compiled polling worker                                     |
+The founder release uses one region, one hosted web instance, one Maritime worker, one pinned Maritime OpenClaw gateway, one founder-controlled local browser node/profile, and one managed PostgreSQL database. Railway or Vercel may host the web application only:
 
-## Workspace
+- web: `pnpm --filter @vera/web start:hosted`, readiness `/api/ready`;
+- worker: deploy the immutable root `Dockerfile` image to Maritime and run `serve`;
+- gateway: deploy `ghcr.io/openclaw/openclaw:2026.6.33` to Maritime.
 
-```text
-apps/
-  web/          Next.js App Router dashboard and local route handlers
-  worker/       separate Node lifecycle and durable normalization jobs
-packages/
-  domain/       Zod schemas and shared domain contracts
-  db/           Drizzle schema, migrations, repositories, and fixtures
-  connectors/   fixture/manual capture contracts and deterministic normalization
-  ai/           provider-neutral contracts, deterministic mock, evidence validation, OpenAI adapter
-  policy/       fail-closed manifest registry, kill switches, and domain classification
-  scoring/      deterministic scoring boundary
-  testing/      sanitized fixture and test-helper boundary
-tests/e2e/      Playwright browser tests
-docs/           product, safety, architecture, and decision records
-```
+Run `pnpm db:migrate` as a controlled release step and `pnpm db:seed` after the first migration. Configure the supported five-minute trigger in the Maritime dashboard and validate it with `maritime triggers vera-worker`. Keep the sum of both bounded pools below the managed database connection limit. See [the Maritime runbook](infra/maritime/README.md). Horizontal scaling, Redis, Kubernetes, replicas, sharding, and PostgreSQL row-level security are outside the founder-release boundary.
 
-Internal packages expose TypeScript source to the applications. Next.js transpiles the domain and database runtime packages while keeping the native SQLite driver external. The web route imports the narrow `@vera/db/runtime` subpath, so production builds cannot reach migrations or seed behavior. Esbuild bundles the worker and its internal workspace imports into production ESM.
+## Safety
 
-## Selected versions
-
-Direct versions are exact in package.json and pnpm-lock.yaml.
-
-| Tool              | Version |
-| ----------------- | ------- |
-| pnpm              | 11.14.0 |
-| Next.js           | 16.2.10 |
-| React / React DOM | 19.2.7  |
-| TypeScript        | 6.0.3   |
-| Zod               | 4.4.3   |
-| better-sqlite3    | 12.11.1 |
-| Drizzle ORM       | 0.45.2  |
-| Drizzle Kit       | 0.31.10 |
-| Pino              | 10.3.1  |
-| OpenAI SDK        | 6.48.0  |
-| Vitest            | 4.1.10  |
-| Playwright        | 1.61.1  |
-| ESLint            | 9.39.5  |
-| Prettier          | 3.9.5   |
-| esbuild           | 0.28.1  |
-
-TypeScript 6.0.3 is intentional: the current lint toolchain does not yet declare TypeScript 7 support. ESLint 9.39.5 is the newest stable ESLint line supported by every plugin bundled with the selected Next.js configuration. Node 24 is the project target because it is the LTS line documented in ADR 0005.
-
-## Local database
-
-The database filename is `vera.sqlite`. By default it is stored in the current user's application-data directory:
-
-- macOS: `~/Library/Application Support/Vera`
-- Windows: `%APPDATA%/Vera`
-- Linux: `$XDG_DATA_HOME/vera` or `~/.local/share/vera`
-
-Set `VERA_DATA_DIR` to use another directory. Keep personal databases outside this repository. The connection initializer verifies foreign keys, WAL mode, and a five-second busy timeout.
-
-Migrate before seeding:
-
-```bash
-pnpm db:migrate
-pnpm db:seed
-```
-
-The seed is offline, sanitized, deterministic, and idempotent. Running `pnpm db:seed` twice keeps the same 12 raw records, 12 source records, 8 canonical listings, 3 duplicate clusters, provenance rows, audit-event count, and policy-manifest versions. Later manual captures add immutable raw rows and idempotent normalization jobs without changing the fixture topology.
-
-## Environment
-
-Copy .env.example to an untracked local environment file only when a documented option is needed. Vera recognizes:
-
-- VERA_LOG_LEVEL for structured worker log verbosity.
-- VERA_DATA_DIR as an optional SQLite application-data directory.
-- VERA_ACTIVE_KILL_SWITCHES as an optional comma-separated set of exact manifest kill-switch keys. For example, `integrations.disabled` denies every connector.
-- OPENAI_API_KEY and VERA_LLM_MODEL together enable the live OpenAI Responses provider. If both are absent, Vera is deterministic-only; supplying only one is an error. No model name is hardcoded.
-- VERA_LLM_TIMEOUT_MS sets the live request timeout from 1,000 through 30,000 milliseconds and defaults to 20,000.
-- VERA_RUN_LIVE_LLM_TESTS must be exactly `1`, in addition to a key and model, for the opt-in live integration test. Merely having credentials never enables a live test.
-
-Do not add API keys, OAuth tokens, browser profiles, cookies, real listing contacts, or personal mailbox data to this repository. Prompts, raw model output, evidence snippets, contacts, credentials, and full URLs are excluded from logs and activity metadata.
-
-## Test boundaries
-
-- Unit tests cover domain schemas, lifecycle transitions, hashing, connector contracts, deterministic normalization, provider configuration, evidence validation, prompt injection, strict OpenAI response parsing, one repair attempt, typed errors, URL classification, fail-closed policy, worker lifecycle, correlation IDs, and graceful signals.
-- Integration tests use migrated temporary file databases for pragmas, repositories, idempotency, append-only triggers, rollback, immutable extraction runs, seed cardinality/provenance, capture routes, audit redaction, and provider-aware normalization jobs. The live OpenAI integration is skipped unless all explicit opt-in conditions are present.
-- Playwright owns a migrated and seeded artifact database, starts the loopback Next.js and worker processes, confirms the dashboard fixtures, completes one manual text capture without external access, and opens its extraction-evidence detail page.
-- CI installs Chromium, runs formatting, linting, typechecking, all tests, and the production build on Node 24.
-
-Tests make no external requests or side effects.
-
-## Troubleshooting
-
-If Playwright reports a missing browser executable:
-
-```bash
-pnpm exec playwright install chromium
-```
-
-If pnpm reports an unsupported Node engine, switch to Node 24 LTS. Do not weaken the engine range to accommodate an unreviewed runtime.
-
-If port 3000 is already in use, stop the existing process before running pnpm dev or pnpm test:e2e; the supported local URL is intentionally fixed to loopback port 3000.
-
-## Next milestone
-
-Milestone 4 can add deterministic duplicate candidates and canonicalization for newly captured source records. It must retain every source record and field provenance, keep model output out of policy decisions, and continue treating manual URL provenance as inert text rather than a network-fetch instruction.
+No platform scraping, credential login, CAPTCHA bypass, autonomous sending, rental applications, deposits, or payments are implemented. Fixture source labels do not imply live access. Unknown facts remain unknown, deterministic code owns hard constraints, and risk outputs are indicators rather than scam verdicts. Calendar suggestions degrade visibly to Vera's weekly rules when Google cannot be checked; a private tentative hold still requires an exact payload-bound approval and never adds attendees or notifications.

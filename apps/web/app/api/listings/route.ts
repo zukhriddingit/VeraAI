@@ -1,15 +1,10 @@
 import {
-  createSqliteRepositories,
-  openExistingDatabase,
-  type VeraDatabaseConnection
-} from "@vera/db/runtime";
-import {
   CanonicalListingCollectionResponseSchema,
   ListingsUnavailableResponseSchema
 } from "@vera/domain";
 
-import { isDemoMode } from "../../../lib/demo-mode";
 import { getDemoStatus } from "../../../lib/demo-search-service";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,17 +14,16 @@ const headers = {
   "Content-Type": "application/json"
 };
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   const generatedAt = new Date().toISOString();
-  let connection: VeraDatabaseConnection | null = null;
 
   try {
-    connection = openExistingDatabase();
-    const repositories = createSqliteRepositories(connection);
+    const context = await requireVeraSession(request.headers);
+    const repositories = context.repositories;
     const listings =
-      isDemoMode() && getDemoStatus(repositories).status === "not_run"
+      context.demoMode && (await getDemoStatus(repositories)).status === "not_run"
         ? []
-        : repositories.canonicalListings.listSummaries();
+        : await repositories.canonicalListings.listSummaries();
     const response = CanonicalListingCollectionResponseSchema.parse({
       listings,
       count: listings.length,
@@ -37,17 +31,22 @@ export async function GET(): Promise<Response> {
     });
 
     return Response.json(response, { status: 200, headers });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
     const response = ListingsUnavailableResponseSchema.parse({
       code: "database_unavailable",
-      message: isDemoMode()
-        ? "Demo listing data is unavailable. Run pnpm demo:reset and pnpm demo:seed."
-        : "Local listing data is unavailable. Run pnpm db:migrate and pnpm db:seed.",
+      message:
+        process.env.VERA_DEMO_MODE === "1"
+          ? "Demo listing data is unavailable. Run pnpm demo:reset and pnpm demo:seed."
+          : "Hosted listing data is unavailable. Check PostgreSQL readiness.",
       generatedAt
     });
 
     return Response.json(response, { status: 503, headers });
-  } finally {
-    connection?.close();
   }
 }

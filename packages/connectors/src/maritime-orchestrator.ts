@@ -253,7 +253,10 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
       attempts: queued.attempts + 1
     });
 
-    if (dispatched.payload.acquisitionMode !== "local_browser") {
+    if (
+      dispatched.payload.acquisitionMode !== "local_browser" ||
+      !("savedSearchUrl" in dispatched.payload)
+    ) {
       return this.copyJob(
         this.failedJob(
           dispatched,
@@ -340,7 +343,8 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
   }
 
   private async executeBrowserJob(dispatched: SourceJob): Promise<SourceJob> {
-    if (dispatched.payload.acquisitionMode !== "local_browser") {
+    const payload = dispatched.payload;
+    if (payload.acquisitionMode !== "local_browser" || !("savedSearchUrl" in payload)) {
       return this.failedJob(
         dispatched,
         "permanently_failed",
@@ -352,13 +356,13 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     try {
       browserResult = BrowserExecutionResultSchema.parse(
         await this.browser.capture({
-          nodeId: dispatched.payload.nodeId,
+          nodeId: payload.nodeId,
           executionId: dispatched.id,
           correlationId: dispatched.correlationId,
-          targetUrl: dispatched.payload.savedSearchUrl,
-          allowedUrls: [dispatched.payload.savedSearchUrl],
-          limits: dispatched.payload.limits,
-          committedCursor: dispatched.payload.committedCursor
+          targetUrl: payload.savedSearchUrl,
+          allowedUrls: [payload.savedSearchUrl],
+          limits: payload.limits,
+          committedCursor: payload.committedCursor
         })
       );
     } catch {
@@ -486,6 +490,7 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     return (
       result.providerId === this.browser.providerId &&
       job.payload.acquisitionMode === "local_browser" &&
+      "committedCursor" in job.payload &&
       result.nodeId === job.payload.nodeId &&
       result.executionId === job.id &&
       result.operation === "capture" &&
@@ -505,11 +510,17 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
       return false;
     }
     const runtimeAuthorization = await this.runtimeAuthorizationFor(job);
-    const network =
+    const browserUrl =
       job.payload.acquisitionMode === "local_browser"
+        ? "savedSearchUrl" in job.payload
+          ? job.payload.savedSearchUrl
+          : job.payload.expectedUrl
+        : null;
+    const network =
+      browserUrl !== null
         ? {
-            origin: new URL(job.payload.savedSearchUrl).origin,
-            domain: new URL(job.payload.savedSearchUrl).hostname,
+            origin: new URL(browserUrl).origin,
+            domain: new URL(browserUrl).hostname,
             httpMethod: "GET" as const
           }
         : null;

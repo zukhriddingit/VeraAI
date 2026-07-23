@@ -937,6 +937,38 @@ export const LOCAL_SOURCE_MANIFEST_FIXTURES = [
     notes: "Stores user-supplied text or structured data; provenance URLs are never fetched.",
     createdAt: "2026-07-17T00:00:00.000Z",
     updatedAt: "2026-07-17T00:00:00.000Z"
+  },
+  {
+    schemaVersion: 2,
+    connectorId: "google.calendar.v1",
+    displayName: "Google Calendar tentative holds",
+    version: 1,
+    source: "other",
+    acquisitionMode: "official_api",
+    policyState: "user_triggered_only",
+    enabled: true,
+    execution: "manual",
+    capabilities: ["calendar.hold.create"],
+    allowedOperations: ["calendar.hold.create_tentative"],
+    allowedDomains: ["www.googleapis.com"],
+    allowedOrigins: ["https://www.googleapis.com/"],
+    allowedHttpMethods: ["POST"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "integrations.disabled",
+    connectorKillSwitchKey: "connectors.google.calendar.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules: [...redactionRules],
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera maintainers",
+    reviewedAt: "2026-07-21",
+    decisionRecord: "docs/DECISIONS/0003-approved-drafts-and-calendar-holds.md",
+    notes:
+      "Allows only an exact, payload-approved tentative private event with no attendees, conference data, or notifications.",
+    createdAt: "2026-07-21T00:00:00.000Z",
+    updatedAt: "2026-07-21T00:00:00.000Z"
   }
 ] as const satisfies readonly SourcePolicyManifest[];
 

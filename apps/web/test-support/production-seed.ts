@@ -1,4 +1,5 @@
-import { seedEvidenceDatabase, type VeraRepositories } from "@vera/db";
+import { seedEvidenceDatabase } from "@vera/db/demo";
+import type { VeraRepositories } from "@vera/db";
 import { evaluateCorpus } from "@vera/scoring";
 
 const decisionTime = "2026-07-20T18:00:00.000Z";

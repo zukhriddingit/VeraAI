@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "evaluate:fixtures": "node --import tsx src/evaluate-fixtures-cli.ts",
+    "evaluate:fixtures": "tsx src/evaluate-fixtures-cli.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

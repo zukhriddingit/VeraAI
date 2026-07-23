@@ -14,7 +14,7 @@ import {
   type NormalizationResult,
   type RawListingEnvelope
 } from "@vera/connectors";
-import type { VeraRepositories } from "@vera/db";
+import type { UserRepositories, UserRepositoryProvider } from "@vera/db";
 import {
   ActivityEventSchema,
   LISTING_EXTRACTION_PROMPT_VERSION,
@@ -23,7 +23,8 @@ import {
   ListingExtractionRunSchema,
   type ErrorCategory,
   type JsonObject,
-  type NormalizationJob
+  type NormalizationJob,
+  type VeraUserId
 } from "@vera/domain";
 
 export const NORMALIZATION_LEASE_DURATION_MILLISECONDS = 90_000;
@@ -33,7 +34,10 @@ type PipelineRunner = typeof runListingExtractionPipeline;
 type ExtractionProjector = typeof projectListingExtraction;
 
 export interface NormalizationWorkerDependencies {
-  readonly repositories: VeraRepositories;
+  readonly userId: VeraUserId;
+  readonly repositoryProvider: UserRepositoryProvider;
+  readonly repositories: UserRepositories;
+  readonly claimedJob?: NormalizationJob;
   readonly leaseOwner: string;
   readonly provider?: LLMProvider | null;
   readonly providerTimeoutMilliseconds?: number;
@@ -123,7 +127,7 @@ function connectorMetadata(metadata: JsonObject): {
 }
 
 function rawEnvelope(
-  raw: NonNullable<ReturnType<VeraRepositories["rawListings"]["getById"]>>
+  raw: NonNullable<Awaited<ReturnType<UserRepositories["rawListings"]["getById"]>>>
 ): RawListingEnvelope {
   const metadata = connectorMetadata(raw.captureMetadata);
   return RawListingEnvelopeSchema.parse({
@@ -240,18 +244,20 @@ export async function processNextNormalizationJob(
   if (signal.aborted) return { status: "idle" };
 
   const claimTime = validDate(dependencies);
-  const job = dependencies.repositories.normalizationJobs.claimNext({
-    leaseOwner: dependencies.leaseOwner,
-    now: claimTime.toISOString(),
-    leaseExpiresAt: new Date(
-      claimTime.getTime() + NORMALIZATION_LEASE_DURATION_MILLISECONDS
-    ).toISOString()
-  });
+  const job =
+    dependencies.claimedJob ??
+    (await dependencies.repositories.normalizationJobs.claimNext({
+      leaseOwner: dependencies.leaseOwner,
+      now: claimTime.toISOString(),
+      leaseExpiresAt: new Date(
+        claimTime.getTime() + NORMALIZATION_LEASE_DURATION_MILLISECONDS
+      ).toISOString()
+    }));
   if (!job) return { status: "idle" };
 
   try {
     if (signal.aborted) return { status: "cancelled", jobId: job.id };
-    const raw = dependencies.repositories.rawListings.getById(job.rawListingId);
+    const raw = await dependencies.repositories.rawListings.getById(job.rawListingId);
     if (!raw) {
       throw new NormalizationProcessingError(
         "normalization_raw_evidence_missing",
@@ -302,65 +308,72 @@ export async function processNextNormalizationJob(
       completedAt
     });
 
-    const decisionJob = dependencies.repositories.transaction((repositories) => {
-      if (
-        repositories.sourceRecords.getByRawListingId(raw.id) !== null ||
-        repositories.listingExtractions.getByRawListingId(raw.id) !== null
-      ) {
-        throw new NormalizationProcessingError("normalization_result_conflict", "conflict", false);
-      }
+    const decisionJob = await dependencies.repositoryProvider.transaction(
+      dependencies.userId,
+      async (repositories) => {
+        if (
+          (await repositories.sourceRecords.getByRawListingId(raw.id)) !== null ||
+          (await repositories.listingExtractions.getByRawListingId(raw.id)) !== null
+        ) {
+          throw new NormalizationProcessingError(
+            "normalization_result_conflict",
+            "conflict",
+            false
+          );
+        }
 
-      repositories.sourceRecords.insert(normalized.sourceRecord);
-      for (const provenance of normalized.provenance) {
-        repositories.fieldProvenance.insert(provenance);
-      }
-      repositories.listingExtractions.insert(extractionRun);
-      const profiles = repositories.searchProfiles.list();
-      if (profiles.length !== 1) {
-        throw new NormalizationProcessingError(
-          "normalization_search_profile_ambiguous",
-          "conflict",
-          false
+        await repositories.sourceRecords.insert(normalized.sourceRecord);
+        for (const provenance of normalized.provenance) {
+          await repositories.fieldProvenance.insert(provenance);
+        }
+        await repositories.listingExtractions.insert(extractionRun);
+        const profiles = await repositories.searchProfiles.list();
+        if (profiles.length !== 1) {
+          throw new NormalizationProcessingError(
+            "normalization_search_profile_ambiguous",
+            "conflict",
+            false
+          );
+        }
+        const decisionJob = await repositories.decisionJobs.bumpCorpusRevisionAndEnqueue({
+          id: dependencies.createId(),
+          searchProfileId: profiles[0]!.id,
+          trigger: "normalization",
+          now: completedAt
+        });
+        await repositories.activityEvents.append(
+          ActivityEventSchema.parse({
+            id: completionEventId,
+            correlationId: job.correlationId,
+            causationId: job.causationId,
+            actor: "system",
+            action: "normalization.completed",
+            targetType: "raw_listing",
+            targetId: raw.id,
+            policyDecision: "not_applicable",
+            approvalId: null,
+            payloadHash: raw.contentHash,
+            outcome: "succeeded",
+            errorCategory: null,
+            metadata: successMetadata(
+              job,
+              pipeline,
+              extractionRun.id,
+              normalized.sourceRecord.id,
+              decisionJob.id,
+              decisionJob.targetCorpusRevision
+            ),
+            occurredAt: completedAt
+          })
         );
+        await repositories.normalizationJobs.complete({
+          id: job.id,
+          leaseOwner: dependencies.leaseOwner,
+          completedAt
+        });
+        return decisionJob;
       }
-      const decisionJob = repositories.decisionJobs.bumpCorpusRevisionAndEnqueue({
-        id: dependencies.createId(),
-        searchProfileId: profiles[0]!.id,
-        trigger: "normalization",
-        now: completedAt
-      });
-      repositories.activityEvents.append(
-        ActivityEventSchema.parse({
-          id: completionEventId,
-          correlationId: job.correlationId,
-          causationId: job.causationId,
-          actor: "system",
-          action: "normalization.completed",
-          targetType: "raw_listing",
-          targetId: raw.id,
-          policyDecision: "not_applicable",
-          approvalId: null,
-          payloadHash: raw.contentHash,
-          outcome: "succeeded",
-          errorCategory: null,
-          metadata: successMetadata(
-            job,
-            pipeline,
-            extractionRun.id,
-            normalized.sourceRecord.id,
-            decisionJob.id,
-            decisionJob.targetCorpusRevision
-          ),
-          occurredAt: completedAt
-        })
-      );
-      repositories.normalizationJobs.complete({
-        id: job.id,
-        leaseOwner: dependencies.leaseOwner,
-        completedAt
-      });
-      return decisionJob;
-    });
+    );
 
     return {
       status: "completed",
@@ -379,42 +392,45 @@ export async function processNextNormalizationJob(
     const failedAt = safeFailureDate(dependencies, claimTime);
     const failure = safeFailure(error);
     const failureEventId = dependencies.createId();
-    const failedJob = dependencies.repositories.transaction((repositories) => {
-      const updated = repositories.normalizationJobs.fail({
-        id: job.id,
-        leaseOwner: dependencies.leaseOwner,
-        retryable: failure.retryable,
-        failedAt: failedAt.toISOString(),
-        retryAt: retryAt(job, failedAt),
-        errorCode: failure.code,
-        errorCategory: failure.category
-      });
-      repositories.activityEvents.append(
-        ActivityEventSchema.parse({
-          id: failureEventId,
-          correlationId: job.correlationId,
-          causationId: job.causationId,
-          actor: "system",
-          action: "normalization.failed",
-          targetType: "raw_listing",
-          targetId: job.rawListingId,
-          policyDecision: "not_applicable",
-          approvalId: null,
-          payloadHash: job.idempotencyKey,
-          outcome: "failed",
-          errorCategory: failure.category,
-          metadata: {
-            jobId: job.id,
-            errorCode: failure.code,
+    const failedJob = await dependencies.repositoryProvider.transaction(
+      dependencies.userId,
+      async (repositories) => {
+        const updated = await repositories.normalizationJobs.fail({
+          id: job.id,
+          leaseOwner: dependencies.leaseOwner,
+          retryable: failure.retryable,
+          failedAt: failedAt.toISOString(),
+          retryAt: retryAt(job, failedAt),
+          errorCode: failure.code,
+          errorCategory: failure.category
+        });
+        await repositories.activityEvents.append(
+          ActivityEventSchema.parse({
+            id: failureEventId,
+            correlationId: job.correlationId,
+            causationId: job.causationId,
+            actor: "system",
+            action: "normalization.failed",
+            targetType: "raw_listing",
+            targetId: job.rawListingId,
+            policyDecision: "not_applicable",
+            approvalId: null,
+            payloadHash: job.idempotencyKey,
+            outcome: "failed",
             errorCategory: failure.category,
-            retryable: failure.retryable,
-            jobState: updated.state
-          },
-          occurredAt: failedAt.toISOString()
-        })
-      );
-      return updated;
-    });
+            metadata: {
+              jobId: job.id,
+              errorCode: failure.code,
+              errorCategory: failure.category,
+              retryable: failure.retryable,
+              jobState: updated.state
+            },
+            occurredAt: failedAt.toISOString()
+          })
+        );
+        return updated;
+      }
+    );
 
     return {
       status: failedJob.state === "dead_letter" ? "dead_letter" : "retryable",

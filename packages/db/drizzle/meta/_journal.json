@@ -1,47 +1,40 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1784333052106,
-      "tag": "0000_bored_stick",
+      "version": "7",
+      "when": 1784602443558,
+      "tag": "0000_smart_vin_gonzales",
       "breakpoints": true
     },
     {
       "idx": 1,
-      "version": "6",
-      "when": 1784339395308,
-      "tag": "0001_tiny_peter_parker",
+      "version": "7",
+      "when": 1784661702895,
+      "tag": "0001_calendar_availability",
       "breakpoints": true
     },
     {
       "idx": 2,
-      "version": "6",
-      "when": 1784343657717,
-      "tag": "0002_neat_pyro",
+      "version": "7",
+      "when": 1784673227790,
+      "tag": "0002_openclaw_current_tab",
       "breakpoints": true
     },
     {
       "idx": 3,
-      "version": "6",
-      "when": 1784400240666,
-      "tag": "0003_romantic_fantastic_four",
+      "version": "7",
+      "when": 1784703052193,
+      "tag": "0003_maritime_execution_plane",
       "breakpoints": true
     },
     {
       "idx": 4,
-      "version": "6",
-      "when": 1784402728037,
-      "tag": "0004_groovy_zaladane",
-      "breakpoints": true
-    },
-    {
-      "idx": 5,
-      "version": "6",
-      "when": 1784576803455,
-      "tag": "0005_production_decision_engines",
+      "version": "7",
+      "when": 1784746949081,
+      "tag": "0004_founder_security_hardening",
       "breakpoints": true
     }
   ]

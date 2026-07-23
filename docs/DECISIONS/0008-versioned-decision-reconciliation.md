@@ -3,6 +3,8 @@
 - Status: Accepted
 - Date: 2026-07-20
 
+Superseded in persistence scope by ADR 0009: PostgreSQL now owns hosted queues and decision state. The deterministic engine and reconciliation semantics in this record remain accepted, while SQLite is limited to the explicit demo adapter.
+
 ## Context
 
 Vera must turn normalized source records into user-facing duplicate clusters, canonical listings, fit scores, and risk indicators. These results affect renter attention and safety, so a seed-only or UI-local implementation is not acceptable. New evidence, preference changes, and operator merge/split corrections must produce the same explainable result after a retry or process restart without deleting provenance or corrupting user workflow state.
@@ -35,7 +37,7 @@ The sanitized seed inserts evidence only and queues reconciliation. Product comm
 
 Forward migration `0005_production_decision_engines.sql` preserves all migration-0004 data. It adds corpus/job/run/history/override tables and additive version-2 score, risk, canonical projection, coordinate, and photo metadata. Legacy score/risk rows remain readable. New decision histories and scores receive database-level update/delete rejection triggers.
 
-SQLite remains a one-worker local persistence boundary. It is not the Maritime acquisition control plane. A future hosted or multi-user deployment must revisit queue and database ownership without changing the pure decision contracts.
+PostgreSQL is the hosted worker and queue boundary under ADR 0009. SQLite preserves this one-worker behavior only in the explicit deterministic demo composition root; the pure decision contracts are shared.
 
 ## Security and privacy decision
 

@@ -1,13 +1,12 @@
-import { getDatabasePath } from "./paths.ts";
-import { openDatabase } from "./connection.ts";
-import { migrateDatabase } from "./migrations.ts";
+import { parsePostgresConfig } from "./postgres/config.ts";
+import { openPostgresConnection } from "./postgres/connection.ts";
+import { migratePostgres } from "./postgres/migrations.ts";
 
-const filePath = getDatabasePath();
-const connection = openDatabase({ filePath });
+const connection = openPostgresConnection(parsePostgresConfig(process.env));
 
 try {
-  migrateDatabase(connection);
-  process.stdout.write(`Vera database migrated at ${filePath}\n`);
+  await migratePostgres(connection);
+  process.stdout.write(`${JSON.stringify({ event: "postgres_migration_completed" })}\n`);
 } finally {
-  connection.close();
+  await connection.close();
 }

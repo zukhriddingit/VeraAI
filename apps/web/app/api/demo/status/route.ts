@@ -1,16 +1,17 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import { DemoUnavailableResponseSchema } from "@vera/domain";
 
-import { isDemoMode } from "../../../../lib/demo-mode";
 import { DemoSearchStateError, getDemoStatus } from "../../../../lib/demo-search-service";
+import { getHostedApplication } from "../../../../lib/server/application";
+import { requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const headers = { "Cache-Control": "no-store, max-age=0", "Content-Type": "application/json" };
 
-export async function GET(): Promise<Response> {
-  if (!isDemoMode()) {
+export async function GET(request: Request): Promise<Response> {
+  const application = getHostedApplication();
+  if (application.mode !== "demo") {
     return Response.json(
       DemoUnavailableResponseSchema.parse({
         code: "demo_mode_disabled",
@@ -20,10 +21,9 @@ export async function GET(): Promise<Response> {
     );
   }
 
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    connection = openExistingDatabase();
-    return Response.json(getDemoStatus(createSqliteRepositories(connection)), {
+    const context = await requireVeraSession(request.headers, application);
+    return Response.json(await getDemoStatus(context.repositories), {
       status: 200,
       headers
     });
@@ -38,7 +38,5 @@ export async function GET(): Promise<Response> {
       }),
       { status: invalid ? 409 : 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

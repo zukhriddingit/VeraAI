@@ -1,4 +1,3 @@
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db/runtime";
 import {
   CaptureErrorResponseSchema,
   CaptureStatusResponseSchema,
@@ -7,6 +6,7 @@ import {
 } from "@vera/domain";
 
 import { projectCaptureExtractionRun, projectCaptureFields } from "../../../../lib/capture-service";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -20,11 +20,11 @@ interface RouteContext {
   readonly params: Promise<{ rawListingId: string }>;
 }
 
-export async function GET(_request: Request, context: RouteContext): Promise<Response> {
+export async function GET(request: Request, context: RouteContext): Promise<Response> {
   const generatedAt = new Date().toISOString();
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
 
   try {
+    const session = await requireVeraSession(request.headers);
     const { rawListingId: rawListingIdInput } = await context.params;
     const parsedRawListingId = EntityIdSchema.safeParse(rawListingIdInput);
 
@@ -41,9 +41,8 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
     }
 
     const rawListingId = parsedRawListingId.data;
-    connection = openExistingDatabase();
-    const repositories = createSqliteRepositories(connection);
-    const rawListing = repositories.rawListings.getById(rawListingId);
+    const repositories = session.repositories;
+    const rawListing = await repositories.rawListings.getById(rawListingId);
 
     if (!rawListing) {
       return Response.json(
@@ -57,15 +56,17 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
       );
     }
 
-    const job = repositories.normalizationJobs.getByRawListingId(rawListing.id);
-    const sourceRecord = repositories.sourceRecords.getByRawListingId(rawListing.id);
-    const extractionRun = repositories.listingExtractions.getByRawListingId(rawListing.id);
-    const normalizationEvent = repositories.activityEvents
-      .listByTarget("raw_listing", rawListing.id)
-      .find((event) => event.action === "normalization.completed");
+    const job = await repositories.normalizationJobs.getByRawListingId(rawListing.id);
+    const sourceRecord = await repositories.sourceRecords.getByRawListingId(rawListing.id);
+    const extractionRun = await repositories.listingExtractions.getByRawListingId(rawListing.id);
+    const normalizationEvent = (
+      await repositories.activityEvents.listByTarget("raw_listing", rawListing.id)
+    ).find((event) => event.action === "normalization.completed");
     const decisionJobId = normalizationEvent?.metadata.decisionJobId;
     const decisionJob =
-      typeof decisionJobId === "string" ? repositories.decisionJobs.getById(decisionJobId) : null;
+      typeof decisionJobId === "string"
+        ? await repositories.decisionJobs.getById(decisionJobId)
+        : null;
 
     if (!job && !sourceRecord) {
       return Response.json(
@@ -95,7 +96,7 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
     const fields = sourceRecord
       ? projectCaptureFields({
           record: sourceRecord,
-          provenance: repositories.fieldProvenance.listBySourceRecordId(sourceRecord.id),
+          provenance: await repositories.fieldProvenance.listBySourceRecordId(sourceRecord.id),
           extractionRun
         })
       : [];
@@ -126,17 +127,21 @@ export async function GET(_request: Request, context: RouteContext): Promise<Res
     });
 
     return Response.json(response, { status: 200, headers });
-  } catch {
+  } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
     return Response.json(
       CaptureErrorResponseSchema.parse({
         code: "database_unavailable",
-        message: "Local capture status is unavailable.",
+        message: "Capture status is unavailable.",
         correlationId: null,
         retryable: true
       }),
       { status: 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

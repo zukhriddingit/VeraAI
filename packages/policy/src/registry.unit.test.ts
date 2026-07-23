@@ -290,32 +290,124 @@ describe("SourcePolicyRegistry", () => {
 });
 
 describe("initial local manifests", () => {
-  it("grant one local capability and no network fields", () => {
+  it("keeps local acquisition no-network and Calendar writes narrowly reviewed", () => {
     expect(INITIAL_LOCAL_MANIFESTS.map((manifest) => manifest.connectorId)).toEqual([
       "fixture.feed.v1",
-      "manual.capture.v1"
+      "manual.capture.v1",
+      "google.gmail.listing-alerts.v1",
+      "google.calendar.v1",
+      "zillow.current-tab.v1"
     ]);
     for (const manifest of INITIAL_LOCAL_MANIFESTS) {
       expect(Object.isFrozen(manifest)).toBe(true);
       expect(manifest.schemaVersion).toBe(2);
-      expect(manifest.enabled).toBe(true);
-      expect(manifest.execution).toBe("manual");
+      expect(manifest.enabled).toBe(manifest.connectorId !== "zillow.current-tab.v1");
+      expect(manifest.execution).toBe(
+        manifest.connectorId === "google.gmail.listing-alerts.v1" ? "scheduled" : "manual"
+      );
       expect(manifest.capabilities).toHaveLength(1);
       expect(manifest.allowedOperations).toHaveLength(1);
-      expect(manifest.allowedDomains).toEqual([]);
-      expect(manifest.allowedOrigins).toEqual([]);
-      expect(manifest.allowedHttpMethods).toEqual([]);
-      expect(manifest.requiresUserSession).toBe(false);
-      expect(manifest.requiresApproval).toBe(false);
       expect(manifest.maxConcurrency).toBe(1);
     }
-    expect(INITIAL_LOCAL_MANIFESTS[0]).toMatchObject({
+    const manifests = Object.fromEntries(
+      INITIAL_LOCAL_MANIFESTS.map((manifest) => [manifest.connectorId, manifest])
+    );
+    expect(manifests["fixture.feed.v1"]).toMatchObject({
       acquisitionMode: "fixture",
-      policyState: "approved"
+      policyState: "approved",
+      allowedDomains: [],
+      allowedOrigins: [],
+      allowedHttpMethods: [],
+      requiresUserSession: false,
+      requiresApproval: false
     });
-    expect(INITIAL_LOCAL_MANIFESTS[1]).toMatchObject({
+    expect(manifests["manual.capture.v1"]).toMatchObject({
       acquisitionMode: "user_capture",
-      policyState: "user_triggered_only"
+      policyState: "user_triggered_only",
+      allowedDomains: [],
+      allowedOrigins: [],
+      allowedHttpMethods: [],
+      requiresUserSession: false,
+      requiresApproval: false
     });
+    expect(manifests["google.gmail.listing-alerts.v1"]).toMatchObject({
+      acquisitionMode: "email_alert",
+      policyState: "approved",
+      execution: "scheduled",
+      capabilities: ["gmail.alert.read"],
+      allowedOperations: ["gmail.alert.read_configured"],
+      allowedDomains: ["gmail.googleapis.com"],
+      allowedOrigins: ["https://gmail.googleapis.com/"],
+      allowedHttpMethods: ["GET"],
+      requiresUserSession: true,
+      requiresApproval: false
+    });
+    expect(manifests["google.calendar.v1"]).toMatchObject({
+      acquisitionMode: "official_api",
+      policyState: "user_triggered_only",
+      capabilities: ["calendar.hold.create"],
+      allowedOperations: ["calendar.hold.create_tentative"],
+      allowedDomains: ["www.googleapis.com"],
+      allowedOrigins: ["https://www.googleapis.com/"],
+      allowedHttpMethods: ["POST"],
+      requiresUserSession: true,
+      requiresApproval: true
+    });
+    expect(manifests["zillow.current-tab.v1"]).toMatchObject({
+      acquisitionMode: "local_browser",
+      policyState: "experimental_personal",
+      enabled: false,
+      capabilities: ["browser.capture"],
+      allowedOperations: ["capture.current_tab"],
+      allowedDomains: ["www.zillow.com"],
+      allowedOrigins: ["https://www.zillow.com/"],
+      allowedHttpMethods: ["GET"],
+      requiresUserSession: true,
+      requiresApproval: true
+    });
+  });
+
+  it("requires session, approval, exact network target, and both kill switches for Calendar", () => {
+    const request = {
+      connectorId: "google.calendar.v1",
+      acquisitionMode: "official_api",
+      capability: "calendar.hold.create",
+      execution: "manual",
+      operation: "calendar.hold.create_tentative",
+      hasUserSession: true,
+      hasApproval: true,
+      network: {
+        origin: "https://www.googleapis.com/",
+        domain: "www.googleapis.com",
+        httpMethod: "POST"
+      }
+    } as const satisfies SourcePolicyRequest;
+
+    expect(new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS).evaluate(request)).toMatchObject({
+      allowed: true,
+      connectorId: "google.calendar.v1"
+    });
+    expect(
+      new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS).evaluate({
+        ...request,
+        hasApproval: false
+      })
+    ).toMatchObject({ allowed: false, reason: "approval_required" });
+    expect(
+      new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS).evaluate({
+        ...request,
+        hasUserSession: false
+      })
+    ).toMatchObject({ allowed: false, reason: "user_session_required" });
+    expect(
+      new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS, {
+        activeKillSwitches: new Set(["integrations.disabled"])
+      }).evaluate(request)
+    ).toMatchObject({ allowed: false, reason: "global_kill_switch_active" });
+    expect(
+      new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS, {
+        activeKillSwitches: new Set(["connectors.google.calendar.v1.disabled"])
+      }).evaluate(request)
+    ).toMatchObject({ allowed: false, reason: "connector_kill_switch_active" });
   });
 });

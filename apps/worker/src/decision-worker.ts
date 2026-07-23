@@ -1,9 +1,10 @@
 import {
   DecisionIdempotencyConflictError,
   StaleCorpusRevisionError,
-  type VeraRepositories
+  type UserRepositories,
+  type UserRepositoryProvider
 } from "@vera/db";
-import type { DecisionJobErrorCode } from "@vera/domain";
+import type { DecisionJob, DecisionJobErrorCode, VeraUserId } from "@vera/domain";
 import { DecisionEvaluationError, evaluateCorpus } from "@vera/scoring";
 
 export const DECISION_LEASE_DURATION_MILLISECONDS = 90_000;
@@ -12,7 +13,10 @@ export const DECISION_MAXIMUM_ATTEMPTS = 3;
 type Evaluator = typeof evaluateCorpus;
 
 export interface DecisionWorkerDependencies {
-  readonly repositories: VeraRepositories;
+  readonly userId: VeraUserId;
+  readonly repositoryProvider: UserRepositoryProvider;
+  readonly repositories: UserRepositories;
+  readonly claimedJob?: DecisionJob;
   readonly leaseOwner: string;
   readonly evaluate?: Evaluator;
   now(): Date;
@@ -118,25 +122,27 @@ export async function processNextDecisionJob(
 ): Promise<DecisionWorkerResult> {
   if (signal.aborted) return { status: "idle" };
   const claimTime = validDate(dependencies);
-  const job = dependencies.repositories.decisionJobs.claimNext({
-    leaseOwner: dependencies.leaseOwner,
-    now: claimTime.toISOString(),
-    leaseExpiresAt: new Date(
-      claimTime.getTime() + DECISION_LEASE_DURATION_MILLISECONDS
-    ).toISOString()
-  });
+  const job =
+    dependencies.claimedJob ??
+    (await dependencies.repositories.decisionJobs.claimNext({
+      leaseOwner: dependencies.leaseOwner,
+      now: claimTime.toISOString(),
+      leaseExpiresAt: new Date(
+        claimTime.getTime() + DECISION_LEASE_DURATION_MILLISECONDS
+      ).toISOString()
+    }));
   if (job === null) return { status: "idle" };
 
   try {
     if (signal.aborted) return { status: "cancelled", jobId: job.id };
-    const snapshot = dependencies.repositories.decisionReconciliation.readSnapshot({
+    const snapshot = await dependencies.repositories.decisionReconciliation.readSnapshot({
       searchProfileId: job.searchProfileId,
       targetCorpusRevision: job.targetCorpusRevision
     });
     const computedAt = validDate(dependencies).toISOString();
     const plan = (dependencies.evaluate ?? evaluateCorpus)(snapshot, { now: computedAt });
     if (signal.aborted) return { status: "cancelled", jobId: job.id };
-    const applied = dependencies.repositories.decisionReconciliation.applyPlan({
+    const applied = await dependencies.repositories.decisionReconciliation.applyPlan({
       jobId: job.id,
       leaseOwner: dependencies.leaseOwner,
       plan
@@ -154,8 +160,8 @@ export async function processNextDecisionJob(
     const failedAt = validDate(dependencies);
     const safe = safeFailure(error);
     const retryable = safe.retryable && job.attemptCount < DECISION_MAXIMUM_ATTEMPTS;
-    dependencies.repositories.transaction((repositories) => {
-      repositories.decisionJobs.appendAttempt({
+    await dependencies.repositoryProvider.transaction(dependencies.userId, async (repositories) => {
+      await repositories.decisionJobs.appendAttempt({
         id: dependencies.createId(),
         jobId: job.id,
         attemptNumber: job.attemptCount,
@@ -165,7 +171,7 @@ export async function processNextDecisionJob(
         errorCode: safe.code,
         durationMilliseconds: Math.max(0, failedAt.getTime() - Date.parse(job.updatedAt))
       });
-      repositories.decisionJobs.fail({
+      await repositories.decisionJobs.fail({
         id: job.id,
         leaseOwner: dependencies.leaseOwner,
         retryable,
@@ -175,7 +181,7 @@ export async function processNextDecisionJob(
         retryAt: retryAt(job.attemptCount, failedAt)
       });
       if (safe.code === "stale_corpus_revision") {
-        repositories.decisionJobs.enqueueCurrentRevision({
+        await repositories.decisionJobs.enqueueCurrentRevision({
           id: dependencies.createId(),
           searchProfileId: job.searchProfileId,
           trigger: job.trigger,

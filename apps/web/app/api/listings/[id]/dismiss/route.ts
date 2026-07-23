@@ -1,10 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  createSqliteRepositories,
-  openExistingDatabase,
-  RepositoryNotFoundError
-} from "@vera/db/runtime";
+import { RepositoryNotFoundError } from "@vera/db";
 import {
   DismissListingRequestSchema,
   InvalidListingTransitionError,
@@ -13,6 +9,13 @@ import {
 
 import { dismissListing } from "../../../../../lib/listing-presentation";
 import { parseRouteEntityId } from "../../../../../lib/route-entity-id";
+import {
+  assertSameOriginMutation,
+  CrossOriginMutationError,
+  MutationRequestError,
+  readBoundedJson
+} from "../../../../../lib/server/request-security";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,9 +26,12 @@ interface RouteContext {
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    const parsed = DismissListingRequestSchema.safeParse((await request.json()) as unknown);
+    const session = await requireVeraSession(request.headers);
+    assertSameOriginMutation(request);
+    const parsed = DismissListingRequestSchema.safeParse(
+      await readBoundedJson(request, { maxBytes: 16_384 })
+    );
     if (!parsed.success) {
       return Response.json(
         ListingActionErrorResponseSchema.parse({
@@ -45,16 +51,34 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         { status: 404, headers }
       );
     }
-    connection = openExistingDatabase();
     return Response.json(
-      dismissListing(listingId, {
-        repositories: createSqliteRepositories(connection),
+      await dismissListing(listingId, {
+        userId: session.userId,
+        repositoryProvider: session.repositoryProvider,
         now: () => new Date(),
         createId: randomUUID
       }),
       { status: 200, headers }
     );
   } catch (error: unknown) {
+    if (error instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
+    if (error instanceof CrossOriginMutationError) {
+      return Response.json(
+        { code: "malformed_request", message: "Request origin is not allowed." },
+        { status: 403, headers }
+      );
+    }
+    if (error instanceof MutationRequestError) {
+      return Response.json(
+        { code: "malformed_request", message: "Dismiss request is malformed." },
+        { status: error.status, headers }
+      );
+    }
     const notFound = error instanceof RepositoryNotFoundError;
     const invalid = error instanceof InvalidListingTransitionError;
     return Response.json(
@@ -68,7 +92,5 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       }),
       { status: notFound ? 404 : invalid ? 409 : 503, headers }
     );
-  } finally {
-    connection?.close();
   }
 }

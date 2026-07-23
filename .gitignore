@@ -36,6 +36,7 @@ blob-report/
 playwright-report/
 test-results/
 .superpowers/
+release-evidence/private/
 
 # Logs and operating-system files
 *.log

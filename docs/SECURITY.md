@@ -1,7 +1,7 @@
 # Vera security and privacy baseline
 
 Status: normative MVP controls  
-Reviewed: 2026-07-20
+Reviewed: 2026-07-21
 
 ## Security goals
 
@@ -9,15 +9,27 @@ Vera should reduce rental-search risk without becoming a new source of credentia
 
 ## Current implementation and target boundary
 
-The current clean clone runs fixture and user-capture ingestion, deterministic-first extraction, and production decision reconciliation through the local SQLite worker. The decision engine performs normalized matching, bounded deduplication, canonical stitching, hard constraints, weighted ranking, and evidence-backed risk evaluation with immutable versioned histories. It also defines strict source-job, browser-node, browser-execution, and Maritime control-plane contracts, persists the safe orchestration state, and supplies deterministic no-network browser and Maritime mocks. It does not implement real Maritime transport or deployment, remote node dispatch, email-alert acquisition, an OpenClaw bridge, or source-specific browser monitoring. The controls below distinguish the implemented contract boundary from the additional controls required before live infrastructure exists.
+Hosted Vera now persists identity and application data only in PostgreSQL. Every private repository is bound to the authenticated session's UUID; callers cannot select an owner, every query predicates on `user_id`, and composite foreign keys reject cross-user parent/child references. Foreign and missing resources share the same 404 behavior. The worker may cross users only to atomically claim one owned job, then immediately returns to that owner's repositories.
+
+Better Auth uses a Google Web Application OAuth client for identity only. The exact scopes are `openid`, `email`, and `profile`; implicit cross-email linking is disabled, OAuth state is database-backed, origin/CSRF checks remain enabled, and secure cookies are required in production. Calendar uses a separate Google Web Application OAuth client and server-side authorization-code flow. Gmail authorization remains a separate capability boundary.
+
+Calendar refresh tokens and OAuth PKCE verifiers use a separate application-layer AES-256-GCM envelope before PostgreSQL insertion. Additional authenticated data binds user ID, integration or state ID, provider, and envelope version. Database encryption at rest is supplementary. Access tokens stay process-local and short-lived. Token material, authorization codes, client secrets, connection URLs, message bodies, calendar event details, and contacts are excluded from logs.
+
+The credential-free deterministic demo is a separate SQLite composition with one synthetic owner. It has no users, sessions, accounts, verifications, OAuth credentials, or real personal data. Its process-local Calendar sidecar exposes one immutable, no-token capability fixture for deterministic approval tests; it is not a Google connection, cannot store credentials, and cannot be mutated through the demo repository. `VERA_DEMO_MODE=1` cannot activate the adapter through hosted startup.
+
+The code defines strict source-job, browser-node, browser-execution, Maritime dispatch, Gmail alert, notification, and operations contracts with deterministic no-network mocks. Production composition uses an authenticated server-only Maritime SDK wake, durable PostgreSQL dispatch attempts, narrow Gmail alert reads, generic Web Push, and the pinned founder-only OpenClaw bridge. Source-specific browser monitoring remains disabled.
 
 ## Trust boundaries
 
-Maritime is Vera's primary target orchestration and deployment environment. A future live adapter will be trusted to manage monitoring jobs, scheduled triggers, stable job metadata, bounded retries, agent and connector health, policy-checked notifications, and secrets for approved hosted API and email integrations. It must not own authenticated consumer-site browser sessions. The current `LocalMockMaritimeOrchestrator` is only an in-memory contract test double and provides no Maritime authentication, encryption, durable scheduling, or deployment guarantees.
+Maritime is Vera's primary execution and deployment environment. The production adapter may wake and observe the exact configured worker/gateway deployments; dashboard triggers wake the worker. PostgreSQL owns job metadata, leases, schedules, bounded retries, results, policy, and audit. Maritime must not own authenticated consumer-site browser sessions. `LocalMockMaritimeOrchestrator` remains the default no-network test double.
 
-The registered local browser node is a separate target trust boundary. When implemented, it owns the dedicated user-controlled OpenClaw profile, cookies, local storage, and browser session created by manual user login. OpenClaw is the default, replaceable browser execution adapter. The current `MockBrowserExecutionProvider` performs no browser or network action. Browser page content, redirects, and every result returned by any future local node remain untrusted until schema, provenance, policy, and evidence validation succeed.
+The runtime wake call carries only the exact Maritime worker agent ID. Before wake, Vera writes a tenant-owned, expiring dispatch with a fixed issuer, exact audience, globally unique nonce hash, source-job reference, and payload hash. A worker may claim the job only while that dispatch is accepted, unexpired, unconsumed, and audience-matched. Wake failures expose closed error codes; raw Maritime logs never enter Vera. Operator deploy keys are separate from the narrower server runtime key.
 
-The Maritime-to-node channel must be mutually authenticated, encrypted, replay-protected, schema-bounded, and revocable when implemented. Node identity and authorization are scoped to the assigned user, connector, exact configured saved-search URL, and manifest version. A registered node is not trusted to broaden policy or authorize external effects.
+Web Push subscription endpoints and key material are encrypted at the application layer before PostgreSQL storage. The lock-screen schema permits only fixed generic copy and a same-origin listing path. Deterministic eligibility enforces explicit thresholds, hard constraints, freshness, risk ceiling, duplicate suppression, quiet hours, hourly limits, and the notification kill switch. Provider response bodies and subscription secrets never enter logs, health, audit, or client responses.
+
+The registered local browser node is a separate trust boundary. It owns the dedicated user-controlled OpenClaw profile, cookies, local storage, and browser session created by manual user login. OpenClaw is the default, replaceable browser execution adapter; `MockBrowserExecutionProvider` remains the no-network test implementation. Browser page content, redirects, and every result returned by the local node remain untrusted until schema, provenance, policy, and evidence validation succeed.
+
+The Maritime/OpenClaw channel is authenticated, TLS-bound for public endpoints, replay-protected by Vera dispatch/result hashes, schema-bounded, and revocable. Node identity and authorization are scoped to the assigned user, connector, exact current-tab URL, profile, and manifest version. A registered node is not trusted to broaden policy or authorize external effects.
 
 Untrusted inputs include:
 
@@ -59,7 +71,8 @@ The schema has no password, cookie, authorization-header, token, session-export,
 - Browser navigation escaping an allowlist.
 - Duplicate external effects after retries.
 - Sensitive content leaking through logs, audit events, fixtures, screenshots, or Git.
-- SQLite corruption, unauthorized local access, or unsafe concurrent writes.
+- Cross-tenant reads or writes caused by a missing repository owner predicate.
+- PostgreSQL connection exhaustion, unsafe job claiming, or a schema version mismatch.
 - Cross-site requests to the localhost application.
 - Dependency or build-script compromise.
 - Overconfident risk labels causing harmful user decisions.
@@ -79,7 +92,7 @@ Never commit or place in fixtures:
 - real calendar event data;
 - screenshots containing personal information.
 
-OAuth tokens are accessed only through TokenStore. The default non-test implementation uses the operating system credential store. A developer file store, if ever added, must be explicitly labeled insecure, live outside the repository, use owner-only permissions, and be impossible to select in production mode.
+Hosted integration tokens are accessed only through a narrow credential repository. Refresh-token material must be encrypted with the application-layer credential envelope before PostgreSQL insertion. Access tokens should remain short-lived and should not be persisted in browser storage. A development CLI store, if later added, must use separate development credentials, live outside the repository, use owner-only permissions, and be impossible to select in production mode.
 
 Configuration files may contain public OAuth client metadata only when the provider treats it as non-secret. Refresh tokens, client secrets, and test-account details remain local and uncommitted.
 
@@ -89,33 +102,54 @@ Vera exposes no third-party password form, password API parameter, `credentialLo
 
 ## OAuth controls
 
-- Use authorization code with PKCE and a cryptographically random state value.
-- Bind the callback to the initiating local session and enforce one-time state use and short expiry.
-- Use an exact loopback redirect URI and bind the web server to 127.0.0.1, not all interfaces.
-- Request scopes incrementally: Gmail read for alert ingestion, Gmail compose only when draft creation is enabled, and owned-calendar event access only when holds are enabled.
-- Store read, compose, and calendar grants separately so disconnecting one capability does not retain another.
-- Revoke and remove tokens when a connector is disconnected or the local store is reset.
-- Redact authorization codes, tokens, provider error bodies, and query strings from logs.
+Hosted identity uses the server-side authorization-code flow with a Google Web Application OAuth client. It requests only `openid`, `email`, and `profile`, binds database-backed state to the initiating Vera session, uses exact environment-specific redirect URIs, and requires HTTPS callbacks and secure cookies in production. It does not request offline access or Gmail/Calendar scopes.
 
-The Gmail compose scope can authorize both draft creation and sending. Provider scope alone cannot enforce Vera's draft-only promise. Defense in depth therefore requires:
+The Calendar integration flow is separate from identity and:
 
-- no send capability in domain schemas or manifests;
-- no send method in the Gmail adapter;
+- binds initiation to the authenticated Vera user with cryptographically random, single-use, short-lived state;
+- exchanges the authorization code server-side and uses exact HTTPS callback URI matching;
+- requests `calendar.freebusy` only when conflict checking is enabled and requests `calendar.events.owned` separately only when hold creation is enabled or first used;
+- verifies the scopes actually granted and preserves granted, missing, expired, and revoked capability states independently;
+- encrypts refresh tokens before PostgreSQL persistence, keeps access tokens out of persistent browser storage, and refreshes with bounded retries;
+- attempts provider revocation and always clears Vera's local encrypted credential material when the user disconnects; if provider revocation cannot be confirmed, it records a safe warning and recovery state without retaining the token;
+- redacts authorization codes, tokens, client secrets, provider error bodies, query strings, and message contents from logs;
+- keeps any development CLI fallback on separate development credentials and outside the primary hosted UX.
+
+The authorization request uses `access_type=offline` and `include_granted_scopes=true`. Each 10-minute state value is cryptographically random, single-use, bound to the authenticated Vera user and one requested capability, and protected by PKCE S256. The callback validates the exact configured public origin and redirect URI, exchanges the code server-side, and verifies the actual grant, Google subject, and client audience. Partial consent enables only the granted capability; it never converts a missing permission into success.
+
+The founder release implements hosted Gmail alert ingestion with `gmail.readonly` only. It does not request `gmail.compose`, `gmail.modify`, `gmail.send`, or `mail.google.com`, and it exposes no draft or send operation. The hosted identity client never receives Gmail or Calendar data scopes, and development, staging, and production use different integration clients and callbacks.
+
+Draft-only outreach remains an accepted future boundary, not a current production capability. Because `gmail.compose` can authorize both draft creation and sending, adding drafts later requires a separate reviewed milestone with a narrow `drafts.create` adapter and human approval; merely obtaining the provider scope is insufficient. The current founder-release defense in depth requires:
+
+- no compose, send, or mailbox-modification capability in domain schemas or manifests;
+- a Gmail adapter whose transport permits only `GET` requests;
 - no generic authenticated Gmail client exposed to domain code;
-- no send route, worker job, UI action, or test helper;
-- an outbound-operation allowlist containing drafts.create but not drafts.send or messages.send;
-- contract and static tests that fail if a send endpoint or operation appears.
+- no draft, send, mailbox-modification, deletion, labeling, or forwarding route, worker job, UI action, or test helper;
+- a static production-source verifier that rejects broad Gmail scopes and `drafts.create`, `drafts.send`, or `messages.send` operations;
+- contract tests that fail if a non-read operation enters the Gmail client.
 
-## Local application boundary
+## Calendar privacy and side-effect controls
 
-- Bind local web and callback servers to 127.0.0.1 by default.
+The founder release checks only the connected Google account's primary calendar and says so in the UI. Vera does not request `calendar.calendarlist.readonly`, broad Calendar access, or event-read scopes. Conflict checking uses the free/busy endpoint only: it does not fetch event titles, descriptions, attendees, locations, conference data, or other event details.
+
+Free/busy responses are ephemeral. PostgreSQL stores only the state, primary-calendar attempt/result, check time, response hash, interval count, safe provider error, and the Vera rules that contributed to proposals. Raw busy intervals are not persisted or placed in logs, activity metadata, or analytics.
+
+Availability degrades according to explicit states: `checked`, `scope_not_granted`, `google_disconnected`, `google_temporarily_unavailable`, `stale`, and `vera_rules_only`. A timeout, transient failure, absent grant, revoked token, or stale result is never interpreted as an empty calendar. Rules-only windows are labeled **Calendar conflicts not checked**, expose Connect/Reconnect or Retry, and require a visible warning before continuing.
+
+Immediately before event creation, Vera rechecks the selected interval when free/busy is available. A newly detected conflict blocks the hold and offers replacement windows. If the final check cannot complete, the user may continue only through a fresh approval bound to the exact hold payload, explicit conflict warning, failure state, and override flag; a prior approval cannot authorize that change.
+
+The Calendar adapter permits only a deterministic, private, tentative event on the primary calendar. The event has an empty attendee list, no conferencing, and `sendUpdates=none`; schemas and boundary tests reject wider effects. Founder-release cancel and reschedule transitions update Vera first and never call Google update or delete. The user must manage the external event manually until a later, separately approved capability exists.
+
+## Web application boundary
+
+- Bind local development servers to 127.0.0.1 by default; hosted servers may bind their private platform interface behind HTTPS termination.
 - Reject unexpected Host and Origin headers.
 - Use same-site cookies and an anti-CSRF token for state-changing routes.
 - Set a restrictive Content Security Policy and deny framing.
 - Disable permissive CORS.
 - Do not expose the worker over HTTP.
-- Do not rely on “single user” as authentication against other local websites or processes.
-- Never run Next.js route handlers requiring SQLite or credentials in an Edge runtime.
+- Derive tenant identity from the authoritative server session; never accept an owner ID from a browser request.
+- Never run Next.js route handlers requiring PostgreSQL or credentials in an Edge runtime.
 
 ## URL and network safety
 
@@ -130,6 +164,8 @@ Remote image downloads are not part of the MVP. Photo hashes are computed only f
 ## Browser safety
 
 Local browser acquisition is a first-class but narrow MVP capability. The production connector portfolio is exactly `official_api`, `email_alert`, `local_browser`, and `user_capture`; the code-level union additionally contains test-only `fixture`, which cannot represent a live provider. OpenClaw is the default replaceable adapter for `local_browser`. The source-policy states are exactly `approved`, `user_triggered_only`, `experimental_personal`, and `disabled`. Policy state is separate from `manual` or `scheduled` execution; neither grants an operation by itself. Missing, malformed, mismatched, disabled, or killed policy always denies.
+
+Real browser execution is additionally restricted by the server-only `VERA_BROWSER_FOUNDER_USER_IDS` allowlist. Vera rechecks the authenticated owner against the same exact UUID set when the job is created, when it is dispatched to Maritime, and immediately before the worker invokes the browser provider. Missing, malformed, or nonmatching configuration denies at every boundary; an operator role or an otherwise valid tenant session does not implicitly grant browser execution.
 
 Every `local_browser` operation must:
 
@@ -157,13 +193,13 @@ No browser password, cookie, authorization header, local-storage value, session 
 
 ## Local-node dispatch and offline safety
 
-A future Maritime adapter sends only an opaque job and correlation ID, connector and manifest identifiers, the exact configured saved-search URL and identifier, the last committed cursor, trigger and attempt metadata, and bounded page, record, byte, duration, and concurrency limits. It never sends a consumer-site credential or session artifact. The node returns only schema-bounded listing evidence, discovered source IDs, cursor candidates, typed blocker or failure codes, and safe operational counts.
+The production Maritime adapter persists an expiring, nonce-hashed dispatch bound to the user, worker audience, source job, payload hash, and correlation chain, then calls Maritime with only the worker agent identifier. The worker claims the full user-owned job from PostgreSQL only after the dispatch is accepted. No consumer-site credential, session artifact, listing/page content, OAuth token, or snapshot enters the Maritime wake request.
 
-The implemented application envelopes require a stable idempotency key, payload and result hashes, and correlation ID. A future live transport envelope must add a nonce or equivalent anti-replay binding, short validity window, authenticated node and orchestrator identity, integrity protection, and strict size limits. Registration and transport credentials must be independently revocable and rotated without exporting the browser profile. Results from a stale, revoked, wrong-user, wrong-connector, wrong-manifest, wrong-saved-search, or replayed dispatch deny and do not affect a cursor.
+The OpenClaw node returns only schema-bounded evidence, typed blocker/failure codes, and safe operational counts. Stable idempotency keys, payload/result hashes, short validity windows, explicit audience, nonce replay rejection, current policy, and tenant checks reject stale, revoked, wrong-user, wrong-connector, wrong-manifest, wrong-target, or replayed results without advancing a cursor. Gateway and registration credentials are independently revocable and never require exporting the browser profile.
 
 If the assigned local node is unregistered, offline, stale, or revoked after policy authorization, the job enters queryable `deferred_node_offline` with a typed reason. This state:
 
-- is persisted by the source-job repository and returned by the local mock; a future dashboard and Maritime health view must render it before live use;
+- is persisted by the source-job repository and rendered by the browser-agent and operator health views;
 - preserves the same stable job identity and last committed cursor;
 - creates no RawListing, success event, or successful-empty result;
 - permits bounded retry or explicit user cancellation after the node returns.
@@ -208,15 +244,17 @@ Provider data-retention settings, contractual handling, and regional processing 
 
 ## Data at rest and retention
 
-- Store the SQLite database in the operating system's per-user application-data directory with owner-only permissions.
-- Enable foreign keys, WAL, and a bounded busy timeout.
-- Do not use a network filesystem.
-- Keep raw listing evidence, structured extraction runs, activity events, and source-job attempts immutable through database triggers.
+The normative data inventory, browser-content transit boundary, retention targets, founder export/deletion procedure, provider-outage behavior, and credential-incident runbook are in [`PRIVACY_OPERATIONS.md`](./PRIVACY_OPERATIONS.md). The local browser keeps passwords, cookies, storage, and profile contents local; the minimal page content accepted for capture may traverse the configured OpenClaw gateway and worker before it is persisted as listing evidence. Do not describe that flow as fully local processing.
+
+- Store hosted private data only in the managed PostgreSQL database for its environment; do not share databases or OAuth clients across development, staging, and production.
+- Use database-enforced foreign keys, composite ownership references, uniqueness, bounded pools, and transaction timeouts.
+- Keep raw listing evidence, structured extraction runs, activity events, source-job attempts, and Calendar availability checks immutable through PostgreSQL triggers.
+- Encrypt sensitive integration credentials at the application layer; managed-database encryption at rest is supplementary.
 - Keep message bodies, tokens, email addresses, phone numbers, and unnecessary contact data out of audit payloads.
 - Hash exact approved payloads with a domain-separated cryptographic hash; a hash proves binding but is not a substitute for redaction.
-- Make backups opt-in and document that they may contain personal rental-search data.
+- Encrypt and access-control backups, test restores into a separate non-production database, and apply production retention/deletion policy to backup copies.
 
-Immutability applies while the local store exists. The user retains a separate, confirmed “reset Vera” operation that closes processes, revokes/removes connector tokens, and deletes the entire local database. Selective evidence deletion is not an MVP workflow because it would make provenance and audit semantics misleading.
+The explicit SQLite demo stores only sanitized fixtures for one synthetic owner, enables foreign keys and WAL, and may be reset and reseeded. It is not a backup, failover, hosted datastore, or destination for real identity and integration data.
 
 ## Logging and audit
 
@@ -251,22 +289,37 @@ For capture ingestion, the persisted event chain is requested, policy authorized
 - Retries distinguish unknown outcome from confirmed failure.
 - A provider lookup or deterministic ID resolves ambiguous outcomes before retrying a create.
 - Calendar events contain no attendees or conference data and set sendUpdates=none.
+- Calendar suggestions never silently fall back from a failed check, and every hold receives a final conflict recheck or a new, explicitly warned override approval.
+- Calendar cancel and reschedule update internal state only; no Google event update/delete capability exists in the founder release.
 
 ## Database integrity
 
-Raw evidence, extraction, and audit tables reject update and delete statements through migrations. Ingestion and canonicalization use transactions, but network or AI calls never hold a transaction open. A successful normalization atomically commits the source record, complete field provenance, immutable extraction run, redacted event, and job completion. Provider failure writes no partial source/extraction rows. Repository tests verify foreign keys, unique idempotency constraints, immutable triggers, lease recovery, and rollback behavior.
+Raw evidence, extraction, and audit tables reject update and delete statements through PostgreSQL migration triggers. Ingestion and canonicalization use transactions, but network or AI calls never hold a transaction open. A successful normalization atomically commits the source record, complete field provenance, immutable extraction run, redacted event, and job completion. Provider failure writes no partial source/extraction rows. Repository tests verify tenant foreign keys, unique idempotency constraints, immutable triggers, timezone behavior, lease recovery, concurrent lifecycle updates, `FOR UPDATE SKIP LOCKED` claiming, and rollback behavior against PostgreSQL.
 
-The SQLite job queue supports one worker. Starting a second worker must fail visibly or remain unsupported until a concurrency design is reviewed.
+The founder deployment runs one worker instance. The claim implementation still prevents duplicate execution under tested concurrent claimers; adding more deployed workers is an operational topology change requiring pool-budget and throughput review.
+
+## OpenClaw current-tab threat boundary
+
+The real adapter is server-side and version-pinned. Gateway URL/token never enter a SourceJob, browser request schema, PostgreSQL, audit, argv, browser storage, or client component. The child process receives them only as `OPENCLAW_GATEWAY_URL` and `OPENCLAW_GATEWAY_TOKEN`; errors expose closed codes and never child stdout/stderr. The CLI call is fixed to `nodes invoke`, an exact node, `browser.proxy`, and JSON parameters for `GET /tabs` or `GET /snapshot` on the selected profile.
+
+The worker validates user ownership, manifest/operation, four persisted control layers plus the process kill switch, selected and allowlisted profile, heartbeat freshness, pairing, capability approval, and exact `2026.6.33` compatibility before provider I/O. It validates result correlation, execution, node, profile, canonical URL, payload hash, invocation key, result hash, and content hash before acceptance. A replay resolves the immutable prior acceptance; a mismatch rejects. Node absence/staleness is visible deferral, not empty success. Pairing/capability/login/2FA/CAPTCHA/consent/challenge/redirect/stale-target/layout/version uncertainty is manual action, not an automatic retry loop.
+
+Page text is untrusted evidence. It can never modify the chosen user/node/profile/URL, policy, tool surface, environment, filesystem, secrets, audit, or job payload. The accepted evidence is bounded to one title, one exact canonical URL, listing text, a small scalar metadata map, and hashes. The adapter discards unrelated tabs and does not retain screenshots or raw provider envelopes.
+
+The fixed Vera adapter surface and the native OpenClaw capability are distinct boundaries. Vera serializes only `GET /tabs` and `GET /snapshot`, but OpenClaw `2026.6.33` has no path-level allowlist inside `browser.proxy`. The reviewed node and gateway configuration therefore minimizes the effective command set to that single command, allows only the dedicated profile, disables arbitrary evaluation and unrelated plugins/tools, and leaves the source disabled by default. This is an explicitly accepted single-founder residual, not a claim that the native proxy is read-only; a narrow node-side command is required before broader beta use.
+
+The founder node-registration helper records a manually verified pairing/capability observation for five minutes; it does not call OpenClaw approval APIs or grant a real capability. This is acceptable only for single-founder dogfooding. A signed continuous heartbeat/enrollment channel is required before broader hosted enrollment.
 
 ## Dependency and build hygiene
 
 - Pin the package-manager version and commit the lockfile during scaffolding.
 - Use Node 24 LTS in development and CI.
-- Review install scripts and minimize native dependencies; better-sqlite3 is the intentional native dependency.
+- Review install scripts and minimize native dependencies; `better-sqlite3` is retained only for the explicit offline demo adapter.
 - Run audit tooling as advisory evidence, not an automatic unsafe upgrade mechanism.
 - Keep the pnpm-workspace PostCSS override pinned to a reviewed patched release until Next.js's direct dependency resolves beyond the advisory; current acceptance uses 8.5.20.
+- Keep the pnpm-workspace Sharp override pinned to the reviewed patched `0.35.3` release until Next.js accepts that line directly; build and E2E acceptance cover the compatibility override.
 - Keep generated migrations under review.
-- Do not install Maritime, browser, or cloud SDKs before their implementation milestone, exact capability review, and dependency review are approved.
+- `maritime-sdk@0.5.0` is server-only and receives only agent identifiers for runtime wake/status/log-reference operations; HTTP handlers never spawn the Maritime CLI. OpenClaw is pinned to `2026.6.33`; its process adapter uses `shell:false`, bounded output/time, a minimal child environment, and fixed browser-proxy operations. The source remains disabled and unsupported for public use despite the patched version.
 
 ## Security acceptance checks
 
@@ -278,7 +331,7 @@ Before the applicable implementation or live-integration milestone is accepted:
 - unknown acquisition modes or policy states deny, and scheduled execution cannot bypass `user_triggered_only` or disabled `experimental_personal` entries;
 - manual capture makes no network request;
 - dispatch and result schemas reject passwords, cookies, authorization headers, local storage, session exports, password-manager values, and OpenClaw profile content;
-- before a live Maritime adapter is enabled, the Maritime/local-node channel is mutually authenticated, encrypted, replay-protected, bounded, and revocable;
+- the Maritime/local-node channel remains mutually authenticated, encrypted, replay-protected, bounded, and revocable;
 - an unregistered, offline, stale, or revoked node produces `deferred_node_offline`, creates no RawListing or success result, and preserves the stable job identity and committed cursor;
 - browser navigation cannot escape the exact configured saved-search and newly discovered same-source detail scope;
 - cursor rollback, replay, premature advance, and duplicate import tests fail closed;
@@ -289,9 +342,15 @@ Before the applicable implementation or live-integration milestone is accepted:
 - live extraction requires both key and environment-selected model; the live test additionally requires its explicit flag;
 - invalid model output receives at most one repair and then fails closed;
 - Gmail send operations are absent;
+- Calendar data scopes are absent from the identity client and are requested separately and incrementally;
+- conflict checking requests only `calendar.freebusy`, and hold creation requests only `calendar.events.owned` when that capability is enabled or first used;
+- Calendar free/busy uses only the primary calendar, fetches no event details, and persists no raw busy intervals;
+- missing, partial, revoked, stale, and temporarily unavailable Calendar checks produce a visible degraded state rather than an empty success;
+- a new final conflict blocks creation, and a failed final check requires a newly payload-bound explicit override approval;
 - Calendar payloads with attendees or conferencing are rejected;
+- Calendar cancellation and rescheduling make no provider update or delete call;
 - approval mismatch, expiry, reuse, and edit invalidation tests pass;
-- raw and audit row mutation is rejected by SQLite;
+- raw and audit row mutation is rejected by PostgreSQL and by the explicit demo adapter;
 - logs and activity events are redacted;
 - duplicate retries create at most one provider-side effect;
 - unit, integration, connector contract, and E2E suites make no live external side effects.
@@ -299,11 +358,13 @@ Before the applicable implementation or live-integration milestone is accepted:
 ## Residual risks
 
 - A stolen Gmail compose token is provider-capable of sending even though Vera is not.
+- A stolen `calendar.events.owned` token can modify events on calendars the user owns even though Vera's adapter exposes only tentative primary-calendar insert. Application encryption, narrow adapter APIs, incremental consent, audit, disconnect, and revocation reduce but do not remove that provider-scope risk.
 - First-class browser connectors remain brittle and source-specific; layout changes can defer or fail monitoring until reviewed.
 - A local OpenClaw node can be offline, compromised, stale, or unavailable at a scheduled trigger; visible deferral limits silent data loss but cannot guarantee discovery latency.
 - A compromised local browser profile can expose consumer-site sessions even though Maritime never stores them.
-- A local user or process with filesystem and credential-store access can read Vera's data.
+- A compromised hosted application process can access tenant data and decrypted credentials while in use; least-privilege secrets and incident revocation remain necessary.
 - Risk indicators can be wrong; the UI must preserve evidence and uncertainty.
-- Local SQLite is not a multi-host or multi-user database.
+- Repository-level tenant scoping is defense in depth but not PostgreSQL row-level security; every new repository query requires isolation review and tests.
+- The SQLite demo is intentionally single-owner and must never receive production data.
 
-These risks are acceptable only within the single-user target topology with Maritime orchestration and a user-controlled local browser node. They must be revisited before live enablement, multi-user expansion, hosted browser profiles, or broader source coverage.
+These risks are accepted for the founder topology of one region, one web instance, one worker instance, one managed PostgreSQL database, and an optional user-controlled local browser node. They must be revisited before horizontal scaling, live browser enablement, broader source coverage, or higher-sensitivity data collection.

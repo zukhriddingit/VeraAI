@@ -84,6 +84,7 @@ export function CaptureForm() {
         status.state === "duplicate_resolved" ||
         status.state === "decision_queued" ||
         status.state === "decision_processing" ||
+        status.state === "decision_failed" ||
         status.state === "failed"
       ) {
         setSubmission(
@@ -269,7 +270,9 @@ export function CaptureForm() {
                 ? "Normalization complete · decision queued"
                 : submission.result.state === "decision_processing"
                   ? "Normalization complete · decision processing"
-                  : "Normalization complete"}
+                  : submission.result.state === "decision_failed"
+                    ? "Normalization complete · decision needs attention"
+                    : "Normalization complete"}
             </p>
             <h2>
               {submission.result.duplicate ? "Existing evidence reused" : "Evidence captured"}

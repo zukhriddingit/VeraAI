@@ -1,11 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import {
-  canonicalJson,
-  createSqliteRepositories,
-  openExistingDatabase,
-  sha256Text
-} from "@vera/db/runtime";
+import { canonicalJson, sha256Text } from "@vera/db";
 import {
   ActivityEventSchema,
   CreateDuplicateOverrideRequestSchema,
@@ -15,6 +10,13 @@ import {
   DuplicateOverrideHistoryResponseSchema,
   JsonValueSchema
 } from "@vera/domain";
+import {
+  assertSameOriginMutation,
+  CrossOriginMutationError,
+  MutationRequestError,
+  readBoundedJson
+} from "../../../../lib/server/request-security.ts";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -32,12 +34,11 @@ function error(
   });
 }
 
-export async function GET(): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
+export async function GET(request: Request): Promise<Response> {
   try {
-    connection = openExistingDatabase();
-    const repositories = createSqliteRepositories(connection);
-    const profiles = repositories.searchProfiles.list();
+    const session = await requireVeraSession(request.headers);
+    const repositories = session.repositories;
+    const profiles = await repositories.searchProfiles.list();
     if (profiles.length !== 1) {
       return error(
         "database_unavailable",
@@ -46,10 +47,9 @@ export async function GET(): Promise<Response> {
         true
       );
     }
-    const overrides = repositories.duplicateOverrides.list(profiles[0]!.id);
-    const revocations = repositories.duplicateOverrides.listRevocations(profiles[0]!.id);
-    const activeOverrideIds = repositories.duplicateOverrides
-      .listActive(profiles[0]!.id)
+    const overrides = await repositories.duplicateOverrides.list(profiles[0]!.id);
+    const revocations = await repositories.duplicateOverrides.listRevocations(profiles[0]!.id);
+    const activeOverrideIds = (await repositories.duplicateOverrides.listActive(profiles[0]!.id))
       .map(({ id }) => id)
       .sort();
     return Response.json(
@@ -61,24 +61,28 @@ export async function GET(): Promise<Response> {
       }),
       { status: 200, headers }
     );
-  } catch {
+  } catch (caught: unknown) {
+    if (caught instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
     return error("database_unavailable", "Duplicate override history is unavailable.", 503, true);
-  } finally {
-    connection?.close();
   }
 }
 
 export async function POST(request: Request): Promise<Response> {
-  let connection: ReturnType<typeof openExistingDatabase> | null = null;
   try {
-    const body: unknown = await request.json();
+    const session = await requireVeraSession(request.headers);
+    assertSameOriginMutation(request);
+    const body = await readBoundedJson(request, { maxBytes: 16_384 });
     const parsed = CreateDuplicateOverrideRequestSchema.safeParse(body);
     if (!parsed.success) {
       return error("malformed_request", "The duplicate override request is malformed.", 400);
     }
-    connection = openExistingDatabase();
-    const repositories = createSqliteRepositories(connection);
-    const profiles = repositories.searchProfiles.list();
+    const repositories = session.repositories;
+    const profiles = await repositories.searchProfiles.list();
     if (profiles.length !== 1) {
       return error(
         "database_unavailable",
@@ -88,7 +92,7 @@ export async function POST(request: Request): Promise<Response> {
       );
     }
     for (const sourceId of parsed.data.sourceRecordIds) {
-      if (repositories.sourceRecords.getById(sourceId) === null) {
+      if ((await repositories.sourceRecords.getById(sourceId)) === null) {
         return error(
           "invalid_override_reference",
           "The override references an unknown source record.",
@@ -98,8 +102,8 @@ export async function POST(request: Request): Promise<Response> {
     }
     if (
       parsed.data.survivorCanonicalId !== null &&
-      repositories.canonicalListings.getById(parsed.data.survivorCanonicalId)?.projectionState !==
-        "active"
+      (await repositories.canonicalListings.getById(parsed.data.survivorCanonicalId))
+        ?.projectionState !== "active"
     ) {
       return error(
         "invalid_override_reference",
@@ -109,45 +113,50 @@ export async function POST(request: Request): Promise<Response> {
     }
     const now = new Date().toISOString();
     const payloadHash = sha256Text(canonicalJson(JsonValueSchema.parse(parsed.data)));
-    const result = repositories.transaction((transactionRepositories) => {
-      const override = transactionRepositories.duplicateOverrides.create({
-        id: randomUUID(),
-        searchProfileId: profiles[0]!.id,
-        ...parsed.data,
-        createdBy: "user",
-        createdAt: now
-      });
-      const decisionJob = transactionRepositories.decisionJobs.bumpCorpusRevisionAndEnqueue({
-        id: randomUUID(),
-        searchProfileId: profiles[0]!.id,
-        trigger: "manual_recompute",
-        now
-      });
-      transactionRepositories.activityEvents.append(
-        ActivityEventSchema.parse({
+    const result = await session.repositoryProvider.transaction(
+      session.userId,
+      async (transactionRepositories) => {
+        const override = await transactionRepositories.duplicateOverrides.create({
           id: randomUUID(),
-          correlationId: decisionJob.id,
-          causationId: null,
-          actor: "user",
-          action: "duplicate.override_created",
-          targetType: "duplicate_override",
-          targetId: override.id,
-          policyDecision: "not_applicable",
-          approvalId: null,
-          payloadHash,
-          outcome: "succeeded",
-          errorCategory: null,
-          metadata: {
-            kind: override.kind,
-            sourceRecordCount: override.sourceRecordIds.length,
-            decisionJobId: decisionJob.id,
-            targetCorpusRevision: decisionJob.targetCorpusRevision
-          },
-          occurredAt: now
-        })
-      );
-      return { override, decisionJob };
-    });
+          searchProfileId: profiles[0]!.id,
+          ...parsed.data,
+          createdBy: "user",
+          createdAt: now
+        });
+        const decisionJob = await transactionRepositories.decisionJobs.bumpCorpusRevisionAndEnqueue(
+          {
+            id: randomUUID(),
+            searchProfileId: profiles[0]!.id,
+            trigger: "manual_recompute",
+            now
+          }
+        );
+        await transactionRepositories.activityEvents.append(
+          ActivityEventSchema.parse({
+            id: randomUUID(),
+            correlationId: decisionJob.id,
+            causationId: null,
+            actor: "user",
+            action: "duplicate.override_created",
+            targetType: "duplicate_override",
+            targetId: override.id,
+            policyDecision: "not_applicable",
+            approvalId: null,
+            payloadHash,
+            outcome: "succeeded",
+            errorCategory: null,
+            metadata: {
+              kind: override.kind,
+              sourceRecordCount: override.sourceRecordIds.length,
+              decisionJobId: decisionJob.id,
+              targetCorpusRevision: decisionJob.targetCorpusRevision
+            },
+            occurredAt: now
+          })
+        );
+        return { override, decisionJob };
+      }
+    );
     return Response.json(
       CreateDuplicateOverrideResponseSchema.parse({
         override: result.override,
@@ -166,8 +175,21 @@ export async function POST(request: Request): Promise<Response> {
       { status: 202, headers }
     );
   } catch (caught: unknown) {
-    if (caught instanceof SyntaxError) {
-      return error("malformed_request", "The duplicate override request is malformed.", 400);
+    if (caught instanceof AuthenticationRequiredError) {
+      return Response.json(
+        { code: "unauthorized", message: "Authentication required." },
+        { status: 401, headers }
+      );
+    }
+    if (caught instanceof CrossOriginMutationError) {
+      return error("malformed_request", "Request origin is not allowed.", 403);
+    }
+    if (caught instanceof MutationRequestError) {
+      return error(
+        "malformed_request",
+        "The duplicate override request is malformed.",
+        caught.status
+      );
     }
     return error(
       "database_unavailable",
@@ -175,7 +197,5 @@ export async function POST(request: Request): Promise<Response> {
       503,
       true
     );
-  } finally {
-    connection?.close();
   }
 }

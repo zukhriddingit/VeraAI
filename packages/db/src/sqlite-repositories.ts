@@ -1,6 +1,7 @@
 import {
   ActivityEventSchema,
   ApprovalSchema,
+  ApprovalStateSchema,
   BrowserNodeStatusSchema,
   CanonicalFieldSourceSchema,
   CanonicalListingSchema,
@@ -23,13 +24,17 @@ import {
   RawListingCaptureSchema,
   RiskSignalSchema,
   RiskSignalV2Schema,
+  ReminderMinutesSchema,
   SearchProfileSchema,
   SourceJobSchema,
   SourceJobStatusSchema,
   SourcePolicyManifestSchema,
   ViewingSchema,
+  ViewingStateSchema,
+  transitionApprovalState,
   transitionListingLifecycle,
   transitionSourceJobStatus,
+  transitionViewingState,
   type CanonicalListingSummary,
   type RawListingCapture
 } from "@vera/domain";
@@ -1359,19 +1364,157 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
       const id = EntityIdSchema.parse(idInput);
       const row = db.select().from(approvals).where(eq(approvals.id, id)).get();
       return row ? mapApprovalRow(row) : null;
+    },
+    transition(idInput, expectedInput, requestedInput, atInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const expected = ApprovalStateSchema.parse(expectedInput);
+      const requested = ApprovalStateSchema.parse(requestedInput);
+      const at = IsoDateTimeSchema.parse(atInput);
+      transitionApprovalState(expected, requested);
+      const current = approvalRepository.getById(id);
+      if (!current) throw new RepositoryNotFoundError("Approval", id);
+      if (current.state !== expected) throw new Error("Approval state changed concurrently.");
+      const candidate = ApprovalSchema.parse({
+        ...current,
+        state: requested,
+        usedAt: requested === "used" ? at : null
+      });
+      const result = db
+        .update(approvals)
+        .set({ state: candidate.state, usedAt: candidate.usedAt })
+        .where(and(eq(approvals.id, id), eq(approvals.state, expected)))
+        .run();
+      if (result.changes !== 1) throw new Error("Approval state changed concurrently.");
+      return approvalRepository.getById(id) ?? candidate;
     }
   };
 
   const viewingRepository: VeraRepositories["viewings"] = {
     insert(viewingInput) {
       const viewing = ViewingSchema.parse(viewingInput);
-      db.insert(viewings).values(viewing).run();
-      return viewingRepository.getById(viewing.id) ?? viewing;
+      // The isolated SQLite demo keeps Calendar-only fields in the existing JSON metadata
+      // column so hosted PostgreSQL remains the sole schema migration target.
+      const metadata = { ...viewing.metadata };
+      if (viewing.selectedWindow === null) delete metadata.calendarSelectedWindow;
+      else metadata.calendarSelectedWindow = viewing.selectedWindow;
+      if (viewing.supersedesViewingId === null) delete metadata.calendarSupersedesViewingId;
+      else metadata.calendarSupersedesViewingId = viewing.supersedesViewingId;
+      const persisted = ViewingSchema.parse({ ...viewing, metadata });
+      db.insert(viewings).values(persisted).run();
+      return viewingRepository.getById(persisted.id) ?? persisted;
     },
     getById(idInput) {
       const id = EntityIdSchema.parse(idInput);
       const row = db.select().from(viewings).where(eq(viewings.id, id)).get();
       return row ? mapViewingRow(row) : null;
+    },
+    prepareCalendarHold(idInput, expectedState, contactNotes, remindersInput, atInput) {
+      const id = EntityIdSchema.parse(idInput);
+      const at = IsoDateTimeSchema.parse(atInput);
+      const remindersMinutesBeforeStart = ReminderMinutesSchema.parse(remindersInput);
+      const current = viewingRepository.getById(id);
+      if (!current) throw new RepositoryNotFoundError("Viewing", id);
+      if (current.state !== expectedState) {
+        throw new Error("Viewing state changed before Calendar hold preparation.");
+      }
+      if (Date.parse(at) < Date.parse(current.updatedAt)) {
+        throw new Error("Calendar hold preparation cannot precede the current Viewing update.");
+      }
+      const candidate = ViewingSchema.parse({
+        ...current,
+        notes: contactNotes,
+        metadata: {
+          ...current.metadata,
+          calendarHoldRemindersMinutesBeforeStart: remindersMinutesBeforeStart
+        },
+        updatedAt: at
+      });
+      const result = db
+        .update(viewings)
+        .set({ notes: candidate.notes, metadata: candidate.metadata, updatedAt: at })
+        .where(
+          and(
+            eq(viewings.id, id),
+            eq(viewings.state, expectedState),
+            eq(viewings.updatedAt, current.updatedAt)
+          )
+        )
+        .run();
+      if (result.changes !== 1) {
+        throw new Error("Viewing changed concurrently during Calendar hold preparation.");
+      }
+      return viewingRepository.getById(id) ?? candidate;
+    },
+    transition(idInput, expectedInput, requestedInput, atInput, patch = {}) {
+      const id = EntityIdSchema.parse(idInput);
+      const expected = ViewingStateSchema.parse(expectedInput);
+      const requested = ViewingStateSchema.parse(requestedInput);
+      const at = IsoDateTimeSchema.parse(atInput);
+      transitionViewingState(expected, requested);
+      const current = viewingRepository.getById(id);
+      if (!current) throw new RepositoryNotFoundError("Viewing", id);
+      if (current.state !== expected) throw new Error("Viewing state changed concurrently.");
+      if (Date.parse(at) < Date.parse(current.updatedAt)) {
+        throw new Error("Viewing transition time cannot precede its current update time.");
+      }
+      const selectedWindow =
+        patch.selectedWindow !== undefined
+          ? patch.selectedWindow
+          : requested === "proposed"
+            ? null
+            : current.selectedWindow;
+      const supersedesViewingId =
+        patch.supersedesViewingId !== undefined
+          ? patch.supersedesViewingId
+          : current.supersedesViewingId;
+      const metadata = { ...current.metadata };
+      if (selectedWindow === null) delete metadata.calendarSelectedWindow;
+      else metadata.calendarSelectedWindow = selectedWindow;
+      if (supersedesViewingId === null) delete metadata.calendarSupersedesViewingId;
+      else metadata.calendarSupersedesViewingId = supersedesViewingId;
+      const candidate = ViewingSchema.parse({
+        ...current,
+        state: requested,
+        selectedWindow,
+        confirmedWindow:
+          patch.confirmedWindow !== undefined ? patch.confirmedWindow : current.confirmedWindow,
+        calendarReference:
+          patch.calendarReference !== undefined
+            ? patch.calendarReference
+            : current.calendarReference,
+        supersedesViewingId,
+        metadata,
+        updatedAt: at
+      });
+      const result = db
+        .update(viewings)
+        .set({
+          confirmedWindow: candidate.confirmedWindow,
+          calendarReference: candidate.calendarReference,
+          state: candidate.state,
+          metadata: candidate.metadata,
+          updatedAt: at
+        })
+        .where(
+          and(
+            eq(viewings.id, id),
+            eq(viewings.state, expected),
+            eq(viewings.updatedAt, current.updatedAt)
+          )
+        )
+        .run();
+      if (result.changes !== 1) throw new Error("Viewing state changed concurrently.");
+      return viewingRepository.getById(id) ?? candidate;
+    },
+    listByCanonicalListingId(idInput) {
+      const id = EntityIdSchema.parse(idInput);
+      return db
+        .select()
+        .from(viewings)
+        .where(eq(viewings.canonicalListingId, id))
+        .orderBy(asc(viewings.createdAt), asc(viewings.id))
+        .all()
+        .map(mapViewingRow);
     }
   };
 

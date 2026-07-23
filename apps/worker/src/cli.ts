@@ -1,5 +1,4 @@
 import { createHealthReport } from "@vera/domain";
-import { createSqliteRepositories, openExistingDatabase } from "@vera/db";
 import { randomUUID } from "node:crypto";
 
 import {
@@ -9,13 +8,16 @@ import {
   type SignalSource
 } from "./lifecycle.js";
 import { createWorkerLogger, safeWorkerErrorFields } from "./logger.js";
-import {
-  processNextNormalizationJob,
-  type NormalizationWorkerResult
-} from "./normalization-worker.js";
-import { processNextDecisionJob, type DecisionWorkerResult } from "./decision-worker.js";
-import { createAlternatingWorkerRuntime } from "./decision-runtime.js";
-import { createWorkerProviderRuntime } from "./provider-factory.js";
+import { createWorkerMetrics, workerMetricOutcome } from "./metrics.js";
+import type { NormalizationWorkerResult } from "./normalization-worker.js";
+import type { DecisionWorkerResult } from "./decision-worker.js";
+import type { AcquisitionWorkerResult } from "./acquisition-worker.js";
+import type { ScheduleWorkerResult } from "./maritime-scheduler.js";
+import type { NotificationWorkerResult } from "./notification-worker.js";
+import { createPostgresWorkerRuntime } from "./postgres-runtime.js";
+import { createWorkerServiceServer } from "./service-server.js";
+import type { ReadinessReport } from "@vera/domain";
+import { parseWorkerRuntimeConfig } from "./runtime-config.js";
 
 export interface CliOutput {
   write(message: string): void;
@@ -28,52 +30,41 @@ export interface WorkerCliDependencies {
   createId: () => string;
   nodeVersion: string;
   version: string;
-  createNormalizationRuntime(leaseOwner: string): NormalizationRuntime;
+  environment?: Readonly<Record<string, string | undefined>>;
+  validateRuntimeConfiguration(
+    environment: Readonly<Record<string, string | undefined>>,
+    command: "start" | "run-once" | "serve"
+  ): void;
+  createNormalizationRuntime(
+    leaseOwner: string,
+    environment: Readonly<Record<string, string | undefined>>,
+    command: "start" | "run-once" | "serve"
+  ): NormalizationRuntime;
 }
 
 export interface NormalizationRuntime {
+  readonly rotationSize?: number;
   processNext(signal: AbortSignal): Promise<{
-    readonly kind: "normalization" | "decision";
-    readonly result: NormalizationWorkerResult | DecisionWorkerResult;
+    readonly kind:
+      "schedule" | "notification" | "health" | "acquisition" | "normalization" | "decision";
+    readonly result:
+      | ScheduleWorkerResult
+      | NotificationWorkerResult
+      | { readonly status: "idle" | "completed" }
+      | AcquisitionWorkerResult
+      | NormalizationWorkerResult
+      | DecisionWorkerResult;
   }>;
-  close(): void;
+  readiness?(): Promise<ReadinessReport>;
+  close(): Promise<void>;
 }
 
-function createDefaultNormalizationRuntime(leaseOwner: string): NormalizationRuntime {
-  const providerRuntime = createWorkerProviderRuntime();
-  const connection = openExistingDatabase();
-  const repositories = createSqliteRepositories(connection);
-  const runtime = createAlternatingWorkerRuntime({
-    processNormalization: (signal) =>
-      processNextNormalizationJob(
-        {
-          repositories,
-          leaseOwner,
-          provider: providerRuntime.provider,
-          providerTimeoutMilliseconds: providerRuntime.timeoutMilliseconds,
-          now: () => new Date(),
-          createId: randomUUID
-        },
-        signal
-      ),
-    processDecision: (signal) =>
-      processNextDecisionJob(
-        {
-          repositories,
-          leaseOwner,
-          now: () => new Date(),
-          createId: randomUUID
-        },
-        signal
-      )
-  });
-
-  return {
-    processNext: runtime.processNext,
-    close() {
-      connection.close();
-    }
-  };
+function createDefaultNormalizationRuntime(
+  leaseOwner: string,
+  environment: Readonly<Record<string, string | undefined>>,
+  command: "start" | "run-once" | "serve"
+): NormalizationRuntime {
+  return createPostgresWorkerRuntime(leaseOwner, environment, command);
 }
 
 const defaultDependencies: WorkerCliDependencies = {
@@ -83,6 +74,10 @@ const defaultDependencies: WorkerCliDependencies = {
   createId: randomUUID,
   nodeVersion: process.versions.node,
   version: process.env.npm_package_version ?? "0.1.0",
+  environment: process.env,
+  validateRuntimeConfiguration: (environment, command) => {
+    parseWorkerRuntimeConfig(environment, command);
+  },
   createNormalizationRuntime: createDefaultNormalizationRuntime
 };
 
@@ -118,7 +113,7 @@ export async function runCli(
     return 0;
   }
 
-  if (command !== "start" && command !== "run-once") {
+  if (command !== "start" && command !== "run-once" && command !== "serve") {
     logger.error(
       {
         command,
@@ -129,12 +124,26 @@ export async function runCli(
     return 1;
   }
 
+  try {
+    dependencies.validateRuntimeConfiguration(dependencies.environment ?? {}, command);
+  } catch (error: unknown) {
+    logger.error(
+      { event: "worker_runtime_configuration_rejected", ...safeWorkerErrorFields(error) },
+      "Worker runtime configuration is invalid."
+    );
+    return 1;
+  }
+
   lifecycle.start();
 
   let normalizationRuntime: NormalizationRuntime;
 
   try {
-    normalizationRuntime = dependencies.createNormalizationRuntime(dependencies.createId());
+    normalizationRuntime = dependencies.createNormalizationRuntime(
+      dependencies.createId(),
+      dependencies.environment ?? {},
+      command
+    );
   } catch (error: unknown) {
     logger.error(
       {
@@ -146,13 +155,24 @@ export async function runCli(
     lifecycle.stop("command");
     return 1;
   }
+  const metrics = createWorkerMetrics();
+  const processNextObserved = async (signal: AbortSignal) => {
+    const startedAt = performance.now();
+    const result = await normalizationRuntime.processNext(signal);
+    metrics.observeJob(
+      result.kind,
+      workerMetricOutcome(result.result.status),
+      performance.now() - startedAt
+    );
+    return result;
+  };
 
   if (command === "run-once") {
     const abortController = new AbortController();
     try {
       const results = [];
-      for (let index = 0; index < 2; index += 1) {
-        results.push(await normalizationRuntime.processNext(abortController.signal));
+      for (let index = 0; index < (normalizationRuntime.rotationSize ?? 3); index += 1) {
+        results.push(await processNextObserved(abortController.signal));
       }
       dependencies.output.write(JSON.stringify({ status: "batch_completed", results }) + "\n");
       return results.some(
@@ -167,15 +187,46 @@ export async function runCli(
       );
       return 1;
     } finally {
-      normalizationRuntime.close();
+      await normalizationRuntime.close();
       lifecycle.stop("command");
     }
   }
 
+  const port = Number.parseInt(dependencies.environment?.PORT ?? "8080", 10);
+  const service =
+    command === "serve"
+      ? createWorkerServiceServer({
+          port: Number.isInteger(port) && port > 0 && port <= 65_535 ? port : 8080,
+          version: dependencies.version,
+          nodeVersion: dependencies.nodeVersion,
+          now: dependencies.now,
+          readiness: async () => {
+            const readiness =
+              normalizationRuntime.readiness ??
+              (async () => ({
+                service: "vera-worker" as const,
+                status: "not_ready" as const,
+                checkedAt: dependencies.now().toISOString(),
+                database: { status: "unavailable" as const, migration: "unknown" as const }
+              }));
+            try {
+              const report = await readiness();
+              metrics.setReadiness(report.status === "ready");
+              return report;
+            } catch (error: unknown) {
+              metrics.setReadiness(false);
+              throw error;
+            }
+          },
+          metrics: () => metrics.render()
+        })
+      : null;
+  if (service) await service.start();
+
   await new Promise<void>((resolve) => {
     const poller = createAsyncWorkerPoller({
       poll: async (signal) => {
-        const result = await normalizationRuntime.processNext(signal);
+        const result = await processNextObserved(signal);
         if (result.result.status !== "idle") {
           logger.info(
             { event: `${result.kind}_job_processed`, ...result.result },
@@ -196,7 +247,8 @@ export async function runCli(
       shuttingDown = true;
       void (async () => {
         await poller.stop();
-        normalizationRuntime.close();
+        await service?.close();
+        await normalizationRuntime.close();
         lifecycle.stop(signal);
         signalRegistration.dispose();
         resolve();

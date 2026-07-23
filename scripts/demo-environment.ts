@@ -1,7 +1,7 @@
 import { homedir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 
-import { getDataDirectory } from "../packages/db/src/paths.ts";
+import { getDataDirectory } from "../packages/db/src/demo/index.ts";
 
 function withoutConfiguredDataDirectory(environment: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const copy = { ...environment };
@@ -66,6 +66,7 @@ export function demoEnvironment(base: NodeJS.ProcessEnv = process.env): NodeJS.P
     ...base,
     VERA_DEMO_MODE: "1",
     VERA_DATA_DIR: resolveDemoDataDirectory(base),
+    VERA_PUBLIC_BASE_URL: "http://127.0.0.1:3000",
     NEXT_TELEMETRY_DISABLED: "1"
   };
 

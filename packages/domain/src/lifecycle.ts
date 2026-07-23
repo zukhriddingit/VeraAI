@@ -16,7 +16,7 @@ export const ALLOWED_LISTING_TRANSITIONS = {
   replied: ["tour_proposed", "dismissed", "stale", "unavailable"],
   follow_up_due: ["replied", "dismissed", "stale", "unavailable"],
   tour_proposed: ["tour_scheduled", "replied", "dismissed", "stale", "unavailable"],
-  tour_scheduled: ["toured", "dismissed", "unavailable"],
+  tour_scheduled: ["tour_proposed", "replied", "toured", "dismissed", "unavailable"],
   toured: ["applying", "passed"],
   applying: ["passed"],
   passed: [],
