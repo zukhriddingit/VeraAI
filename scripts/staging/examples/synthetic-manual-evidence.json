@@ -1,24 +1,64 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "synthetic": true,
-  "phaseId": "gateway_unauthenticated_request",
-  "releaseId": "synthetic-release-001",
+  "releaseProfile": "founder_core",
+  "capabilities": {
+    "browserCapture": false,
+    "directCapture": true,
+    "gmailAlerts": true,
+    "calendar": true,
+    "webPush": true,
+    "maritimeWorker": true
+  },
+  "releaseId": "synthetic-release-002",
   "environmentId": "synthetic-staging",
-  "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-  "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "sourceCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:2222222222222222222222222222222222222222222222222222222222222222",
   "candidateOpenclawImage": null,
-  "executedAt": "2026-07-23T12:00:00Z",
-  "operatorReference": "synthetic-operator",
-  "expectedResult": "Gateway rejects unauthenticated requests",
-  "observedResult": "Gateway returned denied status",
-  "resultState": "passed_manual_evidence",
-  "evidenceReferences": [
+  "createdAt": "2026-07-23T13:05:00Z",
+  "records": [
     {
-      "kind": "test_run",
-      "locator": "synthetic-run-001",
-      "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+      "schemaVersion": 2,
+      "synthetic": true,
+      "releaseProfile": "founder_core",
+      "capabilities": {
+        "browserCapture": false,
+        "directCapture": true,
+        "gmailAlerts": true,
+        "calendar": true,
+        "webPush": true,
+        "maritimeWorker": true
+      },
+      "phaseId": "postgresql_restore",
+      "releaseId": "synthetic-release-002",
+      "environmentId": "synthetic-staging",
+      "sourceCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:2222222222222222222222222222222222222222222222222222222222222222",
+      "candidateOpenclawImage": null,
+      "executedAt": "2026-07-23T13:00:00Z",
+      "operatorReference": "synthetic-operator-002",
+      "expectedResult": "Synthetic restore rehearsal completes",
+      "observedResult": "External staging restore execution remains pending",
+      "resultState": "blocked_missing_configuration",
+      "configurationBlocker": {
+        "kind": "operator_execution",
+        "missingConfiguration": "synthetic_restore_rehearsal",
+        "remediation": "Run the documented restore rehearsal and attach its sanitized test run hash",
+        "implementationState": "implemented_and_validated",
+        "nonLiveValidationState": "passed",
+        "requiresRepositoryChange": false,
+        "requiresDesignDecision": false
+      },
+      "evidenceReferences": [
+        {
+          "kind": "test_run",
+          "locator": "synthetic-run-restore",
+          "sha256": "4444444444444444444444444444444444444444444444444444444444444444"
+        }
+      ],
+      "approvalState": "approved",
+      "contentHash": "f7ed607cc8286fb258eedf978ded7f8d99056138c871487cd1a97f704ac6e98c"
     }
   ],
-  "approvalState": "approved",
-  "contentHash": "6987db56500c96c6e8b44cfead6809d07ce96349c3ce7e0b55292b65709c6453"
+  "bundleHash": "fb63cc07cbb73678f2b682db9ee543426575ed4c609aa64e796d4c1d49ab711e"
 }

@@ -1,37 +1,56 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "synthetic": true,
+  "releaseProfile": "founder_core",
+  "capabilities": {
+    "browserCapture": false,
+    "directCapture": true,
+    "gmailAlerts": true,
+    "calendar": true,
+    "webPush": true,
+    "maritimeWorker": true
+  },
   "releaseId": "synthetic-release-001",
   "environmentId": "synthetic-staging",
   "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:1111111111111111111111111111111111111111111111111111111111111111",
-  "candidateOpenclawImage": "ghcr.io/openclaw/openclaw@sha256:3333333333333333333333333333333333333333333333333333333333333333",
-  "createdAt": "2026-07-23T12:00:00Z",
+  "candidateOpenclawImage": null,
+  "createdAt": "2026-07-23T12:05:00Z",
   "records": [
     {
-      "schemaVersion": 1,
+      "schemaVersion": 2,
       "synthetic": true,
-      "phaseId": "gateway_unauthenticated_request",
+      "releaseProfile": "founder_core",
+      "capabilities": {
+        "browserCapture": false,
+        "directCapture": true,
+        "gmailAlerts": true,
+        "calendar": true,
+        "webPush": true,
+        "maritimeWorker": true
+      },
+      "phaseId": "direct_capture",
       "releaseId": "synthetic-release-001",
       "environmentId": "synthetic-staging",
       "sourceCommit": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "candidateWorkerImage": "ghcr.io/example/vera-worker@sha256:1111111111111111111111111111111111111111111111111111111111111111",
       "candidateOpenclawImage": null,
       "executedAt": "2026-07-23T12:00:00Z",
-      "operatorReference": "synthetic-operator",
-      "expectedResult": "Gateway rejects unauthenticated requests",
-      "observedResult": "Gateway returned denied status",
+      "operatorReference": "synthetic-operator-001",
+      "expectedResult": "Synthetic direct capture succeeds",
+      "observedResult": "Synthetic direct capture succeeded",
       "resultState": "passed_manual_evidence",
+      "configurationBlocker": null,
       "evidenceReferences": [
         {
           "kind": "test_run",
-          "locator": "synthetic-run-001",
-          "sha256": "2222222222222222222222222222222222222222222222222222222222222222"
+          "locator": "synthetic-run-direct-capture",
+          "sha256": "3333333333333333333333333333333333333333333333333333333333333333"
         }
       ],
       "approvalState": "approved",
-      "contentHash": "6987db56500c96c6e8b44cfead6809d07ce96349c3ce7e0b55292b65709c6453"
+      "contentHash": "d1b9e3b10bd87842ef22d963bd48255283323ad504de5d86cd224b3c3a904c8b"
     }
   ],
-  "bundleHash": "2eb99cf33a0643d3f8aee62e062a00d16eb7f3bae465a5c0c7de606f9f6c30bf"
+  "bundleHash": "d1d14c5e7741ee3e8efaabd99d0dfaace25808a8b6449b77b56452c3ed3db418"
 }
