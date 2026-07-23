@@ -85,6 +85,10 @@ rejectText(
 
 runTypeScriptGate("Worker image boundary validation", "scripts/verify-worker-image-boundaries.ts");
 runTypeScriptGate("OpenClaw configuration validation", "scripts/verify-openclaw-config.ts");
+runTypeScriptGate(
+  "Release deployment documentation validation",
+  "scripts/verify-release-documentation.ts"
+);
 
 const releaseManifestPath = process.env.VERA_RELEASE_MANIFEST_PATH?.trim();
 if (releaseManifestPath) {

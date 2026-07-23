@@ -2,19 +2,20 @@
 
 Date: 2026-07-23
 
-Current decision: **conditional go for founder-only staging**. Local application, PostgreSQL,
-policy, build, image, offline staging gates, and read-only Maritime inventory pass. Promotion is
-not approved until immutable registry release evidence and the live gateway/worker staging matrix
-are complete.
+Current decision: **no-go for founder staging release**. Local application, PostgreSQL, policy,
+build, image, offline staging gates, and read-only Maritime inventory pass, but no private live
+evidence bundle has completed the mandatory release matrix. Browser capture is explicitly blocked by
+ADR 0012 until a reviewed ingress topology exists; a blocked mandatory phase cannot produce a
+release pass. Promotion and founder beta are not approved.
 
 ## Verified locally
 
 - Node 24 workspace formatting, lint, 12 TypeScript projects, and all static safety verifiers pass.
-- Unit: 134 files and 946 tests pass.
-- Non-PostgreSQL integration: 34 files and 139 tests pass; one opt-in live test is skipped.
+- Unit: 136 files and 958 tests pass.
+- Non-PostgreSQL integration: 35 files and 140 tests pass; one opt-in live test is skipped.
 - PostgreSQL integration: 16 files and 65 tests pass against the local PostgreSQL test database.
 - Worker and Next.js production builds pass.
-- Playwright Chromium: six founder flows pass.
+- Playwright Chromium: nine founder flows pass.
 - Local worker image: `sha256:302db8495e14e039f061be9601a0fdbe0ac58189f650dae03514bf6b863c4a13`.
 - Runtime identity: non-root UID/GID 10001; Node 24.13.0; OpenClaw 2026.6.33 (`7af0cfc`).
 - Runtime production dependencies include `pg`, `sharp`, and `openclaw`; test tools and all
@@ -28,8 +29,10 @@ are complete.
   confirmation and deploy-scoped `MARITIME_API_KEY`, targets only the canonical Maritime
   custom-files endpoint, uploads one non-executable file, bounds time and responses, and makes no
   request on its default path. Its focused verifier/uploader suite passes 32 tests.
-- `.github/workflows/release-worker.yml` is a manual-only artifact release gate. It publishes a
-  commit-tagged and digest-resolved GHCR worker, generates BuildKit and GitHub provenance plus SPDX
+- `.github/workflows/release-worker.yml` is a manual-only artifact release gate. Its workflow code
+  runs only from the trusted default branch; an optional full source SHA must resolve in
+  `zukhriddingit/VeraAI` and be an ancestor of that branch before it is built, commit-tagged, and
+  digest-resolved. It generates BuildKit and GitHub provenance plus SPDX
   SBOM attestations, keylessly signs and verifies the digest, records Trivy database freshness, and
   fails on missing OS/Node package coverage or any critical or high finding. A read-only acceptance
   job must pass before the separately permissioned build/scan and sign/attest jobs. Trivy uses
@@ -57,10 +60,11 @@ The final `main...ddcbe3f` diff review found and locally fixed two code-level re
 
 No schema migration was required. An older hosted database may retain a global fixture policy row;
 the hosted connector registry cannot execute it, and the seed neither deletes nor rewrites existing
-policy history. The complete post-remediation gate passes: formatting, ESLint, all static safety
-verifiers, 12 TypeScript projects, 134 unit files with 946 tests, 34 non-PostgreSQL integration
-files with 139 tests plus one opt-in live skip, 16 PostgreSQL integration files with 65 tests, six
-serial Playwright Chromium flows, and both worker and Next.js production builds.
+policy history. The complete post-remediation local gate passes: formatting, ESLint, all static
+safety verifiers, 12 TypeScript projects, 136 unit files with 958 tests, 35 non-PostgreSQL
+integration files with 140 tests plus one opt-in live skip, 16 PostgreSQL integration files with 65
+tests, nine serial Playwright Chromium flows, and both worker and Next.js production builds. This
+local result does not replace required private live release evidence.
 
 Capability truth for this release:
 
@@ -74,23 +78,21 @@ Capability truth for this release:
 
 ## Promotion blockers
 
-1. Merge the reviewed manual release workflow to the default branch, dispatch it for the exact
-   release ref, retain its sanitized evidence artifact, and select a separately reviewed distinct
-   rollback worker digest. A passing workflow supplies the active registry digest, signature,
-   provenance, worker SBOM, and zero-exception critical/high review; it does not deploy anything.
+1. Dispatch the reviewed default-branch workflow twice with full trusted SHAs: once for the prior
+   trusted worker baseline and once for the candidate. Retain and independently verify both sanitized
+   artifacts, record candidate/rollback worker and OpenClaw digests, and fail image rollback when
+   backward-schema compatibility lacks accepted evidence. The workflow never deploys anything.
 2. Create one deploy-scoped Maritime API key in protected operator storage. Read-only inventory
    found no existing long-lived key. Never paste its raw value into Codex, Git, or logs.
-3. Obtain explicit approval to adopt the trigger-free existing OpenClaw agent, upgrade it from
-   `2026.5.22` to Vera's reviewed `2026.6.33` digest, install the reviewed non-executable gateway
-   config, and remove unneeded model-provider configuration. The separate Telegram-enabled agent
-   must remain untouched.
-4. Deploy one separate Vera worker agent by immutable digest. The read-only inventory found no
-   existing Vera worker deployment.
-5. Verify the adopted gateway's effective config, command surface, protected WSS route, explicit
-   node/profile pairing, version compatibility, and local privacy boundary.
-6. Run the unified live staging matrix, including node-offline, blocker/manual-action, replay,
-   kill-switch, provider failure, notification idempotency, and rollback recovery paths.
-7. Obtain explicit operator approval before every Maritime create, deploy, start, restart, stop,
+3. Keep browser capture and gateway adoption disabled for Maritime staging under ADR 0012. Do not
+   expose, pair, or upgrade an OpenClaw browser gateway until a documented ingress decision is
+   reviewed. The Telegram-enabled agent remains outside Vera's scope.
+4. If separately authorized after this gate, deploy one Vera worker only by candidate immutable
+   digest. The read-only inventory found no existing Vera worker deployment.
+5. Run the unified non-browser staging matrix, including dispatch, replay, kill-switch, provider
+   failure, notification idempotency, Gmail readonly, Calendar hold, PostgreSQL restore, and worker
+   rollback paths. Browser phases remain visibly blocked, not skipped.
+6. Obtain explicit operator approval before every Maritime create, deploy, start, restart, stop,
    environment mutation, file upload, pairing, trigger mutation, or rollback action.
 
 ## Read-only Maritime inventory
@@ -118,12 +120,12 @@ maritime whoami --json
 ```
 
 Do not paste the Maritime token into chat. Authentication and read-only inventory are complete.
-Before any Maritime mutation, land the artifact workflow on the default branch and dispatch it for
-an exact reviewed ref:
+Before any Maritime mutation, land the artifact workflow on the default branch and dispatch it from
+that branch for an exact reviewed source SHA:
 
 ```bash
 pnpm verify:worker-release-workflow
-gh workflow run release-worker.yml --ref <reviewed-release-branch-or-tag>
+gh workflow run release-worker.yml --ref main -f source_sha=<full-reviewed-source-sha>
 gh run list --workflow release-worker.yml --limit 1
 gh run watch <run-id> --exit-status
 gh run download <run-id> --name vera-worker-release-<full-release-commit>
@@ -135,8 +137,8 @@ pnpm verify:worker-release-promotion -- \
 
 GitHub accepts `workflow_dispatch` only after the workflow exists on the default branch. The
 downloaded evidence is not a deployment authorization and does not satisfy the separate rollback
-or OpenClaw evidence requirements. The existing trigger-free agent is adopted and reconciled only
-after an exact live diff and separate operator approval; Vera must not create a duplicate gateway.
+or live Google/restore evidence requirements. Browser gateway adoption remains blocked by ADR 0012;
+Vera must not create a duplicate gateway.
 
 ## Evidence caveats
 

@@ -50,8 +50,10 @@ function input() {
         vulnerabilityReview: vulnerabilityReview()
       },
       rollback: {
-        workerImage: `ghcr.io/zukhriddingit/vera-worker@sha256:${"3".repeat(64)}`,
-        openclawImage: `ghcr.io/openclaw/openclaw@sha256:${"4".repeat(64)}`
+        reviewedWorkerImage: `ghcr.io/zukhriddingit/vera-worker@sha256:${"3".repeat(64)}`,
+        reviewedOpenclawImage: `ghcr.io/openclaw/openclaw@sha256:${"4".repeat(64)}`,
+        workerSchemaCompatible: true,
+        workerCompatibilityEvidenceSha256: "5".repeat(64)
       }
     },
     evidence: {

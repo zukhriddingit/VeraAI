@@ -1,14 +1,14 @@
 # OpenClaw gateway and local-node operations
 
-Vera pins OpenClaw `2026.6.33` for both gateway compatibility and the local node. Maritime's current OpenClaw guide still names `2026.5.28`; Vera does not deploy that template pin because it is below the reviewed security floor. The official patched image is deployed explicitly:
+Vera pins OpenClaw `2026.6.33` for both gateway compatibility and the local node. Maritime's current OpenClaw guide still names `2026.5.28`; Vera does not deploy that template pin because it is below the reviewed security floor. Founder staging currently selects ADR 0012 option C: browser capture remains disabled while Maritime staging validates non-browser work. Do not create, expose, pair, or deploy a browser gateway during this stage. If a later approved ingress decision permits a gateway, its image must be the reviewed immutable digest:
 
 ```sh
 maritime deploy vera-openclaw-gateway --source docker --image ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee --wait
 ```
 
-The founder already has an OpenClaw deployment in Maritime. The command above is an approved-form
-example only, not a step to execute before inventory. Adopt the existing agent if and only if its
-observed version, exposure, effective configuration, and rollback identity satisfy this review.
+The founder already has an OpenClaw deployment in Maritime. The command above is a digest-only
+placeholder-form example, not a step to execute before inventory. A future adoption requires a
+reviewed ingress topology, observed version/exposure/effective configuration, and rollback identity.
 
 ## Reviewed configuration boundary
 
@@ -31,11 +31,15 @@ founder-only, `experimental_personal`, disabled by default, and is not approved 
 beta. A future narrow node-side command/plugin must replace broad `browser.proxy` before claiming
 transport-enforced read-only access.
 
-## Pair the founder-controlled node
+## Pair the founder-controlled node — blocked for Maritime staging
+
+Do not run these steps during the current staging classification. They describe prerequisites for a
+future reviewed topology, not an approved network design:
 
 1. Install the exact local version with `npm install --global openclaw@2026.6.33`.
-2. Configure the reviewed public gateway as a TLS `wss` remote and provide the gateway token through the local protected environment.
-3. Start the node host with the current supported command:
+2. Configure only a reviewed authenticated and allowlisted TLS `wss` route; never infer private
+   Maritime networking or expose an unauthenticated/public gateway.
+3. Start the node host only after that review with the current supported command:
 
 ```sh
 openclaw node run --host <gateway-host> --port 443 --tls --display-name "Vera Founder Browser"

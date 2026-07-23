@@ -87,22 +87,24 @@
     "rollback": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["workerImage", "openclawImage"],
+      "required": [
+        "reviewedWorkerImage",
+        "reviewedOpenclawImage",
+        "workerSchemaCompatible",
+        "workerCompatibilityEvidenceSha256"
+      ],
       "properties": {
-        "workerImage": {
+        "reviewedWorkerImage": {
           "$ref": "#/$defs/imageDigest"
         },
-        "openclawImage": {
-          "allOf": [
-            {
-              "$ref": "#/$defs/imageDigest"
-            },
-            {
-              "not": {
-                "const": "ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee"
-              }
-            }
-          ]
+        "reviewedOpenclawImage": {
+          "$ref": "#/$defs/imageDigest"
+        },
+        "workerSchemaCompatible": {
+          "const": true
+        },
+        "workerCompatibilityEvidenceSha256": {
+          "$ref": "#/$defs/sha256"
         }
       }
     }

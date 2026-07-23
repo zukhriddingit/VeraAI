@@ -141,7 +141,7 @@ export function findWorkerReleaseWorkflowViolations(workflow: string): string[] 
 
   requireText(
     workflow,
-    "on:\n  workflow_dispatch:",
+    "on:\n  workflow_dispatch:\n    inputs:\n      source_sha:",
     "Worker release must be explicitly operator-dispatched.",
     violations
   );
@@ -163,6 +163,64 @@ export function findWorkerReleaseWorkflowViolations(workflow: string): string[] 
     "attestations: write"
   ]) {
     requireText(workflow, permission, `Worker release requires ${permission}.`, violations);
+  }
+
+  for (const [expected, message] of [
+    [
+      "if: github.repository == 'zukhriddingit/VeraAI' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)",
+      "Worker release must execute workflow code only from the trusted default branch."
+    ],
+    [
+      "ref: ${{ github.event.repository.default_branch }}",
+      "Every release job must check out the default-branch workflow context."
+    ],
+    ["fetch-depth: 0", "Release source validation requires complete trusted repository history."],
+    [
+      "REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}",
+      "Worker release must accept only the optional source_sha workflow input."
+    ],
+    [
+      '[[ "$source_sha" =~ ^[a-f0-9]{40}$ ]]',
+      "Worker release must require a full hexadecimal source SHA."
+    ],
+    [
+      'git cat-file -e "$source_sha^{commit}"',
+      "Worker release must verify that the selected source SHA exists as a local commit."
+    ],
+    [
+      'git merge-base --is-ancestor "$source_sha" "origin/$DEFAULT_BRANCH"',
+      "Worker release must restrict the selected source SHA to an ancestor of the default branch."
+    ],
+    [
+      'test "$GITHUB_REPOSITORY" = "$TRUSTED_REPOSITORY"',
+      "Worker release must reject fork repositories."
+    ],
+    [
+      "git remote get-url origin",
+      "Worker release must verify its canonical origin before selecting source."
+    ],
+    [
+      'git checkout --detach "$source_sha"',
+      "Worker release must build the selected trusted source commit."
+    ],
+    [
+      "tags: ${{ env.IMAGE_REPOSITORY }}:${{ env.RELEASE_SOURCE_SHA }}",
+      "The pushed tag must be the selected full source commit."
+    ],
+    [
+      '--source-digest "$RELEASE_SOURCE_SHA"',
+      "Attestation verification must bind the selected source commit."
+    ]
+  ] as const) {
+    requireText(workflow, expected, message, violations);
+  }
+  if (countText(workflow, "ref: ${{ github.event.repository.default_branch }}") !== 3) {
+    violations.push(
+      "Every release job must check out the default-branch workflow context exactly once."
+    );
+  }
+  if (countText(workflow, "fetch-depth: 0") !== 3) {
+    violations.push("Every release job must fetch complete trusted repository history.");
   }
 
   const observedActions = new Map<string, string[]>();
@@ -193,10 +251,6 @@ export function findWorkerReleaseWorkflowViolations(workflow: string): string[] 
   }
 
   for (const [expected, message] of [
-    [
-      "tags: ${{ env.IMAGE_REPOSITORY }}:${{ github.sha }}",
-      "The pushed tag must be the full release commit."
-    ],
     ["provenance: mode=max", "BuildKit maximum provenance must be enabled."],
     ["sbom: true", "BuildKit SBOM attestation must be enabled."],
     ["version: v0.72.0", "Trivy must be pinned to v0.72.0."],
@@ -229,7 +283,6 @@ export function findWorkerReleaseWorkflowViolations(workflow: string): string[] 
       '--predicate-type "$SBOM_PREDICATE_TYPE"',
       "The derived versioned SPDX predicate type must be used for verification."
     ],
-    ['--source-digest "$GITHUB_SHA"', "Provenance verification must bind the source commit."],
     ["worker-release-evidence.mjs write", "The workflow must write sanitized release evidence."],
     ["pnpm test", "Release publication must be gated by the deterministic test suite."],
     ["pnpm test:integration:postgres", "Release publication must be gated by PostgreSQL tests."],

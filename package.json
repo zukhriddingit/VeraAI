@@ -24,6 +24,7 @@
     "verify:worker-image-boundaries": "tsx scripts/verify-worker-image-boundaries.ts",
     "verify:worker-release-workflow": "tsx scripts/verify-worker-release-workflow.ts",
     "verify:worker-release-promotion": "tsx scripts/verify-worker-release-promotion.ts",
+    "verify:release-documentation": "tsx scripts/verify-release-documentation.ts",
     "maritime:validate": "node infra/maritime/validate.mjs",
     "maritime:upload-openclaw-config": "tsx scripts/maritime-upload-openclaw-config.ts",
     "demo:reset": "tsx scripts/demo-reset.ts",

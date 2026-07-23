@@ -4,6 +4,7 @@ import {
   GATEWAY_HTTP_CHECKS,
   parseGatewayHttpSmokeEnvironment,
   runGatewayHttpSmoke,
+  runGatewayWrongTokenSmoke,
   type GatewayFetch
 } from "./gateway-http-smoke.ts";
 
@@ -89,5 +90,19 @@ describe("gateway HTTP negative matrix", () => {
     expect(result.checks).toHaveLength(GATEWAY_HTTP_CHECKS.length);
     expect(result.checks.every(({ code }) => code === "request_timed_out")).toBe(true);
     expect(JSON.stringify(result)).not.toContain("private gateway token");
+  });
+
+  it("uses a fixed invalid token and accepts only an explicit token denial", async () => {
+    const fetchImplementation: GatewayFetch = vi.fn(async (_url, init) => {
+      expect(new Headers(init.headers).get("authorization")).toBe(
+        "Bearer vera-release-gate-invalid-token"
+      );
+      expect(init.redirect).toBe("error");
+      return new Response(null, { status: 401 });
+    });
+
+    await expect(
+      runGatewayWrongTokenSmoke({ gatewayUrl: "https://gateway.example.test", fetchImplementation })
+    ).resolves.toMatchObject({ outcome: "passed", code: "expected_denial", observedStatus: 401 });
   });
 });

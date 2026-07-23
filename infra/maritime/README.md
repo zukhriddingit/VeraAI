@@ -65,18 +65,19 @@ pnpm verify:worker-release-workflow
 
 The local Docker build is acceptance evidence only; it is not a deployable registry identity. The
 registry release is intentionally separate from Maritime and must be run through
-`.github/workflows/release-worker.yml`. That workflow is manual-only, uses the full release commit
-as its sole tag, re-runs the full acceptance gate, resolves the registry digest, generates and
+`.github/workflows/release-worker.yml`. That workflow runs only from the trusted default branch,
+accepts an optional full source SHA that must be an ancestor of the default branch in
+`zukhriddingit/VeraAI`, uses that selected commit as its sole tag, re-runs the full acceptance gate, resolves the registry digest, generates and
 verifies provenance/signature/SBOM evidence, and fails on missing package coverage, a stale scanner
 database, or any critical or high Trivy finding. Acceptance, build/scan, and sign/attest use
 separate least-privilege jobs. Repository-controlled Trivy config and suppressions are not loaded,
 and the closed action allowlist permits no Maritime credential or runtime command.
 
-After the workflow has been reviewed and merged to the default branch, dispatch an exact reviewed
-branch or tag and retain the resulting evidence artifact:
+After the workflow has been reviewed and merged to the default branch, dispatch it from that branch
+with an exact reviewed source SHA and retain the resulting evidence artifact:
 
 ```sh
-gh workflow run release-worker.yml --ref <reviewed-release-branch-or-tag>
+gh workflow run release-worker.yml --ref main -f source_sha=<full-reviewed-source-sha>
 gh run list --workflow release-worker.yml --limit 1
 gh run watch <run-id> --exit-status
 gh run download <run-id> --name vera-worker-release-<full-release-commit>
@@ -100,8 +101,29 @@ cryptographically verified predicate, pins the signer to `zukhriddingit/VeraAI`,
 manifest source commit, exact workflow identity, and registry owner. Install the pinned Cosign
 `v3.0.6`, authenticate `gh` for the repository, and run this command in the same operator session
 immediately before promotion. A stored success message or artifact hash is not a substitute for
-rerunning it. Do not use a mutable tag, and do not proceed without a distinct reviewed rollback
-worker digest plus the complete release manifest.
+rerunning it. Do not use a mutable tag, and do not proceed without a reviewed schema-compatible
+rollback worker digest plus the complete release manifest.
+
+### First release and rollback evidence
+
+Before any deployment, build and verify two independent worker artifacts. This is evidence collection
+only; it does not authorize a Maritime mutation.
+
+1. Identify the previous trusted default-branch commit and dispatch the workflow with its full SHA.
+   Verify its registry digest, signature, provenance, SBOM, and vulnerability report; record that
+   digest as `rollback.reviewedWorkerImage` in the private release manifest.
+2. Dispatch the same default-branch workflow with the merged candidate's full SHA and independently
+   verify its evidence. Record its digest as `worker.image`.
+3. Record the reviewed candidate OpenClaw image and reviewed rollback OpenClaw image under
+   `openclaw.image` and `rollback.reviewedOpenclawImage`. The same reviewed digest is allowed when
+   no OpenClaw image or configuration change is proposed.
+4. Set `rollback.workerSchemaCompatible` only after the earlier worker was tested against the migrated
+   schema and record a hash of that test evidence. If compatibility fails or is unknown, image rollback
+   is unavailable; use the managed PostgreSQL restore procedure instead.
+
+Keep the complete evidence bundle under `release-evidence/private/` with directory mode `0700` and
+file mode `0600`, then copy it to a restricted private artifact store before deleting the local copy.
+See [`FOUNDER_STAGING_EVIDENCE.md`](../../docs/FOUNDER_STAGING_EVIDENCE.md).
 
 Apply and verify PostgreSQL before starting a new worker image:
 
@@ -115,8 +137,8 @@ DATABASE_URL='<managed-postgresql-url>' pnpm db:seed
 Use new provisioning only when inventory proves no suitable agent exists and the operator has
 approved an exact mutation plan. Confirm syntax with the installed `maritime guide --json`; the
 repository does not treat old CLI examples as authority. The Vera worker does not require public
-application ingress. The OpenClaw gateway requires a reviewed TLS/WSS route for the paired local
-node.
+application ingress. Browser capture is currently blocked in Maritime staging; do not create or
+expose an OpenClaw gateway until a reviewed TLS/WSS ingress decision replaces ADR 0012.
 
 ```sh
 maritime create <vera-worker-options-confirmed-by-current-guide>
@@ -163,7 +185,7 @@ It never prints the agent ID, API key, config content, or provider response. Thi
 mutation and requires explicit operator approval immediately before use.
 
 ```sh
-maritime deploy vera-worker --source docker --image ghcr.io/<owner>/vera-worker:<git-sha> --wait
+maritime deploy vera-worker --source docker --image ghcr.io/<owner>/vera-worker@sha256:<candidate-worker-digest> --wait
 maritime deploy <existing-openclaw-agent> --source docker --image ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee --wait
 maritime status vera-worker
 maritime status <existing-openclaw-agent>
@@ -221,7 +243,7 @@ Inspect history before selecting an immutable prior worker image:
 
 ```sh
 maritime history vera-worker -n 10
-maritime deploy vera-worker --source docker --image ghcr.io/<owner>/vera-worker:<previous-reviewed-git-sha> --wait
+maritime deploy vera-worker --source docker --image ghcr.io/<owner>/vera-worker@sha256:<reviewed-rollback-worker-digest> --wait
 maritime status vera-worker
 ```
 

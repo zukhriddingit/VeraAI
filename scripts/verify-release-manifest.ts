@@ -215,32 +215,50 @@ export function validateReleaseManifest(input: unknown): string[] {
   const rollback = requireClosedObject(
     manifest.rollback,
     "rollback",
-    ["workerImage", "openclawImage"],
+    [
+      "reviewedWorkerImage",
+      "reviewedOpenclawImage",
+      "workerSchemaCompatible",
+      "workerCompatibilityEvidenceSha256"
+    ],
     violations
   );
   if (rollback) {
-    const rollbackWorkerImage = imageIdentity(rollback.workerImage);
-    const rollbackOpenClawImage = imageIdentity(rollback.openclawImage);
+    const rollbackWorkerImage = imageIdentity(rollback.reviewedWorkerImage);
+    const rollbackOpenClawImage = imageIdentity(rollback.reviewedOpenclawImage);
     if (!rollbackWorkerImage) {
-      violations.push("rollback.workerImage must be a non-placeholder digest-qualified image.");
-    }
-    if (!rollbackOpenClawImage) {
-      violations.push("rollback.openclawImage must be a non-placeholder digest-qualified image.");
-    }
-    if (workerImage && rollbackWorkerImage?.repository !== workerImage.repository) {
-      violations.push("rollback.workerImage must use the active worker image repository.");
-    }
-    if (openclawImage && rollbackOpenClawImage?.repository !== openclawImage.repository) {
-      violations.push("rollback.openclawImage must use the active OpenClaw image repository.");
-    }
-    if (workerImage && rollbackWorkerImage?.digest === workerImage.digest) {
-      violations.push("rollback.workerImage must identify a different immutable worker artifact.");
-    }
-    if (openclawImage && rollbackOpenClawImage?.digest === openclawImage.digest) {
       violations.push(
-        "rollback.openclawImage must identify a different immutable OpenClaw artifact."
+        "rollback.reviewedWorkerImage must be a non-placeholder digest-qualified image."
       );
     }
+    if (!rollbackOpenClawImage) {
+      violations.push(
+        "rollback.reviewedOpenclawImage must be a non-placeholder digest-qualified image."
+      );
+    }
+    if (workerImage && rollbackWorkerImage?.repository !== workerImage.repository) {
+      violations.push("rollback.reviewedWorkerImage must use the active worker image repository.");
+    }
+    if (openclawImage && rollbackOpenClawImage?.repository !== openclawImage.repository) {
+      violations.push(
+        "rollback.reviewedOpenclawImage must use the active OpenClaw image repository."
+      );
+    }
+    if (workerImage && rollbackWorkerImage?.digest === workerImage.digest) {
+      violations.push(
+        "rollback.reviewedWorkerImage must identify a different immutable worker artifact."
+      );
+    }
+    if (rollback.workerSchemaCompatible !== true) {
+      violations.push(
+        "rollback.workerSchemaCompatible must be true before image rollback is available."
+      );
+    }
+    validateSha256(
+      rollback.workerCompatibilityEvidenceSha256,
+      "rollback worker compatibility evidence",
+      violations
+    );
     if (rollbackWorkerImage && rollbackWorkerImage.digest === rollbackOpenClawImage?.digest) {
       violations.push("Rollback worker and OpenClaw images must identify distinct artifacts.");
     }

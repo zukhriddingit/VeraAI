@@ -89,6 +89,26 @@ The complete export, deletion, disconnect, backup, and provider-outage behavior 
 - A created event is deterministic, private, and tentative, has no attendees or conferencing, and uses `sendUpdates=none`.
 - Founder-release cancel and reschedule update Vera's state only. The user changes or deletes the Google event manually.
 
+## Founder-staging live evidence procedure
+
+Use an external `release-evidence/private/` bundle as described in
+[`FOUNDER_STAGING_EVIDENCE.md`](./FOUNDER_STAGING_EVIDENCE.md). The actual consent screen, account,
+and provider responses are never committed. Capture only sanitized console/test references and their
+SHA-256 values.
+
+For Gmail, from Vera Settings use the web OAuth flow and confirm the requested and granted scope is
+exactly `gmail.readonly`; reject `gmail.compose`, `gmail.modify`, `mail.google.com`, or any broad
+mail scope. Import one real alert, repeat the import to prove idempotency, and inspect the safe
+database/audit summary to confirm unnecessary message content is not retained. Do not create a draft,
+send mail, or place an email address/body in evidence.
+
+For Calendar, request `calendar.freebusy` separately and show the visible Vera-only fallback when it
+is absent. Simulate a temporary Google failure and confirm it is not rendered as empty availability.
+Before a hold, record the final conflict recheck; request `calendar.events.owned` separately; then
+verify an approved temporary hold has no attendees and uses no `sendUpdates` notifications. Repeat
+the same approved hold request to prove idempotency prevents a duplicate. Store only test-run or
+workflow references and checksums.
+
 ## Google verification readiness
 
 Google Cloud Console is authoritative for each scope's current classification. Gmail `gmail.readonly` is a restricted scope and public production use can require verification and an annual security assessment; Calendar data scopes are sensitive and can require sensitive-scope verification. Plan verification lead time before launch.
