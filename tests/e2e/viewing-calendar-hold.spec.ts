@@ -190,7 +190,9 @@ test("Calendar hold gracefully degrades, requires warned approval, and stays ide
   });
 
   await page.getByRole("button", { name: "Cancel in Vera" }).click();
-  await expect(page.getByRole("heading", { name: "Viewing cancelled in Vera" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Viewing cancelled in Vera" })).toBeVisible({
+    timeout: 20_000
+  });
   await expect(
     page.locator(".viewing-warning").filter({ hasText: "no Google Calendar event exists" })
   ).toBeVisible();

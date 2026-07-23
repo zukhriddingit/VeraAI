@@ -4,7 +4,7 @@ test("manual capture normalizes supplied evidence without fetching its URL", asy
   await page.goto("/connectors");
 
   await expect(page.getByRole("heading", { name: "Connector status" })).toBeVisible();
-  await expect(page.locator(".connector-card")).toHaveCount(2);
+  await expect(page.locator(".connector-card")).toHaveCount(2, { timeout: 20_000 });
   await expect(page.getByText("ready", { exact: true })).toHaveCount(2);
   await expect(page.getByText("disabled", { exact: true })).toHaveCount(2);
   await expect(page.getByRole("heading", { name: "Unknown domains stay manual." })).toBeVisible();

@@ -13,7 +13,9 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: Boolean(process.env.CI),
-  retries: process.env.CI ? 2 : 0,
+  // These flows intentionally mutate one seeded SQLite fixture. Retrying against the same
+  // server would test contaminated state rather than the failed attempt.
+  retries: 0,
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL,
