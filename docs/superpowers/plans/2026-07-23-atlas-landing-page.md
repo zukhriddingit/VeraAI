@@ -255,7 +255,7 @@ Expected:
 ```text
 vera-atlas-hero.png: 1586 x 992
 vera-evidence-house.png: 1003 x 1568
-vera-product-capture.png: 1280 x 720
+vera-product-capture.png: 1672 x 941 (developer badge removed from the approved capture)
 vera-activity-capture.png: 1280 x 720
 ```
 

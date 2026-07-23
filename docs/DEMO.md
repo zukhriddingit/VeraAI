@@ -21,7 +21,7 @@ The audience should be able to see speed, evidence, uncertainty, and human contr
 
 The automated clean-clone demo currently proves the ingestion, extraction, and deterministic decision foundation:
 
-1. `/` displays eight canonical listings from twelve sanitized source records.
+1. `/demo` displays eight canonical listings from twelve sanitized source records.
 2. `/connectors` shows only the sanitized fixture and manual-capture connectors enabled; platform-label manifests are disabled.
 3. `/capture` accepts pasted text or strict structured JSON, optionally with an inert provenance URL.
 4. The worker serializes supplied evidence deterministically, runs structured/rule extraction first, and explicitly preserves every unresolved field as unknown.
@@ -30,7 +30,7 @@ The automated clean-clone demo currently proves the ingestion, extraction, and d
 7. Repeating the same submission resolves to one immutable raw record, at most one job, one source record, and one immutable extraction run.
 8. The activity log records the capture request, exact policy decision, capture result, and normalization result without recording pasted content, prompts, raw model output, evidence snippets, contacts, or credentials.
 9. Normalization completion queues a versioned decision job. The same production worker computes duplicate clusters, stitched canonical listings, hard constraints, renormalized ranking factors, separate penalties, and evidence-backed risk indicators.
-10. `/` and `/listings/[id]` read the current production-derived score/risk snapshots, show duplicate provenance and unknown facts, and distinguish an ineligible hard-constraint result from a low score.
+10. `/demo` and `/listings/[id]` read the current production-derived score/risk snapshots, show duplicate provenance and unknown facts, and distinguish an ineligible hard-constraint result from a low score.
 11. Reconciliation stores immutable input/output hashes and run history, rejects stale corpus revisions, preserves canonical identity where possible, and marks replaced projections as superseded rather than deleting evidence.
 12. `/api/dedupe/overrides` records append-only operator merge/split decisions and queues recomputation; `/api/decision-jobs/[id]` exposes the resulting safe job status.
 
@@ -51,15 +51,15 @@ pnpm demo:seed
 pnpm demo
 ```
 
-Leave the final command running and open `http://127.0.0.1:3000`. The reset targets only Vera's dedicated demo-data directory. Demo startup removes live LLM environment variables and uses no credentials or network-backed listing connector.
+Leave the final command running and open `http://127.0.0.1:3000/demo`. The public website is available at `/`; the deterministic cockpit and recording flow begin at `/demo`. The landing route has no database, session, or external integration dependency. The reset targets only Vera's dedicated demo-data directory. Demo startup removes live LLM environment variables and uses no credentials or network-backed listing connector.
 
 Record this click path:
 
-1. On `/`, frame the seeded search profile, then select **Run demo search**.
+1. On `/demo`, frame the seeded search profile, then select **Run demo search**.
 2. Show the **New** inbox, fit ordering, unknown/stale markers, source-observed timing, duplicate badges, and the risk-indicator language.
 3. Filter **Source** to Zillow, clear it, and sort by **Price** to demonstrate quick scanning.
 4. Open **Inspect Juniper Row one-bedroom**. Show the stitched facts, three preserved source records, field provenance, duplicate evidence, missing-information checklist, deterministic fit reasons, and evidence-backed risk indicators.
-5. Select **Add Juniper Row one-bedroom to shortlist**, return to `/`, and open the **Shortlisted** tab.
+5. Select **Add Juniper Row one-bedroom to shortlist**, return to `/demo`, and open the **Shortlisted** tab.
 6. In **New**, select **Dismiss Orchard Lane loft**, then **Confirm**. Open **Archived** to show that dismissal preserves the record.
 7. Open **Inspect Maple Crescent 2B**, then **Suggest three viewing times**. Point out **Calendar conflicts not checked** and the explicit statement that no Google account or API is being used.
 8. Select a proposed time, choose **Review time with conflict warning**, and review the exact title, address, timezone, and **Notifications: None** preview.

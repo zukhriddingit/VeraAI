@@ -28,7 +28,7 @@ pnpm demo:seed
 pnpm demo
 ```
 
-Open <http://127.0.0.1:3000>. The explicit demo launcher injects a one-process launch capability; setting `VERA_DEMO_MODE=1` or `VERA_DEMO_DATA_DIR` by itself cannot activate SQLite from a hosted entry point.
+Open <http://127.0.0.1:3000> for the public landing page or <http://127.0.0.1:3000/demo> for the deterministic cockpit. The explicit demo launcher injects a one-process launch capability; setting `VERA_DEMO_MODE=1` or `VERA_DEMO_DATA_DIR` by itself cannot activate SQLite from a hosted entry point.
 
 ## Hosted local development
 
