@@ -9,7 +9,7 @@ until immutable registry release evidence and the live gateway/worker staging ma
 ## Verified locally
 
 - Node 24 workspace formatting, lint, 12 TypeScript projects, and all static safety verifiers pass.
-- Unit: 133 files and 943 tests pass.
+- Unit: 133 files and 944 tests pass.
 - Non-PostgreSQL integration: 34 files and 138 tests pass; one opt-in live test is skipped.
 - PostgreSQL integration: 16 files and 64 tests pass against the local PostgreSQL test database.
 - Worker and Next.js production builds pass.

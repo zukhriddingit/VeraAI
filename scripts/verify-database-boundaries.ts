@@ -38,6 +38,7 @@ function productionFile(file: string): boolean {
   return (
     (file.startsWith("apps/web/") || file.startsWith("apps/worker/")) &&
     !file.includes(".test.") &&
+    !file.includes(".test-fixtures.") &&
     !file.includes("test-support/") &&
     file !== "apps/web/lib/server/demo-application.ts"
   );

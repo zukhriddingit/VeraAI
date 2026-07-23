@@ -33,6 +33,24 @@ describe("database import boundary verifier", () => {
     expect(findDatabaseBoundaryViolations(["apps/worker/src/good.ts"], root)).toEqual([]);
   });
 
+  it("allows explicitly named test-fixture modules without exempting production fixtures", () => {
+    const root = mkdtempSync(join(tmpdir(), "vera-boundary-"));
+    directories.push(root);
+    mkdirSync(join(root, "apps/web/lib"), { recursive: true });
+    writeFileSync(
+      join(root, "apps/web/lib/calendar.test-fixtures.ts"),
+      'import "@vera/db/demo";\n'
+    );
+    writeFileSync(join(root, "apps/web/lib/calendar-fixtures.ts"), 'import "@vera/db/demo";\n');
+
+    expect(
+      findDatabaseBoundaryViolations(
+        ["apps/web/lib/calendar.test-fixtures.ts", "apps/web/lib/calendar-fixtures.ts"],
+        root
+      )
+    ).toEqual([{ file: "apps/web/lib/calendar-fixtures.ts", specifier: "@vera/db/demo" }]);
+  });
+
   it("keeps the SQLite native runtime out of hosted production dependencies", () => {
     expect(
       findDatabasePackageBoundaryViolations({
