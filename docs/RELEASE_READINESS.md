@@ -22,11 +22,11 @@ schema gap, test failure, unresolved security finding, or design decision produc
 ## Verified locally
 
 - Node 24 workspace formatting, lint, 12 TypeScript projects, and all static safety verifiers pass.
-- Unit: 136 files and 958 tests pass.
+- Unit: 137 files and 1,008 tests pass.
 - Non-PostgreSQL integration: 35 files and 140 tests pass; one opt-in live test is skipped.
 - PostgreSQL integration: 16 files and 65 tests pass against the local PostgreSQL test database.
 - Worker and Next.js production builds pass.
-- Playwright Chromium: nine founder flows pass.
+- Playwright Chromium: six founder flows pass.
 - Local worker image: `sha256:302db8495e14e039f061be9601a0fdbe0ac58189f650dae03514bf6b863c4a13`.
 - Runtime identity: non-root UID/GID 10001; Node 24.13.0; OpenClaw 2026.6.33 (`7af0cfc`).
 - Runtime production dependencies include `pg`, `sharp`, and `openclaw`; test tools and all
@@ -72,9 +72,9 @@ The final `main...ddcbe3f` diff review found and locally fixed two code-level re
 No schema migration was required. An older hosted database may retain a global fixture policy row;
 the hosted connector registry cannot execute it, and the seed neither deletes nor rewrites existing
 policy history. The complete post-remediation local gate passes: formatting, ESLint, all static
-safety verifiers, 12 TypeScript projects, 136 unit files with 958 tests, 35 non-PostgreSQL
+safety verifiers, 12 TypeScript projects, 137 unit files with 1,008 tests, 35 non-PostgreSQL
 integration files with 140 tests plus one opt-in live skip, 16 PostgreSQL integration files with 65
-tests, nine serial Playwright Chromium flows, and both worker and Next.js production builds. This
+tests, six serial Playwright Chromium flows, and both worker and Next.js production builds. This
 local result does not replace required private live release evidence.
 
 Capability truth for this release:
