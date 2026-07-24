@@ -1,12 +1,13 @@
 import type { UserRepositories, UserRepositoryProvider } from "@vera/db";
 import {
   FounderBrowserAuthorizationError,
+  type BrowserControlMutation,
   type CreateCurrentTabCaptureRequest,
   type VeraUserId
 } from "@vera/domain";
 import { describe, expect, it, vi } from "vitest";
 
-import { createCurrentTabCaptureJob } from "./browser-agent-service.ts";
+import { createCurrentTabCaptureJob, mutateBrowserControls } from "./browser-agent-service.ts";
 
 const founder = "018f9f64-7b5a-7c91-a12e-123456789abc" as VeraUserId;
 const other = "118f9f64-7b5a-7c91-a12e-123456789abc" as VeraUserId;
@@ -57,4 +58,57 @@ describe("browser-agent capture authorization", () => {
     expect(getProfile).not.toHaveBeenCalled();
     expect(transaction).not.toHaveBeenCalled();
   });
+});
+
+describe("browser-agent control activation", () => {
+  it.each([
+    { userBrowserEnabled: true },
+    { zillowSourceEnabled: true },
+    { nodeId: "founder-node", nodeEnabled: true },
+    {
+      nodeId: "founder-node",
+      profileId: "vera-zillow",
+      profileEnabled: true
+    }
+  ] satisfies readonly BrowserControlMutation[])(
+    "rejects enablement before repository access while the global kill switch is active",
+    async (mutation) => {
+      const getControl = vi.fn();
+      const upsertControl = vi.fn();
+      const getNode = vi.fn();
+      const upsertNode = vi.fn();
+      const getProfile = vi.fn();
+      const upsertProfile = vi.fn();
+      const repositories = {
+        browserIntegrationControls: { get: getControl, upsert: upsertControl },
+        browserNodes: { getById: getNode, upsert: upsertNode },
+        browserProfileControls: { get: getProfile, upsert: upsertProfile }
+      } as unknown as UserRepositories;
+
+      await expect(
+        mutateBrowserControls(
+          {
+            repositories,
+            systemBrowserDisabled: true,
+            now: () => new Date("2026-07-23T15:00:00.000Z"),
+            createId: () => "correlation-browser-control"
+          },
+          mutation
+        )
+      ).rejects.toThrow(
+        "Browser controls cannot be enabled while the system browser kill switch is active."
+      );
+
+      for (const operation of [
+        getControl,
+        upsertControl,
+        getNode,
+        upsertNode,
+        getProfile,
+        upsertProfile
+      ]) {
+        expect(operation).not.toHaveBeenCalled();
+      }
+    }
+  );
 });

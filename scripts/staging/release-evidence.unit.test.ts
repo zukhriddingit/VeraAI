@@ -4,9 +4,10 @@ import { join } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { RELEASE_PROFILES, type ReleasePhaseId } from "./release-profiles.ts";
 import {
-  FOUNDER_STAGING_PHASES,
   bundleContentHash,
+  classifyEvidenceBundle,
   createReleaseDecisionSummary,
   isPassingEvidenceBundle,
   loadPrivateEvidenceBundle,
@@ -16,54 +17,106 @@ import {
   validatePrivateEvidencePath,
   withBundleContentHash,
   withRecordContentHash,
-  type FounderStagingPhaseId,
+  type ConfigurationBlocker,
   type ReleaseEvidenceBundle,
-  type ReleaseEvidenceRecord
+  type ReleaseEvidenceRecord,
+  type ReleasePhaseResultState
 } from "./release-evidence.ts";
 
 const commit = "a".repeat(40);
+const otherCommit = "b".repeat(40);
 const workerImage = `ghcr.io/example/vera-worker@sha256:${"1".repeat(64)}`;
+const otherWorkerImage = `ghcr.io/example/vera-worker@sha256:${"4".repeat(64)}`;
 const openclawImage = `ghcr.io/openclaw/openclaw@sha256:${"2".repeat(64)}`;
+const decisionAt = "2026-07-23T12:06:00Z";
 
-function record(phaseId: FounderStagingPhaseId): ReleaseEvidenceRecord {
+const validBlocker: ConfigurationBlocker = {
+  kind: "operator_execution",
+  missingConfiguration: "staging_restore_rehearsal",
+  remediation: "Run the documented restore rehearsal and attach its sanitized test run hash",
+  implementationState: "implemented_and_validated",
+  nonLiveValidationState: "passed",
+  requiresRepositoryChange: false,
+  requiresDesignDecision: false
+};
+
+function record(
+  phaseId: ReleasePhaseId,
+  resultState: ReleasePhaseResultState = "passed_automated",
+  configurationBlocker: ConfigurationBlocker | null = resultState ===
+  "blocked_missing_configuration"
+    ? validBlocker
+    : null
+): ReleaseEvidenceRecord {
   return withRecordContentHash({
-    schemaVersion: 1,
+    schemaVersion: 2,
     synthetic: false,
+    releaseProfile: "founder_core",
+    capabilities: RELEASE_PROFILES.founder_core.capabilities,
     phaseId,
     releaseId: "founder-release-001",
     environmentId: "founder-staging",
     sourceCommit: commit,
     candidateWorkerImage: workerImage,
-    candidateOpenclawImage: phaseId.includes("gateway") ? openclawImage : null,
+    candidateOpenclawImage: null,
     executedAt: "2026-07-23T12:00:00Z",
     operatorReference: "operator-opaque-001",
     expectedResult: "Expected safety control is enforced",
-    observedResult: "Observed safety control is enforced",
-    resultState: "passed_manual_evidence",
+    observedResult:
+      resultState === "blocked_missing_configuration"
+        ? "External staging execution remains pending"
+        : "Observed safety control is enforced",
+    resultState,
+    configurationBlocker,
     evidenceReferences: [{ kind: "test_run", locator: `run-${phaseId}`, sha256: "3".repeat(64) }],
     approvalState: "approved"
   });
 }
 
-function bundle(records = FOUNDER_STAGING_PHASES.map(record)): ReleaseEvidenceBundle {
+function bundle(
+  records = RELEASE_PROFILES.founder_core.requiredPhaseIds.map((phaseId) => record(phaseId))
+): ReleaseEvidenceBundle {
   return withBundleContentHash({
-    schemaVersion: 1,
+    schemaVersion: 2,
     synthetic: false,
+    releaseProfile: "founder_core",
+    capabilities: RELEASE_PROFILES.founder_core.capabilities,
     releaseId: "founder-release-001",
     environmentId: "founder-staging",
     sourceCommit: commit,
     candidateWorkerImage: workerImage,
-    candidateOpenclawImage: openclawImage,
+    candidateOpenclawImage: null,
     createdAt: "2026-07-23T12:05:00Z",
     records
   });
 }
 
+function replacePhase(
+  evidence: ReleaseEvidenceBundle,
+  phaseId: ReleasePhaseId,
+  resultState: ReleasePhaseResultState,
+  configurationBlocker?: ConfigurationBlocker | null
+): ReleaseEvidenceBundle {
+  return bundle(
+    evidence.records.map((candidate) =>
+      candidate.phaseId === phaseId
+        ? record(
+            phaseId,
+            resultState,
+            configurationBlocker ??
+              (resultState === "blocked_missing_configuration" ? validBlocker : null)
+          )
+        : candidate
+    )
+  );
+}
+
 describe("founder staging external evidence", () => {
-  it("accepts a complete, deterministic manual-evidence bundle", () => {
+  it("accepts a complete deterministic founder-core bundle", () => {
     const evidence = bundle();
-    expect(validateEvidenceBundle(evidence)).toEqual([]);
-    expect(isPassingEvidenceBundle(evidence)).toBe(true);
+    expect(validateEvidenceBundle(evidence, { decisionAt })).toEqual([]);
+    expect(classifyEvidenceBundle(evidence, decisionAt)).toBe("go_founder_only_core_beta");
+    expect(isPassingEvidenceBundle(evidence, decisionAt)).toBe(true);
     expect(bundleContentHash(evidence)).toBe(evidence.bundleHash);
     expect(bundle().bundleHash).toBe(evidence.bundleHash);
     expect(bundleContentHash({ ...evidence, records: [...evidence.records].reverse() })).not.toBe(
@@ -71,19 +124,24 @@ describe("founder staging external evidence", () => {
     );
   });
 
-  it("rejects the committed synthetic example in a production release gate", async () => {
-    const synthetic = JSON.parse(
-      await readFile(new URL("./examples/synthetic-evidence-bundle.json", import.meta.url), "utf8")
-    ) as unknown;
-    expect(validateEvidenceBundle(synthetic)).toEqual(
-      expect.arrayContaining(["Synthetic bundles are not accepted by a production release gate."])
-    );
-    expect(
-      validateEvidenceBundle(synthetic, { allowSynthetic: true, requireAllPhases: false })
-    ).toEqual([]);
+  it("rejects committed synthetic examples in production", async () => {
+    for (const file of [
+      "./examples/synthetic-evidence-bundle.json",
+      "./examples/synthetic-manual-evidence.json"
+    ]) {
+      const synthetic = JSON.parse(
+        await readFile(new URL(file, import.meta.url), "utf8")
+      ) as unknown;
+      expect(validateEvidenceBundle(synthetic)).toEqual(
+        expect.arrayContaining(["Synthetic bundles are not accepted by a production release gate."])
+      );
+      expect(
+        validateEvidenceBundle(synthetic, { allowSynthetic: true, requireAllPhases: false })
+      ).toEqual([]);
+    }
   });
 
-  it("rejects an evidence file outside the configured private input directory", () => {
+  it("rejects evidence outside the configured private directory", () => {
     expect(validatePrivateEvidencePath("/private/tmp/evidence.json", "/workspace")).toEqual([
       "Evidence input must be a file below release-evidence/private/."
     ]);
@@ -92,7 +150,7 @@ describe("founder staging external evidence", () => {
     ).toEqual([]);
   });
 
-  it("requires restrictive modes for the private evidence directory and file", async () => {
+  it("requires restrictive directory and evidence-file modes", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "vera-evidence-test-"));
     const privateDirectory = join(workspace, "release-evidence", "private");
     const evidencePath = join(privateDirectory, "bundle.json");
@@ -103,7 +161,13 @@ describe("founder staging external evidence", () => {
       await chmod(evidencePath, 0o600);
 
       expect(
-        (await loadPrivateEvidenceBundle({ evidencePath, workspaceRoot: workspace })).violations
+        (
+          await loadPrivateEvidenceBundle({
+            evidencePath,
+            workspaceRoot: workspace,
+            decisionAt
+          })
+        ).violations
       ).toEqual([]);
 
       await chmod(evidencePath, 0o644);
@@ -115,56 +179,198 @@ describe("founder staging external evidence", () => {
     }
   });
 
-  it("rejects missing or modified record content hashes", () => {
-    const validRecord = record("gateway_unauthenticated_request");
-    const withoutHash = { ...validRecord, contentHash: "" };
+  it("rejects missing and modified record hashes", () => {
+    const validRecord = record("direct_capture");
+    const { contentHash: _removed, ...withoutHash } = validRecord;
     const modified = { ...validRecord, observedResult: "Changed observed result" };
-    expect(validateEvidenceRecord(withoutHash)).toEqual(
-      expect.arrayContaining(["record.contentHash must be a non-placeholder SHA-256."])
-    );
-    expect(validateEvidenceRecord(modified)).toEqual(
-      expect.arrayContaining(["record.contentHash does not match the canonical record content."])
+    expect(validateEvidenceRecord(withoutHash)).toContain("record.contentHash is required.");
+    expect(validateEvidenceRecord(modified)).toContain(
+      "record.contentHash does not match the canonical record content."
     );
     expect(recordContentHash(validRecord)).toBe(validRecord.contentHash);
   });
 
-  it("rejects mixed commits, candidate identities, mutable tags, missing phases, and blocked passes", () => {
+  it.each([
+    [
+      "source commit",
+      (valid: ReleaseEvidenceRecord) => ({ ...valid, sourceCommit: otherCommit }),
+      "bundle.records[0].sourceCommit must match bundle.sourceCommit."
+    ],
+    [
+      "environment",
+      (valid: ReleaseEvidenceRecord) => ({ ...valid, environmentId: "other-staging" }),
+      "bundle.records[0].environmentId must match bundle.environmentId."
+    ],
+    [
+      "profile",
+      (valid: ReleaseEvidenceRecord) => ({
+        ...valid,
+        releaseProfile: "founder_browser_experimental"
+      }),
+      "bundle.records[0].releaseProfile must match bundle.releaseProfile."
+    ],
+    [
+      "capabilities",
+      (valid: ReleaseEvidenceRecord) => ({
+        ...valid,
+        capabilities: RELEASE_PROFILES.founder_browser_experimental.capabilities
+      }),
+      "bundle.records[0].capabilities must match bundle release capabilities."
+    ],
+    [
+      "worker digest",
+      (valid: ReleaseEvidenceRecord) => ({
+        ...valid,
+        candidateWorkerImage: otherWorkerImage
+      }),
+      "bundle.records[0].candidateWorkerImage must match bundle.candidateWorkerImage."
+    ],
+    [
+      "OpenClaw digest",
+      (valid: ReleaseEvidenceRecord) => ({
+        ...valid,
+        candidateOpenclawImage: openclawImage
+      }),
+      "bundle.records[0].candidateOpenclawImage must match bundle.candidateOpenclawImage."
+    ]
+  ])("rejects a mixed %s", (_label, mutate, expected) => {
     const evidence = bundle();
     const mixed = {
       ...evidence,
-      records: [
-        { ...evidence.records[0], sourceCommit: "b".repeat(40) },
-        ...evidence.records.slice(1)
-      ]
+      records: [mutate(evidence.records[0]!), ...evidence.records.slice(1)]
     };
-    const mutable = { ...evidence, candidateWorkerImage: "ghcr.io/example/vera-worker:latest" };
-    const missing = bundle([record("gateway_unauthenticated_request")]);
-    const blockedRecord = withRecordContentHash({
-      ...record("gateway_unauthenticated_request"),
-      resultState: "blocked_missing_configuration" as const
-    });
-    const blocked = bundle([blockedRecord, ...FOUNDER_STAGING_PHASES.slice(1).map(record)]);
-
-    expect(validateEvidenceBundle(mixed)).toEqual(
-      expect.arrayContaining([
-        "bundle.records[0].sourceCommit must match bundle.sourceCommit.",
-        "bundle.bundleHash does not match the canonical accepted evidence manifest."
-      ])
-    );
-    expect(validateEvidenceBundle(mutable)).toEqual(
-      expect.arrayContaining([
-        "bundle.candidateWorkerImage must be an immutable OCI digest.",
-        "bundle.bundleHash does not match the canonical accepted evidence manifest."
-      ])
-    );
-    expect(validateEvidenceBundle(missing)).toContain(
-      "bundle is missing required phase record gateway_wrong_token."
-    );
-    expect(isPassingEvidenceBundle(blocked)).toBe(false);
+    expect(validateEvidenceBundle(mixed)).toContain(expected);
+    expect(classifyEvidenceBundle(mixed, decisionAt)).toBe("no_go");
   });
 
-  it("rejects arbitrary fields, secrets, raw emails, browser snapshots, and node identifiers", () => {
-    const validRecord = record("gateway_unauthenticated_request");
+  it("rejects mutable images, missing required phases, and duplicate phases", () => {
+    const evidence = bundle();
+    const mutable = { ...evidence, candidateWorkerImage: "ghcr.io/example/vera-worker:latest" };
+    const missing = bundle(evidence.records.slice(1));
+    const duplicate = bundle([...evidence.records, evidence.records[0]!]);
+
+    expect(validateEvidenceBundle(mutable)).toContain(
+      "bundle.candidateWorkerImage must be an immutable OCI digest."
+    );
+    expect(validateEvidenceBundle(missing)).toContain(
+      `bundle is missing required phase record ${evidence.records[0]!.phaseId}.`
+    );
+    expect(validateEvidenceBundle(duplicate)).toContain(
+      `bundle.records[${duplicate.records.length - 1}].phaseId is duplicated.`
+    );
+    expect(classifyEvidenceBundle(mutable, decisionAt)).toBe("no_go");
+    expect(classifyEvidenceBundle(missing, decisionAt)).toBe("no_go");
+    expect(classifyEvidenceBundle(duplicate, decisionAt)).toBe("no_go");
+  });
+
+  it.each([
+    ["failed_assertion", "no_go"],
+    ["failed_provider", "no_go"],
+    ["not_applicable_with_approved_reason", "no_go"],
+    ["blocked_missing_configuration", "conditional_go_founder_only_staging"]
+  ] as const)("classifies a required %s phase", (resultState, expected) => {
+    const evidence = replacePhase(bundle(), "postgresql_restore", resultState);
+    expect(classifyEvidenceBundle(evidence, decisionAt)).toBe(expected);
+    expect(isPassingEvidenceBundle(evidence, decisionAt)).toBe(false);
+  });
+
+  it("classifies all completed founder-core phases as core beta go", () => {
+    const evidence = bundle(
+      RELEASE_PROFILES.founder_core.requiredPhaseIds.map((phaseId) =>
+        record(
+          phaseId,
+          phaseId === "direct_capture" ? "passed_manual_evidence" : "passed_automated"
+        )
+      )
+    );
+    expect(classifyEvidenceBundle(evidence, decisionAt)).toBe("go_founder_only_core_beta");
+  });
+
+  it.each([
+    "missing_runner",
+    "unimplemented_feature",
+    "failing_test",
+    "undecided_architecture",
+    "incomplete_policy_enforcement",
+    "mocked_only_path",
+    "schema_gap",
+    "unresolved_security_finding"
+  ])("rejects %s as a configuration blocker", (missingConfiguration) => {
+    const invalidBlocker = { ...validBlocker, missingConfiguration };
+    const invalidRecord = record(
+      "postgresql_restore",
+      "blocked_missing_configuration",
+      invalidBlocker
+    );
+    expect(validateEvidenceRecord(invalidRecord)).toContain(
+      "record.configurationBlocker cannot represent a code, test, policy, architecture, schema, mocked-path, runner, or security gap."
+    );
+    expect(
+      classifyEvidenceBundle(
+        replacePhase(
+          bundle(),
+          "postgresql_restore",
+          "blocked_missing_configuration",
+          invalidBlocker
+        ),
+        decisionAt
+      )
+    ).toBe("no_go");
+  });
+
+  it("requires blocker attestation, remediation, and an eligible live phase", () => {
+    const requiresCode = record("postgresql_restore", "blocked_missing_configuration", {
+      ...validBlocker,
+      requiresRepositoryChange: true
+    } as unknown as ConfigurationBlocker);
+    const missingRemediation = record("postgresql_restore", "blocked_missing_configuration", {
+      ...validBlocker,
+      remediation: ""
+    });
+    const staticBlock = record(
+      "release_static_readiness",
+      "blocked_missing_configuration",
+      validBlocker
+    );
+    expect(validateEvidenceRecord(requiresCode)).toContain(
+      "record.configurationBlocker.requiresRepositoryChange must be false."
+    );
+    expect(validateEvidenceRecord(missingRemediation)).toContain(
+      "record.configurationBlocker.remediation must be bounded sanitized text."
+    );
+    expect(validateEvidenceRecord(staticBlock)).toContain(
+      "record.configurationBlocker is not allowed for an implementation or static-validation phase."
+    );
+  });
+
+  it("rejects stale and future evidence deterministically", () => {
+    const stale = bundle().records.map((candidate) =>
+      withRecordContentHash({ ...candidate, executedAt: "2026-07-10T12:00:00Z" })
+    );
+    const staleBundle = withBundleContentHash({
+      ...bundle(stale),
+      createdAt: "2026-07-10T12:05:00Z"
+    });
+    const futureRecord = withRecordContentHash({
+      ...record("direct_capture"),
+      executedAt: "2026-07-23T12:10:00Z"
+    });
+    const futureBundle = bundle([
+      futureRecord,
+      ...bundle().records.filter((candidate) => candidate.phaseId !== "direct_capture")
+    ]);
+    expect(validateEvidenceBundle(staleBundle, { decisionAt })).toContain(
+      "bundle evidence is stale at the release decision."
+    );
+    expect(validateEvidenceBundle(futureBundle, { decisionAt })).toContain(
+      "bundle.records[0].executedAt cannot be after bundle.createdAt."
+    );
+    expect(classifyEvidenceBundle(staleBundle, decisionAt)).toBe("no_go");
+    expect(classifyEvidenceBundle(futureBundle, decisionAt)).toBe("no_go");
+  });
+
+  it("rejects arbitrary fields, secrets, raw emails, browser snapshots, and private identifiers", () => {
+    const validRecord = record("direct_capture");
     for (const unsafe of [
       { ...validRecord, metadata: "unexpected" },
       { ...validRecord, observedResult: "Bearer sk_secretvalue" },
@@ -177,15 +383,51 @@ describe("founder staging external evidence", () => {
     }
   });
 
-  it("allows manual evidence only for the declared required phase", () => {
-    const validRecord = record("gmail_readonly_verification");
+  it("allows manual evidence only for its named profile phase", () => {
+    const validRecord = record("direct_capture", "passed_manual_evidence");
     expect(validateEvidenceRecord(validRecord)).toEqual([]);
-    expect(validateEvidenceRecord({ ...validRecord, phaseId: "arbitrary_phase" })).toEqual(
-      expect.arrayContaining(["record.phaseId must be a required founder staging phase."])
+    expect(validateEvidenceRecord({ ...validRecord, phaseId: "gateway_restart" })).toContain(
+      "record.phaseId is not required by record.releaseProfile."
     );
+    expect(
+      validateEvidenceRecord({
+        ...record("release_static_readiness"),
+        resultState: "passed_manual_evidence"
+      })
+    ).toContain("record.resultState cannot claim manual evidence for an automated-only phase.");
   });
 
-  it("binds an optional signature and emits only a sanitized final decision", () => {
+  it("rejects OpenClaw binding for core and keeps browser experimental no-go", () => {
+    const invalidCore = withBundleContentHash({
+      ...bundle(),
+      candidateOpenclawImage: openclawImage
+    });
+    expect(validateEvidenceBundle(invalidCore)).toContain(
+      "bundle.candidateOpenclawImage must be null for founder_core."
+    );
+
+    const browserRecords = RELEASE_PROFILES.founder_browser_experimental.requiredPhaseIds.map(
+      (phaseId) =>
+        withRecordContentHash({
+          ...record("direct_capture"),
+          releaseProfile: "founder_browser_experimental" as const,
+          capabilities: RELEASE_PROFILES.founder_browser_experimental.capabilities,
+          phaseId,
+          candidateOpenclawImage: openclawImage
+        })
+    );
+    const browserBundle = withBundleContentHash({
+      ...bundle(),
+      releaseProfile: "founder_browser_experimental" as const,
+      capabilities: RELEASE_PROFILES.founder_browser_experimental.capabilities,
+      candidateOpenclawImage: openclawImage,
+      records: browserRecords
+    });
+    expect(validateEvidenceBundle(browserBundle, { decisionAt })).toEqual([]);
+    expect(classifyEvidenceBundle(browserBundle, decisionAt)).toBe("no_go");
+  });
+
+  it("binds a signature and emits only the sanitized founder-core decision", () => {
     const evidence = bundle();
     const signed = {
       ...evidence,
@@ -197,24 +439,33 @@ describe("founder staging external evidence", () => {
       }
     };
 
-    expect(validateEvidenceBundle(signed)).toEqual([]);
+    expect(validateEvidenceBundle(signed, { decisionAt })).toEqual([]);
     expect(
       validateEvidenceBundle({
         ...signed,
         signature: { ...signed.signature, signedBundleHash: "4".repeat(64) }
       })
-    ).toEqual(
-      expect.arrayContaining(["bundle.signature.signedBundleHash must bind bundle.bundleHash."])
-    );
-    expect(createReleaseDecisionSummary(signed, "2026-07-23T12:06:00Z")).toEqual({
-      schemaVersion: 1,
+    ).toContain("bundle.signature.signedBundleHash must bind bundle.bundleHash.");
+    expect(createReleaseDecisionSummary(signed, decisionAt)).toEqual({
+      schemaVersion: 2,
       releaseId: "founder-release-001",
+      releaseProfile: "founder_core",
+      capabilities: RELEASE_PROFILES.founder_core.capabilities,
       sourceCommit: commit,
       workerImageDigest: workerImage,
-      openclawImageDigest: openclawImage,
+      openclawImageDigest: null,
       evidenceBundleSha256: evidence.bundleHash,
-      finalClassification: "passed",
-      approvalTimestamp: "2026-07-23T12:06:00Z"
+      finalClassification: "go_founder_only_core_beta",
+      approvalTimestamp: decisionAt
     });
+
+    const conditional = replacePhase(
+      evidence,
+      "postgresql_restore",
+      "blocked_missing_configuration"
+    );
+    expect(createReleaseDecisionSummary(conditional, decisionAt).finalClassification).toBe(
+      "conditional_go_founder_only_staging"
+    );
   });
 });

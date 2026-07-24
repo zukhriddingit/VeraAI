@@ -14,7 +14,9 @@ umask 077
 # Run the gate only with the explicit VERA_FOUNDER_STAGING_SMOKE=1 release environment.
 ```
 
-The gate accepts only a closed, schema-validated `ReleaseEvidenceBundle`. It rejects a path outside
+The gate accepts only a closed, schema-validated version-2 `ReleaseEvidenceBundle`. Every record and
+bundle binds either `founder_core` or `founder_browser_experimental` plus the exact capability set
+derived from that profile. It rejects a path outside
 the private directory, symlinks, group/world-readable files, arbitrary fields, missing/mismatched
 content hashes, mixed release identities, mutable image tags, and synthetic fixtures. Committed
 examples in `scripts/staging/examples/` are visibly synthetic and are rejected by the production
@@ -26,6 +28,7 @@ enabled by the production command.
 Each record has exactly these release-binding fields:
 
 - schema version and `synthetic: false`;
+- selected release profile and its exact closed capability object;
 - named mandatory phase identifier;
 - opaque release/environment/operator references;
 - exact 40-character source commit;
@@ -35,12 +38,22 @@ Each record has exactly these release-binding fields:
 - one allowed result state;
 - approved sanitized evidence references, each with a SHA-256;
 - `approvalState: "approved"`; and
+- a strict nullable `configurationBlocker`; and
 - a SHA-256 `contentHash` of canonical record content excluding that field.
 
 The only result states are `passed_automated`, `passed_manual_evidence`,
 `blocked_missing_configuration`, `failed_assertion`, `failed_provider`, and
 `not_applicable_with_approved_reason`. A mandatory phase passes only with either `passed_automated`
-or `passed_manual_evidence`. A blocked state is visible failure, never a skip or success.
+or `passed_manual_evidence`. `not_applicable_with_approved_reason` never satisfies a mandatory
+phase and never removes a profile requirement after evaluation.
+
+For `founder_core`, `blocked_missing_configuration` can contribute only to
+`conditional_go_founder_only_staging`, and only when its closed blocker object identifies an
+external staging value, external credential, external deployment, or operator execution. It must
+name a concrete remediation, attest that implementation/validation and all non-live tests pass, and
+state that no repository change or design decision is required. Missing runners, unimplemented
+features, failing tests, undecided architecture, incomplete policy enforcement, mocked-only paths,
+schema gaps, and unresolved security findings are `no_go`, not configuration blockers.
 
 Use references and hashes, not raw artifacts. Approved reference forms are GitHub Actions artifact
 names, managed database snapshot references, private-object IDs, sanitized screenshot checksums,
@@ -62,8 +75,9 @@ release-gate failure: redact and regenerate the record rather than weakening the
 
 | Phase family | Evidence procedure |
 | --- | --- |
-| Gateway and worker recovery | Record the sanitized test-run/workflow reference for unauthenticated and wrong-token denial, dispatch, duplicate/replay, kill-switch, crash, restart, and provider-outage checks. |
-| Browser/node | Current Maritime staging has no approved ingress. Record its `blocked_missing_configuration` result; do not manufacture a positive-capture record. Node-offline, stale-heartbeat, and manual-blocker records must use safe state codes only. |
+| Worker recovery | Record the sanitized test-run/workflow reference for dispatch, duplicate/replay, restart recovery, emergency disable, rollback, and provider-outage checks. |
+| Founder-core browser-disabled boundary | Record mandatory positive proof that the global and founder controls are disabled, SourceJobs deny before dispatch, no gateway is required, no endpoint exists, no monitoring is scheduled, and UI/API activation is denied. These are required phases, not N/A substitutions. |
+| Browser experimental | Current Maritime staging has no approved ingress. Browser-live phases remain mandatory for `founder_browser_experimental`, and ADR 0012 keeps that profile `no_go`; do not manufacture positive-capture evidence. |
 | Web Push | Record delivery, idempotency, and quiet-hours test references; no endpoint, subscription, or notification payload is evidence. |
 | PostgreSQL/rollback | Record a managed snapshot reference hash, restore rehearsal reference, prior-worker digest, compatibility evidence hash, and candidate digest. If compatibility is absent, record a blocked rollback phase. |
 | Gmail | From Vera settings, verify Web OAuth requests exactly `gmail.readonly`, no compose/modify/broad mail scope, one alert import, repeat-import idempotency, and no unnecessary content retention. Store only console/test references and hashes. |
@@ -71,15 +85,24 @@ release-gate failure: redact and regenerate the record rather than weakening the
 
 ## Bundle, signature, and final decision
 
-The final private bundle contains all accepted phase records, a common release ID/environment/source
-commit/candidate image binding, a deterministic canonical SHA-256 `bundleHash`, and optional opaque
+The final private bundle contains all accepted phase records, a common profile/capability/release
+ID/environment/source commit/candidate image binding, a deterministic canonical SHA-256
+`bundleHash`, and optional opaque
 CI or operator signature metadata. A signature must name the exact `signedBundleHash`; external CI
 or operator tooling performs the cryptographic verification. The bundle hash excludes its own hash
 and signature fields to avoid circularity. The validator rejects any declared record hash mismatch
-and any mixed commit, environment, worker digest, or applicable OpenClaw digest.
+and any mixed commit, environment, profile, capabilities, worker digest, or applicable OpenClaw
+digest. Core requires a null OpenClaw digest; browser experimental requires an immutable digest.
+
+Records and bundles are stale when dated after the decision, when a record is dated after its
+bundle, or when they are more than seven days old at the decision instant.
 
 After an approved release-gate run, copy the full evidence bundle and referenced private artifacts to
 a restricted private release-artifact store. Apply the retention/deletion process in
 [`PRIVACY_OPERATIONS.md`](./PRIVACY_OPERATIONS.md); do not treat the local private directory as a
-permanent audit store. The shareable final decision may contain only the release ID, source commit,
-immutable worker/OpenClaw digests, bundle SHA-256, classification, and approval timestamp.
+permanent audit store. The shareable final decision may contain only the release ID, profile,
+capabilities, source commit, immutable worker/nullable OpenClaw digests, bundle SHA-256,
+classification, and approval timestamp.
+
+The exact founder-core operator sequence and phase matrix are in
+[`FOUNDER_CORE_STAGING_RUNBOOK.md`](./FOUNDER_CORE_STAGING_RUNBOOK.md).

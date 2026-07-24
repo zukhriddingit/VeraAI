@@ -137,6 +137,17 @@ export async function mutateBrowserControls(
   inputValue: BrowserControlMutation
 ): Promise<BrowserAgentStatusResponse> {
   const input = BrowserControlMutationSchema.parse(inputValue);
+  if (
+    dependencies.systemBrowserDisabled &&
+    (input.userBrowserEnabled === true ||
+      input.zillowSourceEnabled === true ||
+      input.nodeEnabled === true ||
+      input.profileEnabled === true)
+  ) {
+    throw new Error(
+      "Browser controls cannot be enabled while the system browser kill switch is active."
+    );
+  }
   const at = nowIso(dependencies);
   const current = await dependencies.repositories.browserIntegrationControls.get();
   if (input.userBrowserEnabled !== undefined || input.zillowSourceEnabled !== undefined) {

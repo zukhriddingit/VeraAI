@@ -38,6 +38,8 @@ describe("worker runtime configuration", () => {
     expect(() =>
       parseWorkerRuntimeConfig(
         {
+          VERA_BROWSER_DISABLED: "0",
+          VERA_BROWSER_FOUNDER_USER_IDS: FOUNDER,
           OPENCLAW_GATEWAY_URL: "ws://gateway.example.test",
           OPENCLAW_GATEWAY_TOKEN: "synthetic-token-value"
         },
@@ -47,6 +49,8 @@ describe("worker runtime configuration", () => {
     expect(
       parseWorkerRuntimeConfig(
         {
+          VERA_BROWSER_DISABLED: "0",
+          VERA_BROWSER_FOUNDER_USER_IDS: FOUNDER,
           OPENCLAW_GATEWAY_URL: "ws://127.0.0.1:18789",
           OPENCLAW_GATEWAY_TOKEN: "synthetic-token-value"
         },
@@ -56,6 +60,8 @@ describe("worker runtime configuration", () => {
     expect(() =>
       parseWorkerRuntimeConfig(
         {
+          VERA_BROWSER_DISABLED: "0",
+          VERA_BROWSER_FOUNDER_USER_IDS: FOUNDER,
           VERA_MARITIME_ENVIRONMENT: "production",
           OPENCLAW_GATEWAY_URL: "wss://gateway.example.test",
           OPENCLAW_GATEWAY_TOKEN: "synthetic-token-value",
@@ -85,8 +91,41 @@ describe("worker runtime configuration", () => {
 
   it("requires the complete control-plane tuple before hosted serve opens resources", () => {
     expect(() => parseWorkerRuntimeConfig({}, "serve")).toThrow(/Hosted serve mode/u);
+    expect(
+      parseWorkerRuntimeConfig(
+        {
+          VERA_MARITIME_WORKER_AGENT_ID: "worker",
+          MARITIME_API_KEY: "synthetic-scoped-key"
+        },
+        "serve"
+      )
+    ).toMatchObject({
+      browserDisabled: true,
+      maritimeWorkerAgentId: "worker",
+      maritimeGatewayAgentId: null
+    });
     expect(() =>
       parseWorkerRuntimeConfig({ VERA_MARITIME_ENVIRONMENT: "prod" }, "run-once")
     ).toThrow(/development, staging, or production/u);
+  });
+
+  it("requires the gateway tuple to be absent in the browser-disabled core", () => {
+    expect(() =>
+      parseWorkerRuntimeConfig(
+        {
+          VERA_MARITIME_GATEWAY_AGENT_ID: "gateway"
+        },
+        "run-once"
+      )
+    ).toThrow(/GATEWAY_AGENT_ID must be absent/u);
+    expect(() =>
+      parseWorkerRuntimeConfig(
+        {
+          OPENCLAW_GATEWAY_URL: "ws://127.0.0.1:18789",
+          OPENCLAW_GATEWAY_TOKEN: "synthetic-token-value"
+        },
+        "run-once"
+      )
+    ).toThrow(/gateway configuration must be absent/u);
   });
 });

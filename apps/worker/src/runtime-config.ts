@@ -82,21 +82,27 @@ export function parseWorkerRuntimeConfig(
   const maritimeWorkerAgentId = optional(environment, "VERA_MARITIME_WORKER_AGENT_ID");
   const maritimeGatewayAgentId = optional(environment, "VERA_MARITIME_GATEWAY_AGENT_ID");
   const maritimeApiKey = optional(environment, "MARITIME_API_KEY");
-  const maritimeConfigured = [maritimeWorkerAgentId, maritimeGatewayAgentId, maritimeApiKey].filter(
-    Boolean
-  ).length;
-  if (maritimeConfigured !== 0 && maritimeConfigured !== 3) {
+  const maritimeWorkerConfigured = [maritimeWorkerAgentId, maritimeApiKey].filter(Boolean).length;
+  if (maritimeWorkerConfigured !== 0 && maritimeWorkerConfigured !== 2) {
     throw new Error(
-      "Maritime runtime configuration must provide both agent IDs and the scoped API key."
+      "Maritime runtime configuration must provide the worker agent ID and scoped API key together."
     );
   }
-  if (command === "serve" && maritimeConfigured !== 3) {
+  if (command === "serve" && maritimeWorkerConfigured !== 2) {
     throw new Error("Hosted serve mode requires complete Maritime runtime configuration.");
   }
-  if (maritimeConfigured === 3) {
+  if (browserDisabled && maritimeGatewayAgentId !== null) {
+    throw new Error(
+      "VERA_MARITIME_GATEWAY_AGENT_ID must be absent while browser capture is disabled."
+    );
+  }
+  if (command === "serve" && !browserDisabled && maritimeGatewayAgentId === null) {
+    throw new Error("Hosted browser capture requires VERA_MARITIME_GATEWAY_AGENT_ID.");
+  }
+  if (maritimeWorkerConfigured === 2) {
     if (
       maritimeWorkerAgentId!.length > 160 ||
-      maritimeGatewayAgentId!.length > 160 ||
+      (maritimeGatewayAgentId?.length ?? 0) > 160 ||
       maritimeApiKey!.length > 4_096
     ) {
       throw new Error("Maritime runtime identifiers or credentials exceed their bounded contract.");
@@ -118,6 +124,11 @@ export function parseWorkerRuntimeConfig(
   const openClawGatewayToken = optional(environment, "OPENCLAW_GATEWAY_TOKEN");
   if ((openClawGatewayUrl === null) !== (openClawGatewayToken === null)) {
     throw new Error("OpenClaw gateway URL and token must be configured together.");
+  }
+  if (browserDisabled && openClawGatewayUrl !== null) {
+    throw new Error(
+      "OpenClaw gateway configuration must be absent while browser capture is disabled."
+    );
   }
   if (
     openClawGatewayToken !== null &&

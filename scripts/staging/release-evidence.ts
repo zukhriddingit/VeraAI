@@ -2,41 +2,32 @@ import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, readFile } from "node:fs/promises";
 import { isAbsolute, relative, resolve } from "node:path";
 
-export const FOUNDER_STAGING_PHASES = [
-  "gateway_unauthenticated_request",
-  "gateway_wrong_token",
-  "maritime_worker_dispatch",
-  "founder_positive_current_tab_capture",
-  "node_offline",
-  "stale_heartbeat",
-  "manual_login_2fa_captcha_blocker",
-  "kill_switch_after_queueing",
-  "worker_crash_after_browser_invocation",
-  "duplicate_dispatch",
-  "replayed_result",
-  "gateway_restart",
-  "web_push_delivery",
-  "web_push_deduplication",
-  "quiet_hours",
-  "provider_outage",
-  "worker_image_rollback",
-  "postgresql_restore",
-  "gmail_readonly_verification",
-  "calendar_freebusy_and_approved_hold"
-] as const;
+import {
+  CONFIGURATION_BLOCKER_KINDS,
+  RELEASE_CAPABILITY_KEYS,
+  RELEASE_PHASE_IDS,
+  RELEASE_PHASE_RESULT_STATES,
+  RELEASE_PHASES,
+  RELEASE_PROFILES,
+  capabilitiesMatchProfile,
+  classifyRequiredPhaseStates,
+  isReleaseProfileId,
+  type ConfigurationBlockerKind,
+  type ReleaseCapabilities,
+  type ReleaseClassification,
+  type ReleasePhaseId,
+  type ReleasePhaseResultState,
+  type ReleaseProfileId
+} from "./release-profiles.ts";
 
-export type FounderStagingPhaseId = (typeof FOUNDER_STAGING_PHASES)[number];
+export {
+  RELEASE_PHASE_RESULT_STATES,
+  type ReleaseClassification,
+  type ReleasePhaseResultState
+} from "./release-profiles.ts";
 
-export const RELEASE_PHASE_RESULT_STATES = [
-  "passed_automated",
-  "passed_manual_evidence",
-  "blocked_missing_configuration",
-  "failed_assertion",
-  "failed_provider",
-  "not_applicable_with_approved_reason"
-] as const;
-
-export type ReleasePhaseResultState = (typeof RELEASE_PHASE_RESULT_STATES)[number];
+export const FOUNDER_STAGING_PHASES = RELEASE_PHASE_IDS;
+export type FounderStagingPhaseId = ReleasePhaseId;
 
 export const EVIDENCE_REFERENCE_KINDS = [
   "github_actions_artifact",
@@ -47,6 +38,8 @@ export const EVIDENCE_REFERENCE_KINDS = [
   "workflow_run",
   "deployment_digest"
 ] as const;
+
+export const MAX_EVIDENCE_AGE_MILLISECONDS = 7 * 24 * 60 * 60 * 1_000;
 
 type JsonObject = Record<string, unknown>;
 
@@ -63,10 +56,22 @@ export interface EvidenceSignature {
   readonly value: string;
 }
 
+export interface ConfigurationBlocker {
+  readonly kind: ConfigurationBlockerKind;
+  readonly missingConfiguration: string;
+  readonly remediation: string;
+  readonly implementationState: "implemented_and_validated";
+  readonly nonLiveValidationState: "passed";
+  readonly requiresRepositoryChange: false;
+  readonly requiresDesignDecision: false;
+}
+
 export interface ReleaseEvidenceRecord {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly synthetic: boolean;
-  readonly phaseId: FounderStagingPhaseId;
+  readonly releaseProfile: ReleaseProfileId;
+  readonly capabilities: ReleaseCapabilities;
+  readonly phaseId: ReleasePhaseId;
   readonly releaseId: string;
   readonly environmentId: string;
   readonly sourceCommit: string;
@@ -77,19 +82,22 @@ export interface ReleaseEvidenceRecord {
   readonly expectedResult: string;
   readonly observedResult: string;
   readonly resultState: ReleasePhaseResultState;
+  readonly configurationBlocker: ConfigurationBlocker | null;
   readonly evidenceReferences: readonly EvidenceReference[];
   readonly approvalState: "approved";
   readonly contentHash: string;
 }
 
 export interface ReleaseEvidenceBundle {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly synthetic: boolean;
+  readonly releaseProfile: ReleaseProfileId;
+  readonly capabilities: ReleaseCapabilities;
   readonly releaseId: string;
   readonly environmentId: string;
   readonly sourceCommit: string;
   readonly candidateWorkerImage: string;
-  readonly candidateOpenclawImage: string;
+  readonly candidateOpenclawImage: string | null;
   readonly createdAt: string;
   readonly records: readonly ReleaseEvidenceRecord[];
   readonly bundleHash: string;
@@ -99,17 +107,20 @@ export interface ReleaseEvidenceBundle {
 export interface EvidenceValidationOptions {
   readonly allowSynthetic?: boolean;
   readonly requireAllPhases?: boolean;
-  readonly requiredPhaseIds?: readonly FounderStagingPhaseId[];
+  readonly requiredPhaseIds?: readonly ReleasePhaseId[];
+  readonly decisionAt?: string;
 }
 
 export interface ReleaseDecisionSummary {
-  readonly schemaVersion: 1;
+  readonly schemaVersion: 2;
   readonly releaseId: string;
+  readonly releaseProfile: "founder_core";
+  readonly capabilities: ReleaseCapabilities;
   readonly sourceCommit: string;
   readonly workerImageDigest: string;
-  readonly openclawImageDigest: string;
+  readonly openclawImageDigest: null;
   readonly evidenceBundleSha256: string;
-  readonly finalClassification: "passed";
+  readonly finalClassification: "conditional_go_founder_only_staging" | "go_founder_only_core_beta";
   readonly approvalTimestamp: string;
 }
 
@@ -120,6 +131,8 @@ const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{2,100}$/u;
 const SAFE_REFERENCE = /^[A-Za-z0-9][A-Za-z0-9._:/-]{2,255}$/u;
 const SAFE_RESULT = /^[A-Za-z0-9][A-Za-z0-9 .,;:()_/-]{2,500}$/u;
 const UTC_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/u;
+const IMPLEMENTATION_GAP =
+  /(?:missing|unavailable|no)[ _-]*(?:runner|implementation|feature)|unimplemented|failing[ _-]*test|test[ _-]*failure|undecided[ _-]*architecture|architecture[ _-]*decision|incomplete[ _-]*policy|policy[ _-]*enforcement|mocked?[ _-]*only|schema[ _-]*(?:gap|change)|code[ _-]*change|security[ _-]*(?:finding|review)/iu;
 
 const SENSITIVE_CONTENT_PATTERNS: readonly RegExp[] = [
   /(?:^|\W)(?:ya29\.|1\/\/|eyJ[A-Za-z0-9_-]{8,})/u,
@@ -199,6 +212,24 @@ function validateSafeResult(value: unknown, label: string, violations: string[])
   }
 }
 
+function validateCapabilities(
+  value: unknown,
+  profileId: unknown,
+  label: string,
+  violations: string[]
+): void {
+  const capabilities = requireClosedObject(value, label, RELEASE_CAPABILITY_KEYS, [], violations);
+  if (!capabilities) return;
+  for (const key of RELEASE_CAPABILITY_KEYS) {
+    if (typeof capabilities[key] !== "boolean") {
+      violations.push(`${label}.${key} must be boolean.`);
+    }
+  }
+  if (isReleaseProfileId(profileId) && !capabilitiesMatchProfile(profileId, capabilities)) {
+    violations.push(`${label} must exactly match the selected release profile.`);
+  }
+}
+
 function validateEvidenceReference(value: unknown, label: string, violations: string[]): void {
   const reference = requireClosedObject(
     value,
@@ -214,8 +245,83 @@ function validateEvidenceReference(value: unknown, label: string, violations: st
   if (typeof reference.locator !== "string" || !SAFE_REFERENCE.test(reference.locator)) {
     violations.push(`${label}.locator must be an opaque safe artifact reference.`);
   }
-  if (!isDigest(reference.sha256))
+  if (!isDigest(reference.sha256)) {
     violations.push(`${label}.sha256 must be a non-placeholder SHA-256.`);
+  }
+}
+
+function validateConfigurationBlocker(
+  value: unknown,
+  phaseId: unknown,
+  resultState: unknown,
+  violations: string[]
+): boolean {
+  if (resultState !== "blocked_missing_configuration") {
+    if (value !== null) {
+      violations.push(
+        "record.configurationBlocker must be null unless resultState is blocked_missing_configuration."
+      );
+    }
+    return false;
+  }
+  const blocker = requireClosedObject(
+    value,
+    "record.configurationBlocker",
+    [
+      "kind",
+      "missingConfiguration",
+      "remediation",
+      "implementationState",
+      "nonLiveValidationState",
+      "requiresRepositoryChange",
+      "requiresDesignDecision"
+    ],
+    [],
+    violations
+  );
+  if (!blocker) return false;
+  if (!CONFIGURATION_BLOCKER_KINDS.includes(blocker.kind as ConfigurationBlockerKind)) {
+    violations.push("record.configurationBlocker.kind must identify an external configuration.");
+  }
+  validateSafeId(
+    blocker.missingConfiguration,
+    "record.configurationBlocker.missingConfiguration",
+    violations
+  );
+  validateSafeResult(blocker.remediation, "record.configurationBlocker.remediation", violations);
+  if (
+    (typeof blocker.missingConfiguration === "string" &&
+      IMPLEMENTATION_GAP.test(blocker.missingConfiguration)) ||
+    (typeof blocker.remediation === "string" && IMPLEMENTATION_GAP.test(blocker.remediation))
+  ) {
+    violations.push(
+      "record.configurationBlocker cannot represent a code, test, policy, architecture, schema, mocked-path, runner, or security gap."
+    );
+  }
+  if (blocker.implementationState !== "implemented_and_validated") {
+    violations.push(
+      "record.configurationBlocker.implementationState must be implemented_and_validated."
+    );
+  }
+  if (blocker.nonLiveValidationState !== "passed") {
+    violations.push("record.configurationBlocker.nonLiveValidationState must be passed.");
+  }
+  if (blocker.requiresRepositoryChange !== false) {
+    violations.push("record.configurationBlocker.requiresRepositoryChange must be false.");
+  }
+  if (blocker.requiresDesignDecision !== false) {
+    violations.push("record.configurationBlocker.requiresDesignDecision must be false.");
+  }
+  if (
+    typeof phaseId !== "string" ||
+    !RELEASE_PHASE_IDS.includes(phaseId as ReleasePhaseId) ||
+    !RELEASE_PHASES[phaseId as ReleasePhaseId].configurationBlockerAllowed
+  ) {
+    violations.push(
+      "record.configurationBlocker is not allowed for an implementation or static-validation phase."
+    );
+  }
+  return violations.length === 0;
 }
 
 function validateSignature(value: unknown, bundleHash: unknown, violations: string[]): void {
@@ -300,6 +406,22 @@ export function withBundleContentHash(
   return { ...bundle, bundleHash: bundleContentHash(bundle) };
 }
 
+function validateProfileImageBinding(
+  profileId: unknown,
+  openclawImage: unknown,
+  label: string,
+  violations: string[]
+): void {
+  if (!isReleaseProfileId(profileId)) return;
+  if (profileId === "founder_core") {
+    if (openclawImage !== null) {
+      violations.push(`${label} must be null for founder_core.`);
+    }
+  } else if (!isImageDigest(openclawImage)) {
+    violations.push(`${label} must be an immutable OCI digest for founder_browser_experimental.`);
+  }
+}
+
 export function validateEvidenceRecord(
   input: unknown,
   options: Pick<EvidenceValidationOptions, "allowSynthetic"> = {}
@@ -311,6 +433,8 @@ export function validateEvidenceRecord(
     [
       "schemaVersion",
       "synthetic",
+      "releaseProfile",
+      "capabilities",
       "phaseId",
       "releaseId",
       "environmentId",
@@ -322,6 +446,7 @@ export function validateEvidenceRecord(
       "expectedResult",
       "observedResult",
       "resultState",
+      "configurationBlocker",
       "evidenceReferences",
       "approvalState",
       "contentHash"
@@ -331,13 +456,29 @@ export function validateEvidenceRecord(
   );
   if (!record) return violations;
 
-  if (record.schemaVersion !== 1) violations.push("record.schemaVersion must be 1.");
+  if (record.schemaVersion !== 2) violations.push("record.schemaVersion must be 2.");
   if (typeof record.synthetic !== "boolean") violations.push("record.synthetic must be boolean.");
   if (record.synthetic === true && !options.allowSynthetic) {
     violations.push("Synthetic evidence is not accepted by a production release gate.");
   }
-  if (!FOUNDER_STAGING_PHASES.includes(record.phaseId as FounderStagingPhaseId)) {
-    violations.push("record.phaseId must be a required founder staging phase.");
+  if (!isReleaseProfileId(record.releaseProfile)) {
+    violations.push("record.releaseProfile must be an approved founder release profile.");
+  }
+  validateCapabilities(
+    record.capabilities,
+    record.releaseProfile,
+    "record.capabilities",
+    violations
+  );
+  if (!RELEASE_PHASE_IDS.includes(record.phaseId as ReleasePhaseId)) {
+    violations.push("record.phaseId must be a known founder release phase.");
+  } else if (
+    isReleaseProfileId(record.releaseProfile) &&
+    !RELEASE_PROFILES[record.releaseProfile].requiredPhaseIds.includes(
+      record.phaseId as ReleasePhaseId
+    )
+  ) {
+    violations.push("record.phaseId is not required by record.releaseProfile.");
   }
   validateSafeId(record.releaseId, "record.releaseId", violations);
   validateSafeId(record.environmentId, "record.environmentId", violations);
@@ -347,17 +488,34 @@ export function validateEvidenceRecord(
   if (!isImageDigest(record.candidateWorkerImage)) {
     violations.push("record.candidateWorkerImage must be an immutable OCI digest.");
   }
-  if (record.candidateOpenclawImage !== null && !isImageDigest(record.candidateOpenclawImage)) {
-    violations.push("record.candidateOpenclawImage must be null or an immutable OCI digest.");
-  }
-  if (!isUtcInstant(record.executedAt))
+  validateProfileImageBinding(
+    record.releaseProfile,
+    record.candidateOpenclawImage,
+    "record.candidateOpenclawImage",
+    violations
+  );
+  if (!isUtcInstant(record.executedAt)) {
     violations.push("record.executedAt must be a UTC ISO-8601 instant.");
+  }
   validateSafeId(record.operatorReference, "record.operatorReference", violations);
   validateSafeResult(record.expectedResult, "record.expectedResult", violations);
   validateSafeResult(record.observedResult, "record.observedResult", violations);
   if (!RELEASE_PHASE_RESULT_STATES.includes(record.resultState as ReleasePhaseResultState)) {
     violations.push("record.resultState must be an approved release phase result state.");
   }
+  if (
+    record.resultState === "passed_manual_evidence" &&
+    RELEASE_PHASE_IDS.includes(record.phaseId as ReleasePhaseId) &&
+    RELEASE_PHASES[record.phaseId as ReleasePhaseId].evidenceMode === "automated_only"
+  ) {
+    violations.push("record.resultState cannot claim manual evidence for an automated-only phase.");
+  }
+  validateConfigurationBlocker(
+    record.configurationBlocker,
+    record.phaseId,
+    record.resultState,
+    violations
+  );
   if (
     !Array.isArray(record.evidenceReferences) ||
     record.evidenceReferences.length < 1 ||
@@ -369,8 +527,9 @@ export function validateEvidenceRecord(
       validateEvidenceReference(reference, `record.evidenceReferences[${index}]`, violations)
     );
   }
-  if (record.approvalState !== "approved")
+  if (record.approvalState !== "approved") {
     violations.push("record.approvalState must be approved.");
+  }
   if (!isDigest(record.contentHash)) {
     violations.push("record.contentHash must be a non-placeholder SHA-256.");
   } else if (record.contentHash !== recordContentHash(record)) {
@@ -384,6 +543,46 @@ export function validateEvidenceRecord(
   return violations;
 }
 
+function validateFreshness(
+  bundle: JsonObject,
+  records: readonly unknown[],
+  decisionAt: string | undefined,
+  violations: string[]
+): void {
+  const createdAt = isUtcInstant(bundle.createdAt) ? Date.parse(bundle.createdAt) : null;
+  if (createdAt !== null) {
+    records.forEach((record, index) => {
+      if (isObject(record) && isUtcInstant(record.executedAt)) {
+        const executedAt = Date.parse(record.executedAt);
+        if (executedAt > createdAt) {
+          violations.push(`bundle.records[${index}].executedAt cannot be after bundle.createdAt.`);
+        }
+      }
+    });
+  }
+  if (decisionAt === undefined) return;
+  if (!isUtcInstant(decisionAt)) {
+    violations.push("decisionAt must be a UTC ISO-8601 instant.");
+    return;
+  }
+  if (createdAt === null) return;
+  const decisionTime = Date.parse(decisionAt);
+  if (createdAt > decisionTime) {
+    violations.push("bundle.createdAt cannot be after the release decision.");
+  } else if (decisionTime - createdAt > MAX_EVIDENCE_AGE_MILLISECONDS) {
+    violations.push("bundle evidence is stale at the release decision.");
+  }
+  records.forEach((record, index) => {
+    if (!isObject(record) || !isUtcInstant(record.executedAt)) return;
+    const executedAt = Date.parse(record.executedAt);
+    if (executedAt > decisionTime) {
+      violations.push(`bundle.records[${index}].executedAt cannot be after the release decision.`);
+    } else if (decisionTime - executedAt > MAX_EVIDENCE_AGE_MILLISECONDS) {
+      violations.push(`bundle.records[${index}] evidence is stale at the release decision.`);
+    }
+  });
+}
+
 export function validateEvidenceBundle(
   input: unknown,
   options: EvidenceValidationOptions = {}
@@ -395,6 +594,8 @@ export function validateEvidenceBundle(
     [
       "schemaVersion",
       "synthetic",
+      "releaseProfile",
+      "capabilities",
       "releaseId",
       "environmentId",
       "sourceCommit",
@@ -409,11 +610,20 @@ export function validateEvidenceBundle(
   );
   if (!bundle) return violations;
 
-  if (bundle.schemaVersion !== 1) violations.push("bundle.schemaVersion must be 1.");
+  if (bundle.schemaVersion !== 2) violations.push("bundle.schemaVersion must be 2.");
   if (typeof bundle.synthetic !== "boolean") violations.push("bundle.synthetic must be boolean.");
   if (bundle.synthetic === true && !options.allowSynthetic) {
     violations.push("Synthetic bundles are not accepted by a production release gate.");
   }
+  if (!isReleaseProfileId(bundle.releaseProfile)) {
+    violations.push("bundle.releaseProfile must be an approved founder release profile.");
+  }
+  validateCapabilities(
+    bundle.capabilities,
+    bundle.releaseProfile,
+    "bundle.capabilities",
+    violations
+  );
   validateSafeId(bundle.releaseId, "bundle.releaseId", violations);
   validateSafeId(bundle.environmentId, "bundle.environmentId", violations);
   if (typeof bundle.sourceCommit !== "string" || !COMMIT.test(bundle.sourceCommit)) {
@@ -422,28 +632,43 @@ export function validateEvidenceBundle(
   if (!isImageDigest(bundle.candidateWorkerImage)) {
     violations.push("bundle.candidateWorkerImage must be an immutable OCI digest.");
   }
-  if (!isImageDigest(bundle.candidateOpenclawImage)) {
-    violations.push("bundle.candidateOpenclawImage must be an immutable OCI digest.");
-  }
-  if (!isUtcInstant(bundle.createdAt))
+  validateProfileImageBinding(
+    bundle.releaseProfile,
+    bundle.candidateOpenclawImage,
+    "bundle.candidateOpenclawImage",
+    violations
+  );
+  if (!isUtcInstant(bundle.createdAt)) {
     violations.push("bundle.createdAt must be a UTC ISO-8601 instant.");
+  }
   if (Object.hasOwn(bundle, "signature")) {
     validateSignature(bundle.signature, bundle.bundleHash, violations);
   }
 
   const observedPhases = new Set<string>();
-  if (!Array.isArray(bundle.records) || bundle.records.length === 0) {
+  const records = Array.isArray(bundle.records) ? bundle.records : [];
+  if (records.length === 0) {
     violations.push("bundle.records must contain accepted phase records.");
   } else {
-    bundle.records.forEach((record, index) => {
+    records.forEach((record, index) => {
       const label = `bundle.records[${index}]`;
       const recordViolations = validateEvidenceRecord(record, {
         allowSynthetic: options.allowSynthetic
       });
       violations.push(...recordViolations.map((violation) => `${label}: ${violation}`));
       if (!isObject(record)) return;
-      if (record.releaseId !== bundle.releaseId)
+      if (record.releaseProfile !== bundle.releaseProfile) {
+        violations.push(`${label}.releaseProfile must match bundle.releaseProfile.`);
+      }
+      if (
+        isReleaseProfileId(bundle.releaseProfile) &&
+        !capabilitiesMatchProfile(bundle.releaseProfile, record.capabilities)
+      ) {
+        violations.push(`${label}.capabilities must match bundle release capabilities.`);
+      }
+      if (record.releaseId !== bundle.releaseId) {
         violations.push(`${label}.releaseId must match bundle.releaseId.`);
+      }
       if (record.environmentId !== bundle.environmentId) {
         violations.push(`${label}.environmentId must match bundle.environmentId.`);
       }
@@ -453,10 +678,7 @@ export function validateEvidenceBundle(
       if (record.candidateWorkerImage !== bundle.candidateWorkerImage) {
         violations.push(`${label}.candidateWorkerImage must match bundle.candidateWorkerImage.`);
       }
-      if (
-        record.candidateOpenclawImage !== null &&
-        record.candidateOpenclawImage !== bundle.candidateOpenclawImage
-      ) {
+      if (record.candidateOpenclawImage !== bundle.candidateOpenclawImage) {
         violations.push(
           `${label}.candidateOpenclawImage must match bundle.candidateOpenclawImage.`
         );
@@ -471,13 +693,19 @@ export function validateEvidenceBundle(
     });
   }
 
-  const requiredPhaseIds = options.requiredPhaseIds ?? FOUNDER_STAGING_PHASES;
+  const requiredPhaseIds =
+    options.requiredPhaseIds ??
+    (isReleaseProfileId(bundle.releaseProfile)
+      ? RELEASE_PROFILES[bundle.releaseProfile].requiredPhaseIds
+      : RELEASE_PHASE_IDS);
   if (options.requireAllPhases !== false) {
     for (const phaseId of requiredPhaseIds) {
-      if (!observedPhases.has(phaseId))
+      if (!observedPhases.has(phaseId)) {
         violations.push(`bundle is missing required phase record ${phaseId}.`);
+      }
     }
   }
+  validateFreshness(bundle, records, options.decisionAt, violations);
   if (!isDigest(bundle.bundleHash)) {
     violations.push("bundle.bundleHash must be a non-placeholder SHA-256.");
   } else if (bundle.bundleHash !== bundleContentHash(bundle)) {
@@ -491,18 +719,40 @@ export function validateEvidenceBundle(
   return violations;
 }
 
-export function isPassingEvidenceBundle(input: unknown): boolean {
-  if (
-    validateEvidenceBundle(input).length > 0 ||
-    !isObject(input) ||
-    !Array.isArray(input.records)
-  ) {
-    return false;
+export function classifyEvidenceBundle(input: unknown, decisionAt: string): ReleaseClassification {
+  if (validateEvidenceBundle(input, { decisionAt }).length > 0 || !isObject(input)) {
+    return "no_go";
   }
-  return input.records.every(
-    (record) =>
-      isObject(record) &&
-      (record.resultState === "passed_automated" || record.resultState === "passed_manual_evidence")
+  if (!isReleaseProfileId(input.releaseProfile) || !Array.isArray(input.records)) {
+    return "no_go";
+  }
+  return classifyRequiredPhaseStates(
+    input.releaseProfile,
+    input.records.flatMap((record) => {
+      if (
+        !isObject(record) ||
+        !RELEASE_PHASE_IDS.includes(record.phaseId as ReleasePhaseId) ||
+        !RELEASE_PHASE_RESULT_STATES.includes(record.resultState as ReleasePhaseResultState)
+      ) {
+        return [];
+      }
+      return [
+        {
+          phaseId: record.phaseId as ReleasePhaseId,
+          resultState: record.resultState as ReleasePhaseResultState,
+          configurationBlockerValid:
+            record.resultState === "blocked_missing_configuration" &&
+            validateEvidenceRecord(record).length === 0
+        }
+      ];
+    })
+  );
+}
+
+export function isPassingEvidenceBundle(input: unknown, decisionAt?: string): boolean {
+  if (!isObject(input) || !isUtcInstant(input.createdAt)) return false;
+  return (
+    classifyEvidenceBundle(input, decisionAt ?? input.createdAt) === "go_founder_only_core_beta"
   );
 }
 
@@ -510,21 +760,30 @@ export function createReleaseDecisionSummary(
   bundle: unknown,
   approvalTimestamp: string
 ): ReleaseDecisionSummary {
-  const violations = validateEvidenceBundle(bundle);
-  if (violations.length > 0 || !isPassingEvidenceBundle(bundle) || !isObject(bundle)) {
-    throw new Error("A final release decision requires a valid, passing private evidence bundle.");
-  }
   if (!isUtcInstant(approvalTimestamp)) {
     throw new Error("A final release decision requires a UTC approval timestamp.");
   }
+  const classification = classifyEvidenceBundle(bundle, approvalTimestamp);
+  if (
+    classification === "no_go" ||
+    !isObject(bundle) ||
+    bundle.releaseProfile !== "founder_core" ||
+    !capabilitiesMatchProfile("founder_core", bundle.capabilities)
+  ) {
+    throw new Error(
+      "A final founder-core decision requires a valid private evidence bundle without implementation failures."
+    );
+  }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     releaseId: bundle.releaseId as string,
+    releaseProfile: "founder_core",
+    capabilities: bundle.capabilities,
     sourceCommit: bundle.sourceCommit as string,
     workerImageDigest: bundle.candidateWorkerImage as string,
-    openclawImageDigest: bundle.candidateOpenclawImage as string,
+    openclawImageDigest: null,
     evidenceBundleSha256: bundle.bundleHash as string,
-    finalClassification: "passed",
+    finalClassification: classification,
     approvalTimestamp
   };
 }
@@ -565,6 +824,7 @@ export async function loadPrivateEvidenceBundle(input: {
   readonly workspaceRoot?: string;
   readonly allowSynthetic?: boolean;
   readonly requireAllPhases?: boolean;
+  readonly decisionAt?: string;
 }): Promise<{ readonly bundle: unknown | null; readonly violations: readonly string[] }> {
   const workspaceRoot = resolve(input.workspaceRoot ?? process.cwd());
   const pathViolations = validatePrivateEvidencePath(input.evidencePath, workspaceRoot);
@@ -603,7 +863,8 @@ export async function loadPrivateEvidenceBundle(input: {
       bundle,
       violations: validateEvidenceBundle(bundle, {
         allowSynthetic: input.allowSynthetic,
-        requireAllPhases: input.requireAllPhases
+        requireAllPhases: input.requireAllPhases,
+        decisionAt: input.decisionAt
       })
     };
   } catch {

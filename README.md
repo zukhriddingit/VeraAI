@@ -95,13 +95,23 @@ The first real browser path is an unsupported, disabled-by-default founder exper
 
 ## Deployment assumptions
 
-The founder release uses one region, one hosted web instance, one Maritime worker, one pinned Maritime OpenClaw gateway, one founder-controlled local browser node/profile, and one managed PostgreSQL database. Railway or Vercel may host the web application only:
+The active `founder_core` release uses one region, one hosted web instance, one private Maritime
+worker, one managed PostgreSQL database, and no OpenClaw gateway or browser node. Railway or Vercel
+may host the authenticated web application only; the already deployed
+`https://vera-ai-housing.vercel.app` landing page is separate marketing, not application staging:
 
 - web: `pnpm --filter @vera/web start:hosted`, readiness `/api/ready`;
 - worker: deploy the immutable root `Dockerfile` image to Maritime and run `serve`;
-- gateway: deploy `ghcr.io/openclaw/openclaw:2026.6.33` to Maritime.
+- browser: keep `VERA_BROWSER_DISABLED=1` and gateway variables absent.
 
-Run `pnpm db:migrate` as a controlled release step and `pnpm db:seed` after the first migration. Configure the supported five-minute trigger in the Maritime dashboard and validate it with `maritime triggers vera-worker`. Keep the sum of both bounded pools below the managed database connection limit. See [the Maritime runbook](infra/maritime/README.md). Horizontal scaling, Redis, Kubernetes, replicas, sharding, and PostgreSQL row-level security are outside the founder-release boundary.
+Run `pnpm db:migrate` as a controlled release step and `pnpm db:seed` after the first migration.
+Configure the supported five-minute non-browser reconciliation trigger in the Maritime dashboard
+and validate it with `maritime triggers list vera-worker --json`. The separate
+`founder_browser_experimental` profile remains `no_go` under ADR 0012. Keep the sum of both bounded
+pools below the managed database connection limit. See
+[the founder-core staging runbook](docs/FOUNDER_CORE_STAGING_RUNBOOK.md) and
+[the Maritime runbook](infra/maritime/README.md). Horizontal scaling, Redis, Kubernetes, replicas,
+sharding, and PostgreSQL row-level security are outside the founder-release boundary.
 
 ## Safety
 
