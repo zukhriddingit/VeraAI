@@ -1,0 +1,15 @@
+{
+  "id": "vera-read-shared-tab",
+  "name": "Vera Read Shared Tab",
+  "description": "Returns one minimized read-only snapshot from exactly one explicitly shared Chrome tab.",
+  "contracts": {
+    "tools": ["vera_read_shared_tab_snapshot"]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

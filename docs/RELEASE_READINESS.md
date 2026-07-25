@@ -1,6 +1,6 @@
 # Vera Founder Release Readiness
 
-Date: 2026-07-23
+Date: 2026-07-25
 
 Current decision: **no-go for founder staging release**. Local application, PostgreSQL, policy,
 build, image, offline staging gates, and read-only Maritime inventory pass, but no private live
@@ -10,9 +10,10 @@ beta are not approved.
 The release gate has two explicit profiles. `founder_core` keeps browser capture disabled while
 direct capture, Gmail alerts, Calendar, Web Push, and the private Maritime worker remain in scope.
 It replaces browser-positive checks with mandatory proof that browser controls, dispatch, ingress,
-scheduling, and UI/API activation are disabled. ADR 0012 does not block that profile when those
-phases pass. `founder_browser_experimental` retains all browser-live phases and remains `no_go`
-until ADR 0012 is superseded.
+scheduling, and UI/API activation are disabled. ADR 0012 never blocks that profile when those
+phases pass. ADR 0013 supersedes ADR 0012 for `founder_browser_experimental`, but the profile remains
+`no_go` under `remote_extension_live_acceptance_pending` until every direct-WSS extension phase and
+security audit has accepted private evidence.
 
 For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
 external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A
@@ -96,8 +97,9 @@ Capability truth for this release:
 2. Create one deploy-scoped Maritime API key in protected operator storage. Read-only inventory
    found no existing long-lived key. Never paste its raw value into Codex, Git, or logs.
 3. Select `founder_core`, keep browser capture disabled, and keep gateway adoption absent. Prove the
-   seven mandatory browser-disabled phases. ADR 0012 remains a blocker only for
-   `founder_browser_experimental`. The Telegram-enabled agent remains outside Vera's scope.
+   seven mandatory browser-disabled phases. The direct remote-extension architecture is a separate
+   `founder_browser_experimental` spike and cannot satisfy core. The Telegram-enabled agent remains
+   outside Vera's scope.
 4. If separately authorized after this gate, deploy one Vera worker only by candidate immutable
    digest. The read-only inventory found no existing Vera worker deployment.
 5. Run the founder-core matrix in `FOUNDER_CORE_STAGING_RUNBOOK.md`, including dispatch, replay,
@@ -149,18 +151,20 @@ pnpm verify:worker-release-promotion -- \
 
 GitHub accepts `workflow_dispatch` only after the workflow exists on the default branch. The
 downloaded evidence is not a deployment authorization and does not satisfy the separate rollback
-or live Google/restore evidence requirements. Founder core requires no gateway. Browser gateway
-adoption remains blocked for `founder_browser_experimental` by ADR 0012; Vera must not create a
-duplicate gateway.
+or live Google/restore evidence requirements. Founder core requires no gateway. ADR 0013 selects a
+dedicated per-user Gateway for the browser experiment, but creation and exposure remain blocked
+until the public-proxy and security acceptance prerequisites authorize that separate work.
 
 ## Evidence caveats
 
 - The local Docker image ID is not a registry deployment digest.
 - The private local SBOM is not signed release provenance.
-- Read-only Maritime state has been observed, but the sleeping gateway's effective OpenClaw config,
-  node pairing, and runtime command surface have not.
-- OpenClaw's native `browser.proxy` remains broader than Vera's two fixed GET requests. It is
-  acceptable only for the guarded single-founder experiment, not a public multi-user beta.
+- Maritime's documentation does not establish WSS upgrade behavior, subprotocol preservation,
+  path filtering, payload limits, idle timeouts, or stability for a public Gateway route. No
+  dedicated remote-extension Gateway has been live-probed.
+- OpenClaw `2026.7.1` provides the direct extension relay, but its 64 MiB relay-frame bound does not
+  prove Maritime's proxy limits. Vera's dedicated plugin and hosted client impose much smaller
+  bounds and still require live evidence.
 - Dependency advisory submission remains unperformed because it would disclose the frozen
   dependency inventory to a third-party advisory service and requires explicit user approval.
 ### Founder live official-API demo does not enable browser release scope
@@ -168,5 +172,5 @@ duplicate gateway.
 The opt-in RentCast-to-Maritime OpenClaw chat path documented in
 `docs/EOD_LIVE_AGENT_DEMO.md` is an `official_api` founder demonstration with browser execution
 disabled. It does not deploy an OpenClaw browser gateway, satisfy browser-positive phases, widen
-`founder_core`, or resolve the experimental browser ingress ADR. Real release evidence and every
+`founder_core`, or satisfy the remote-extension live acceptance gate. Real release evidence and every
 mandatory founder-core phase remain required for a release classification.

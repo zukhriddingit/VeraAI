@@ -1,8 +1,8 @@
 # Vera Founder-Release Security Review
 
-Date: 2026-07-23
+Date: 2026-07-25
 
-Review status: Local founder-release controls verified; live Maritime inventory and release evidence pending
+Review status: Remote-extension controls verified locally; live proxy, Gateway audit, and release evidence pending
 
 Initial release outcome: **no-go** because no complete, current private evidence bundle exists. Vera
 is **not approved for multi-user beta**. The `founder_core` profile may become
@@ -19,7 +19,7 @@ remediations, rather than only the repository's final state. It includes:
 - the PostgreSQL schema, migrations, tenant-scoped repositories, queues, leases, and audit events;
 - Google OAuth and Gmail alert ingestion;
 - the Vera worker, Maritime orchestration adapter, schedules, notifications, and operational endpoints;
-- the OpenClaw gateway, paired local browser node, dedicated browser profile, and current-tab capture path;
+- the dedicated per-user OpenClaw Gateway, direct WSS Chrome extension, consent tab group, minimized snapshot path, and disabled legacy local-node adapter;
 - production build, dependency, deployment, secret, logging, backup, restore, retention, and incident boundaries;
 - the isolated deterministic SQLite demo composition root.
 
@@ -41,11 +41,13 @@ The review used source inspection, targeted searches, schema and migration inspe
 2. **Vera web/worker to PostgreSQL.** PostgreSQL is canonical. All private access is scoped by a server-derived Vera user ID. Database constraints remain an independent enforcement layer.
 3. **Vera to Google.** OAuth state, authorization-code exchange, scope verification, token refresh, Gmail results, and provider failures cross an external boundary. Tokens and message contents must not enter logs or browser persistence.
 4. **Vera to Maritime.** Maritime execution state is evidence, not canonical job state. Wake and status APIs receive only minimum identifiers and authenticated, replay-resistant payloads.
-5. **Profile-scoped browser boundary.** Founder core requires no OpenClaw gateway and must prove
-   browser dispatch, ingress, scheduling, and activation are disabled. Browser experimental remains
-   blocked because no documented authenticated, allowlisted WSS ingress is approved. No gateway/node
-   transport or pairing is a staging trust boundary until ADR 0012 is superseded.
-6. **Local browser profile to captured page.** Page content is adversarial. It cannot change source policy, domain allowlists, selected user/node/profile, action capability, job payload, secrets, filesystem access, or audit behavior.
+5. **Profile-scoped browser boundary.** Founder core requires no OpenClaw Gateway and must prove
+   browser dispatch, ingress, scheduling, and activation are disabled. ADR 0013 selects direct WSS
+   extension ingress for browser experimental, but Maritime proxy behavior and live isolation remain
+   unverified, so the profile stays `no_go`.
+6. **Chrome consent tab to internet-reachable Gateway.** Page content and the public endpoint are
+   adversarial. Pairing, per-user isolation, one-tab consent, fixed tool input, response
+   minimization, and route isolation must all hold independently.
 7. **Vera to notification provider.** Endpoints and provider responses are untrusted. Payloads must remain generic and idempotent, and encrypted subscription material must remain bounded.
 8. **Production to deterministic demo.** Hosted entry points may use PostgreSQL only. SQLite and fixtures are available solely through the explicit `@vera/db/demo` composition root and cannot dispatch Maritime or OpenClaw work.
 9. **Operator and supply chain.** Dependency registries, container registries, CI actions, operator shells, deployment manifests, and provider dashboards can alter executable bytes or secret scope. Immutable identities and reviewed evidence are required.
@@ -53,7 +55,7 @@ The review used source inspection, targeted searches, schema and migration inspe
 ## Threat actors and failure sources
 
 - unauthenticated internet clients attempting request exhaustion, CSRF, route discovery, or secret extraction;
-- an authenticated non-founder attempting to invoke the shared founder browser gateway;
+- an authenticated non-founder attempting to invoke another user's dedicated browser Gateway;
 - one authenticated user attempting to address another user's records, node, profile, job, result, integration, or notification;
 - malicious instructions embedded in listing pages, emails, URLs, image metadata, or model output;
 - replayed, stale, mismatched, cross-user, or payload-hash-invalid dispatches and results;
@@ -68,7 +70,7 @@ The review used source inspection, targeted searches, schema and migration inspe
 | ID | Boundary / threat | Severity | Evidence | Exploit or failure path | Required fix | Owner | Release blocker | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SEC-001 | Non-founder browser execution | High | `packages/domain/src/founder-browser-access.ts`; creation, dispatch, and worker tests listed below | Ordinary tenant ownership is enforced, but an authenticated user can reach the single founder gateway whenever browser controls are enabled because there is no independent founder UUID allowlist. | Enforce one server-only founder UUID allowlist at job creation, dispatch, and immediately before worker provider invocation. Missing or malformed configuration must deny. | Application | Yes | Resolved |
-| SEC-002 | OpenClaw capability and ingress | High | ADR 0012, reviewed configs/verifier, sanitized read-only inventory | OpenClaw 2026.6.33 provides no path-level allowlist inside `browser.proxy`, and Maritime does not document the required authenticated, allowlisted WSS topology. | Keep browser capture disabled and the gateway absent for `founder_core`; require a documented ingress decision plus a narrow node-side command before `founder_browser_experimental` or any multi-user browser beta. | Infrastructure | No for core; yes for browser experimental | Browser experimental explicitly blocked |
+| SEC-002 | OpenClaw capability and ingress | High | ADR 0013, OpenClaw 2026.7.1 config/plugin/verifier, opt-in proxy probe | Maritime does not document WSS upgrades, subprotocol preservation, route filtering, payload limits, idle timeouts, or stability; no dedicated Gateway has accepted live evidence. | Keep browser absent for `founder_core`; require the complete remote-extension phase matrix, private proxy evidence, plain/deep audits, per-user isolation, and route-only exposure before browser experimental. | Infrastructure | No for core; yes for browser experimental | Architecture fixed; live acceptance open |
 | SEC-003 | Mutable release identity | High | immutable Node/OpenClaw digests, exact OpenClaw package, SHA-pinned CI actions, production-only worker deploy, local image/SBOM evidence below | The local candidate is identified and inventoried, but a registry digest, provenance/signature, approved advisory review, and rollback worker digest are not yet recorded. | Produce and verify those artifacts for the release candidate and deploy by digest. | Release | Yes | Locally mitigated; promotion evidence open |
 | SEC-004 | Public worker ingress | Medium | runbook requires agent-local worker port; read-only Maritime inventory found no Vera worker deployment | A worker that needs only Maritime wake/status and PostgreSQL claims must not expose a public application URL. Maritime may still provide a secret invoke webhook, which is not a Vera authorization surface. | Deploy one worker by immutable digest without public application ingress and verify its readiness/diagnostic boundary. | Infrastructure | Yes | Desired state fixed; deployment evidence open |
 | SEC-005 | Mutation exhaustion and CSRF inconsistency | Medium | `apps/web/lib/server/request-security.ts`; `scripts/verify-web-mutation-boundaries.ts`; route and parser tests listed below | An unauthenticated or cross-origin request can be buffered before rejection, and inconsistent parsing can bypass the intended body-size/content-type policy. | Authenticate, require the exact configured same origin, stream a bounded JSON body in UTF-8 bytes, then schema-validate in every mutation route. Add a static regression gate. | Web | Yes | Resolved |
@@ -77,7 +79,7 @@ The review used source inspection, targeted searches, schema and migration inspe
 | SEC-008 | Outbound request hangs | Medium | `packages/connectors/src/gmail-client.ts`; `apps/worker/src/google-gmail-access.ts`; timeout/cancellation tests listed below | Gmail list/detail and token-refresh requests accept caller cancellation but impose no complete local deadline; a stalled provider can retain a lane or lease until process termination. | Compose caller cancellation with a bounded per-attempt timeout, bound response processing, cap retries, and return typed safe errors. | Integrations | Yes | Resolved |
 | SEC-009 | PostgreSQL schedule uniqueness and ciphertext bounds | Medium | `packages/db/drizzle/0004_founder_security_hardening.sql`; schema/migration tests listed below | SQL uniqueness with a nullable source permits duplicate global schedules; encrypted Web Push nonce/tag/ciphertext byte fields have no exact or practical length constraints. | Add a forward migration with ambiguity preflight, partial uniqueness, exact GCM nonce/tag lengths, bounded ciphertext, and populated-upgrade tests. | Persistence | Yes | Resolved |
 | SEC-010 | Ephemeral retention and lease recovery | Medium | `packages/db/src/postgres/ephemeral-cleanup.ts`; `packages/db/src/postgres/worker-queue.ts`; tests listed below | Expired control data accumulates, and a crashed worker can strand a notification indefinitely. | Add bounded cleanup for explicitly ephemeral rows and atomic expired notification-lease recovery while preserving immutable evidence and audit history. | Reliability | No for founder staging; Yes for broader beta | Resolved for founder staging |
-| SEC-011 | Browser data-flow ambiguity | Medium | `docs/PRIVACY_OPERATIONS.md`; `docs/SECURITY.md`; `docs/POSTGRES_OPERATIONS.md` | An operator can overstate the local privacy boundary even though selected page content may cross the local node, hosted gateway, worker, and PostgreSQL ingestion boundary. | Publish exact location, transit, persistence, logging, retention, export, deletion, disconnect, revocation, backup, and provider-outage behavior. | Privacy | Yes | Resolved |
+| SEC-011 | Browser data-flow ambiguity | Medium | `docs/PRIVACY_OPERATIONS.md`; ADR 0013; remote-extension schema/plugin | An operator can overstate the privacy boundary even though consent-tab content crosses an internet-reachable hosted Gateway. | State the transit boundary, minimize before return, prohibit raw snapshot persistence, and document revocation, retention, deletion, and provider outage behavior. | Privacy | Yes | Locally mitigated; live evidence open |
 | SEC-012 | Missing unified live staging evidence | High | Offline-safe unified staging harness and closed release-manifest verifier exist; no live report or signed release manifest exists | Local mocks can pass while the deployed image, trigger, gateway, node, notification, kill switch, replay defense, or rollback path is broken. | Execute the sanitized staging matrix against the inventoried existing deployment and immutable release identities; require positive plus failure/recovery paths before promotion. | Release | Yes | Harness complete; live evidence open |
 | SEC-013 | No self-service privacy lifecycle | Medium | `docs/PRIVACY_OPERATIONS.md`; no export or account-deletion endpoint | The reviewed founder operator can perform an owner-scoped export/deletion, but a normal user cannot independently export or erase their account and backup aging is operator-controlled. | Implement and rehearse authenticated self-service export/deletion, provider revocation, backup-erasure tracking, and durable legal/security-hold exceptions before multi-user beta. | Privacy | No for founder staging; Yes for multi-user beta | Open |
 | SEC-014 | Hosted fixture ingestion | Medium | `apps/web/lib/connector-registry.ts`; capture route and hosted policy seed | The pull-request diff retained the fixture connector in the hosted API registry and seeded its policy as approved, allowing an authenticated hosted user to write synthetic demo evidence to PostgreSQL. | Select connectors from an explicit hosted/demo composition mode, exclude fixture manifests from new hosted policy seeds, and prove a hosted fixture request fails without writing evidence. | Application | Yes | Resolved locally in Prompt 12; full gate passed |
@@ -196,8 +198,9 @@ Token refresh, notification delivery, job claims, and scheduled work must use sh
 
 - **PostgreSQL:** liveness may remain healthy, readiness fails, writes stop, and Vera creates no in-memory or SQLite fallback state.
 - **Maritime:** canonical jobs remain queued in PostgreSQL. Vera does not start a replacement web-process cron. Only safe wake/status failures retry.
-- **OpenClaw gateway:** execution returns a retryable gateway-unavailable or deferred state; no empty capture is accepted.
-- **Local browser node:** stale or absent heartbeat produces `deferred_local_node_offline`, creates no RawListing or success event, and advances no source cursor.
+- **OpenClaw Gateway or extension:** the connectivity request returns a typed safe failure; no empty
+  snapshot or listing is accepted. Legacy node-offline behavior remains tested but is not the
+  selected architecture.
 - **Google Gmail:** timeout or provider failure is not an empty mailbox. Polling remains retryable or reconnect-required according to the typed failure.
 - **Google Calendar:** timeout or revoked/missing scope is never conflict-free. The UI visibly falls back to Vera rules and requires warning/confirmation according to the existing availability contract.
 - **Notification provider:** idempotent delivery remains queued/retryable, quiet hours and rate limits remain enforced, and failure never duplicates a lock-screen notification.
@@ -212,7 +215,7 @@ No release receives founder-beta approval with an unaccepted critical/high advis
 
 1. Activate the relevant global and per-source kill switches. For a suspected cross-boundary compromise, disable browser, integrations, notifications, and production schedules.
 2. Stop new dispatch and provider work while preserving canonical PostgreSQL job and audit evidence.
-3. Revoke the affected Google grant, Maritime credential, OpenClaw gateway token/node pairing, Web Push subscription, or application encryption key according to the exposed boundary.
+3. Revoke the affected Google grant, dedicated Maritime browser credential, OpenClaw Gateway token/extension pairing secret, Web Push subscription, or application encryption key according to the exposed boundary.
 4. Rotate credentials from protected operator tooling. Never paste secrets, browser artifacts, raw provider responses, or raw logs into chat, tickets, or Git.
 5. Preserve sanitized correlation IDs, hashes, safe state codes, immutable image/config identities, affected time range, and provider audit references.
 6. Restore service only after policy, identity, ownership, config, digest, and replay checks pass. Do not bypass manual blockers or weaken source policy to recover availability.
@@ -233,6 +236,12 @@ Allowed final outcomes are:
 - **No-go:** any unresolved critical/high control or failed mandatory gate.
 - **Conditional founder staging:** local controls pass, but live or operator evidence remains incomplete.
 - **Founder beta go:** all founder release blockers and the live positive/failure matrix pass for the one-founder topology.
-- **Multi-user beta go:** requires a separate per-user browser execution isolation design plus self-service or fully rehearsed privacy lifecycle controls. The current shared gateway architecture cannot receive this outcome.
+- **Multi-user beta go:** requires live-proven per-user Gateway isolation plus self-service or fully
+  rehearsed privacy lifecycle controls. This founder-only connectivity spike cannot receive that
+  outcome.
 
-Application findings SEC-001, SEC-005 through SEC-011, SEC-014, and SEC-015 are resolved at the stated founder-release boundary with the evidence above. SEC-013 intentionally remains a multi-user blocker. Founder staging remains conditional on the open OpenClaw capability, infrastructure-ingress, immutable release-identity, backup/role verification, and unified live-staging findings. Gmail draft creation is not shipped; the only Gmail capability is configured-alert ingestion through `gmail.readonly`.
+Application findings SEC-001, SEC-005 through SEC-010, SEC-014, and SEC-015 are resolved at the
+stated founder-core boundary. SEC-002 and SEC-011 remain browser-experimental live-acceptance
+blockers; SEC-013 remains a multi-user blocker. Founder staging remains conditional on immutable
+release identity, backup/role verification, and unified live-staging findings. Gmail draft creation
+is not shipped; the only Gmail capability is configured-alert ingestion through `gmail.readonly`.

@@ -53,10 +53,16 @@ describe("founder release profiles", () => {
       "browser_global_kill_switch_enabled"
     );
     expect(RELEASE_PROFILES.founder_core.requiredPhaseIds).not.toContain(
-      "founder_positive_current_tab_capture"
+      "founder_positive_shared_tab_snapshot"
     );
     expect(RELEASE_PROFILES.founder_browser_experimental.requiredPhaseIds).toContain(
-      "founder_positive_current_tab_capture"
+      "founder_positive_shared_tab_snapshot"
+    );
+    expect(RELEASE_PROFILES.founder_browser_experimental.requiredPhaseIds).not.toContain(
+      "node_offline"
+    );
+    expect(RELEASE_PROFILES.founder_browser_experimental.releaseEligibilityBlocker).toBe(
+      "remote_extension_live_acceptance_pending"
     );
     expect(RELEASE_PROFILES.founder_browser_experimental.releaseEligible).toBe(false);
   });
@@ -148,7 +154,7 @@ describe("founder release profiles", () => {
       classifyRequiredPhaseStates("founder_core", [
         ...complete.slice(1),
         {
-          phaseId: "gateway_restart",
+          phaseId: "remote_extension_wss_upgrade",
           resultState: "passed_automated"
         }
       ])

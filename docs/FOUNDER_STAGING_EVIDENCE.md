@@ -77,7 +77,7 @@ release-gate failure: redact and regenerate the record rather than weakening the
 | --- | --- |
 | Worker recovery | Record the sanitized test-run/workflow reference for dispatch, duplicate/replay, restart recovery, emergency disable, rollback, and provider-outage checks. |
 | Founder-core browser-disabled boundary | Record mandatory positive proof that the global and founder controls are disabled, SourceJobs deny before dispatch, no gateway is required, no endpoint exists, no monitoring is scheduled, and UI/API activation is denied. These are required phases, not N/A substitutions. |
-| Browser experimental | Current Maritime staging has no approved ingress. Browser-live phases remain mandatory for `founder_browser_experimental`, and ADR 0012 keeps that profile `no_go`; do not manufacture positive-capture evidence. |
+| Browser experimental | ADR 0013 selects one dedicated per-user Maritime Gateway plus the official direct WSS extension topology, but release acceptance is still pending. Record every mandatory remote-extension phase: immutable image/config, WSS upgrade, subprotocol preservation, pairing/wrong-secret denial, route isolation, bounded stability, provider payload/timeouts, plain and deep audits, one minimized consent-tab snapshot, non-interaction enforcement, revocation, and shutdown. Missing proof remains `no_go`; do not manufacture positive-capture evidence. |
 | Web Push | Record delivery, idempotency, and quiet-hours test references; no endpoint, subscription, or notification payload is evidence. |
 | PostgreSQL/rollback | Record a managed snapshot reference hash, restore rehearsal reference, prior-worker digest, compatibility evidence hash, and candidate digest. If compatibility is absent, record a blocked rollback phase. |
 | Gmail | From Vera settings, verify Web OAuth requests exactly `gmail.readonly`, no compose/modify/broad mail scope, one alert import, repeat-import idempotency, and no unnecessary content retention. Store only console/test references and hashes. |
@@ -106,3 +106,10 @@ classification, and approval timestamp.
 
 The exact founder-core operator sequence and phase matrix are in
 [`FOUNDER_CORE_STAGING_RUNBOOK.md`](./FOUNDER_CORE_STAGING_RUNBOOK.md).
+
+Remote-extension probe and audit outputs are real private evidence. Run
+`pnpm test:staging:remote-extension-proxy`, `openclaw security audit`, and
+`openclaw security audit --deep` only against the dedicated disposable browser Gateway. Store the
+sanitized reports in `release-evidence/private/` at mode `0600`, then copy the accepted bundle to the
+restricted private artifact store under the documented retention policy. Never commit the raw
+reports, endpoint, pairing secret, API key, agent ID, browser snapshot, or browser target IDs.

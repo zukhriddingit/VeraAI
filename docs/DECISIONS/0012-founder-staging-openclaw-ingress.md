@@ -1,6 +1,6 @@
 # ADR 0012: Founder-staging OpenClaw ingress
 
-Status: accepted
+Status: accepted for `founder_core`; superseded by ADR 0013 for browser experimental
 
 Date: 2026-07-23
 
@@ -28,9 +28,11 @@ Maritime worker jobs can be staged under the explicit `founder_core` release pro
 does not mark browser-live requirements N/A; it replaces them before evaluation with mandatory
 positive proof that browser capture, dispatch, ingress, scheduling, and activation are disabled.
 
-The separate `founder_browser_experimental` profile retains all browser-live phases and remains
-release-ineligible with `openclaw_ingress_adr_unresolved`. An arbitrary evidence record cannot
-override that profile-level blocker.
+At the time of this decision, the separate `founder_browser_experimental` profile retained all
+browser-live phases and was release-ineligible with `openclaw_ingress_adr_unresolved`. ADR 0013
+later replaced its target architecture and blocker with
+`remote_extension_live_acceptance_pending`. An arbitrary evidence record still cannot override the
+profile-level blocker.
 
 | Boundary | Founder-staging decision |
 | --- | --- |
