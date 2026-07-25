@@ -35,10 +35,27 @@ describe("remote extension configuration verifier", () => {
 
   it("rejects a mutable or unbound Gateway image", () => {
     const input = fixture();
-    (input.imageManifest as { publicationState: string; image: string | null }).publicationState =
-      "published";
-    (input.imageManifest as { publicationState: string; image: string | null }).image =
-      "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
+    (
+      input.imageManifest as {
+        publicationState: string;
+        image: string | null;
+        sourceCommit?: string;
+      }
+    ).publicationState = "published";
+    (
+      input.imageManifest as {
+        publicationState: string;
+        image: string | null;
+        sourceCommit?: string;
+      }
+    ).image = "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
+    delete (
+      input.imageManifest as {
+        publicationState: string;
+        image: string | null;
+        sourceCommit?: string;
+      }
+    ).sourceCommit;
     input.dockerfile = input.dockerfile.replace("ARG VERA_SOURCE_COMMIT", "");
     expect(findRemoteExtensionConfigViolations(input)).toEqual(
       expect.arrayContaining([

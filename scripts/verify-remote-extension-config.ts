@@ -8,6 +8,7 @@ export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 export const REMOTE_EXTENSION_GATEWAY_IMAGE =
   /^ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:[a-f0-9]{64}$/u;
+export const REMOTE_EXTENSION_SOURCE_COMMIT = /^[a-f0-9]{40}$/u;
 export const REMOTE_EXTENSION_TOOL = "vera_read_shared_tab_snapshot";
 
 type JsonObject = Record<string, unknown>;
@@ -65,11 +66,14 @@ export function findRemoteExtensionConfigViolations(input: {
     objectAt(imageManifest)?.baseImage !== REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE ||
     !(
       (objectAt(imageManifest)?.publicationState === "pending" &&
-        objectAt(imageManifest)?.image === null) ||
+        objectAt(imageManifest)?.image === null &&
+        objectAt(imageManifest)?.sourceCommit === undefined) ||
       (objectAt(imageManifest)?.publicationState === "published" &&
         typeof objectAt(imageManifest)?.image === "string" &&
         REMOTE_EXTENSION_GATEWAY_IMAGE.test(String(objectAt(imageManifest)?.image)) &&
-        !String(objectAt(imageManifest)?.image).endsWith(`:${"0".repeat(64)}`))
+        !String(objectAt(imageManifest)?.image).endsWith(`:${"0".repeat(64)}`) &&
+        typeof objectAt(imageManifest)?.sourceCommit === "string" &&
+        REMOTE_EXTENSION_SOURCE_COMMIT.test(String(objectAt(imageManifest)?.sourceCommit)))
     ) ||
     objectAt(imageManifest)?.releaseProfile !== "founder_browser_experimental" ||
     objectAt(imageManifest)?.deployableBeforeLiveProxyAcceptance !== false
