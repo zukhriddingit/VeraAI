@@ -14,9 +14,25 @@ browser spike binds this immutable multi-platform image:
 ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c
 ```
 
-`infra/maritime/openclaw/remote-extension-image.json` deliberately records
-`deploymentAllowed: false`. Do not deploy it until every public-proxy prerequisite and private
-evidence requirement below can be satisfied.
+That is the base for Vera's source-bound hardened Gateway image:
+
+```text
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:182712543bb55f9858544bfa3f14152669f560e352b46c4e2f4612c631a40300
+```
+
+`infra/maritime/openclaw/remote-extension-image.json` records that published digest and keeps
+`deployableBeforeLiveProxyAcceptance: false`. A separately authorized disposable transport spike
+may deploy it only to collect the mandatory acceptance evidence. It is not an application release
+authorization.
+
+The preserved non-browser RentCast analysis path remains pinned to:
+
+```text
+ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee
+```
+
+That older image does not satisfy the direct remote-extension contract. The browser image must not
+replace, reuse credentials from, or silently migrate the existing RentCast analysis agent.
 
 ## Reviewed configuration boundary
 
