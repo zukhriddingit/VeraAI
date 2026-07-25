@@ -118,4 +118,12 @@ describe("remote extension configuration verifier", () => {
       "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
     );
   });
+
+  it("rejects an entrypoint override without an explicit Gateway command", () => {
+    const input = fixture();
+    input.dockerfile = input.dockerfile.replace('CMD ["node", "openclaw.mjs", "gateway"]', "");
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+    );
+  });
 });

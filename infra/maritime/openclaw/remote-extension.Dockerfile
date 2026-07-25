@@ -46,3 +46,4 @@ EXPOSE 18789
 USER node
 
 ENTRYPOINT ["tini", "-s", "--", "/opt/vera/bin/remote-extension-entrypoint.sh"]
+CMD ["node", "openclaw.mjs", "gateway"]

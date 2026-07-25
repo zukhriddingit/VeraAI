@@ -98,7 +98,8 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("USER node") ||
     !dockerfile.includes(
       'ENTRYPOINT ["tini", "-s", "--", "/opt/vera/bin/remote-extension-entrypoint.sh"]'
-    )
+    ) ||
+    !dockerfile.includes('CMD ["node", "openclaw.mjs", "gateway"]')
   ) {
     violations.push(
       "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
