@@ -12,6 +12,7 @@ USER root
 
 RUN install -d -m 0555 -o node -g node \
       /opt/vera \
+      /opt/vera/bin \
       /opt/vera/config \
       /opt/vera/plugins \
       /opt/vera/plugins/vera-read-shared-tab && \
@@ -24,6 +25,9 @@ RUN install -d -m 0555 -o node -g node \
 COPY --chown=node:node --chmod=0600 \
   remote-extension.openclaw.json5 \
   /opt/vera/config/openclaw.json
+COPY --chown=node:node --chmod=0500 \
+  seed-security-audit-device.mjs \
+  /opt/vera/bin/seed-security-audit-device.mjs
 COPY --chown=node:node --chmod=0444 \
   vera-read-shared-tab/index.mjs \
   vera-read-shared-tab/openclaw.plugin.json \

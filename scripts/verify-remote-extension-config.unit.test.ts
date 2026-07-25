@@ -22,6 +22,7 @@ function fixture() {
     pluginPackage: readJson("vera-read-shared-tab/package.json"),
     imageManifest: readJson("remote-extension-image.json"),
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
+    auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8")
   };
 }
@@ -70,6 +71,21 @@ describe("remote extension configuration verifier", () => {
       expect.arrayContaining([
         "Snapshot plugin contains a mutating browser-control method.",
         "Snapshot plugin contains a forbidden browser-control route."
+      ])
+    );
+  });
+
+  it("rejects a privileged or token-printing audit device bootstrap", () => {
+    const input = fixture();
+    input.auditDeviceSource = input.auditDeviceSource
+      .replace('Object.freeze(["operator.read"])', 'Object.freeze(["operator.admin"])')
+      .replace(
+        '{ status: "seeded", role: "operator", scopes: READ_ONLY_SCOPES }',
+        '{ status: "seeded", token }'
+      );
+    expect(findRemoteExtensionConfigViolations(input)).toEqual(
+      expect.arrayContaining([
+        "Security-audit device bootstrap must be read-only, private, removable, and token-redacting."
       ])
     );
   });

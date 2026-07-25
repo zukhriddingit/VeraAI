@@ -43,10 +43,19 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly pluginPackage: unknown;
   readonly imageManifest: unknown;
   readonly pluginSource: string;
+  readonly auditDeviceSource: string;
   readonly dockerfile: string;
 }): string[] {
   const violations: string[] = [];
-  const { config, pluginManifest, pluginPackage, imageManifest, pluginSource, dockerfile } = input;
+  const {
+    config,
+    pluginManifest,
+    pluginPackage,
+    imageManifest,
+    pluginSource,
+    auditDeviceSource,
+    dockerfile
+  } = input;
 
   if (objectAt(config, "meta")?.lastTouchedVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION) {
     violations.push("Remote extension config must declare OpenClaw 2026.7.1.");
@@ -74,12 +83,28 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("ARG VERA_SOURCE_COMMIT") ||
     !dockerfile.includes('org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}"') ||
     !dockerfile.includes("--chmod=0600") ||
+    !dockerfile.includes("--chmod=0500") ||
+    !dockerfile.includes("seed-security-audit-device.mjs") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
     !dockerfile.includes("USER node")
   ) {
     violations.push(
       "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+    );
+  }
+  if (
+    !auditDeviceSource.includes('Object.freeze(["operator.read"])') ||
+    auditDeviceSource.includes("operator.write") ||
+    auditDeviceSource.includes("operator.admin") ||
+    !auditDeviceSource.includes("mode: 0o600") ||
+    !auditDeviceSource.includes('operation === "remove"') ||
+    /token\s*[:,)]\s*["'`]?/u.test(
+      auditDeviceSource.match(/process\.stdout\.write\([\s\S]*$/u)?.[0] ?? ""
+    )
+  ) {
+    violations.push(
+      "Security-audit device bootstrap must be read-only, private, removable, and token-redacting."
     );
   }
 
@@ -218,6 +243,7 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     pluginPackage: readJson(resolve(directory, "vera-read-shared-tab/package.json")),
     imageManifest: readJson(resolve(directory, "remote-extension-image.json")),
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
+    auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8")
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));
