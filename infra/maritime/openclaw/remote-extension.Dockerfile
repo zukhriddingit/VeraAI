@@ -22,12 +22,12 @@ RUN install -d -m 0555 -o node -g node \
       /data/.openclaw/workspace
 
 COPY --chown=node:node --chmod=0600 \
-  infra/maritime/openclaw/remote-extension.openclaw.json5 \
+  remote-extension.openclaw.json5 \
   /opt/vera/config/openclaw.json
 COPY --chown=node:node --chmod=0444 \
-  infra/maritime/openclaw/vera-read-shared-tab/index.mjs \
-  infra/maritime/openclaw/vera-read-shared-tab/openclaw.plugin.json \
-  infra/maritime/openclaw/vera-read-shared-tab/package.json \
+  vera-read-shared-tab/index.mjs \
+  vera-read-shared-tab/openclaw.plugin.json \
+  vera-read-shared-tab/package.json \
   /opt/vera/plugins/vera-read-shared-tab/
 
 ENV OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json \
@@ -37,4 +37,3 @@ ENV OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json \
 EXPOSE 18789
 
 USER node
-
