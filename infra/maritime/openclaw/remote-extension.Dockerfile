@@ -28,6 +28,9 @@ COPY --chown=node:node --chmod=0600 \
 COPY --chown=node:node --chmod=0500 \
   seed-security-audit-device.mjs \
   /opt/vera/bin/seed-security-audit-device.mjs
+COPY --chown=root:root --chmod=0555 \
+  remote-extension-entrypoint.sh \
+  /opt/vera/bin/remote-extension-entrypoint.sh
 COPY --chown=node:node --chmod=0444 \
   vera-read-shared-tab/index.mjs \
   vera-read-shared-tab/openclaw.plugin.json \
@@ -41,3 +44,5 @@ ENV OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json \
 EXPOSE 18789
 
 USER node
+
+ENTRYPOINT ["tini", "-s", "--", "/opt/vera/bin/remote-extension-entrypoint.sh"]

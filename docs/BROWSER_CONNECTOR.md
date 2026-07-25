@@ -1,6 +1,6 @@
 # Vera Browser Connector
 
-Status: founder connectivity spike; live acceptance pending
+Status: founder connectivity spike; current Maritime public-proxy acceptance failed closed
 
 Reviewed: 2026-07-25
 
@@ -87,13 +87,15 @@ operator runs the official OpenClaw pairing command inside that user's Gateway:
 
 ```sh
 maritime exec <dedicated-browser-agent> \
+  -- \
   openclaw browser extension pair \
-  --gateway-url 'wss://<dedicated-hostname>'
+  --gateway-url 'wss://api.maritime.sh/a/<opaque-agent-id>'
 ```
 
-The command emits `wss://<host>/browser/extension#<secret>`. The fragment must be handed directly to
-the correct founder through an approved secret channel. Do not paste it into Codex, GitHub, logs,
-analytics, screenshots, tickets, ordinary release evidence, or a query string.
+The command emits
+`wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension#<secret>`. The fragment must be handed
+directly to the correct founder through an approved secret channel. Do not paste it into Codex,
+GitHub, logs, analytics, screenshots, tickets, ordinary release evidence, or a query string.
 
 The founder:
 
@@ -211,13 +213,14 @@ Acceptance order:
 
 1. verify the config is mode `0600`, the state directory is mode `0700`, OpenClaw reports
    `2026.7.1`, only `browser` and `vera-read-shared-tab` plugins are loaded, and Control UI/model
-   HTTP/terminal/node surfaces remain disabled;
+   HTTP/terminal/node surfaces remain disabled; the hardened entrypoint must repair only the fixed
+   state boundary and drop provider-overridden root before OpenClaw starts;
 2. run `openclaw security audit`;
 3. seed the container-local audit identity with only `operator.read`, run
    `openclaw security audit --deep`, and remove that audit identity;
 4. generate a new official remote pairing value without logging it;
 5. run the opt-in proxy smoke against the exact
-   `wss://<host>/browser/extension` route from restricted tooling;
+   `wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension` route from restricted tooling;
 6. require unrelated-route denial, wrong-secret denial, successful WebSocket upgrade, preserved
    `openclaw-extension-relay` subprotocol, a bounded stable connection, clean client close, and
    successful reconnect;
@@ -256,6 +259,23 @@ N/A.
 `founder_core` is unchanged and continues to require positive browser-disabled proof. The browser
 profile stays `no_go` under `remote_extension_live_acceptance_pending` until every mandatory live
 phase passes. It can never classify a browser-enabled multi-user beta as released.
+
+## 2026-07-25 live Maritime proxy result
+
+One explicitly approved disposable Gateway was deployed from the recorded immutable image digest.
+Plain HTTPS reached the exact prefixed extension route and returned OpenClaw's expected `426
+Upgrade Required`. WebSocket controls then failed before OpenClaw pairing authentication:
+
+- an unrelated route was denied;
+- a wrong pairing secret was denied;
+- a Chrome-extension Origin with no pairing secret returned `403`, not OpenClaw's expected `401`;
+- the correct official 64-character OpenClaw pairing secret also returned `403`; and
+- no `101 Switching Protocols` or selected `openclaw-extension-relay` subprotocol was observed.
+
+The current Maritime public proxy therefore rejects or rewrites the official extension upgrade
+before OpenClaw authentication. WSS, subprotocol preservation, stability, reconnect, extension
+pairing, and snapshot acceptance are not proven. The spike remains `no_go`; no source browsing,
+shared-tab capture, or Milestone 13B work is authorized.
 
 ## Hosted-browser future option
 

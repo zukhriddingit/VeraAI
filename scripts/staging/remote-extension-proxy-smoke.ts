@@ -3,6 +3,11 @@ import { pathToFileURL } from "node:url";
 const RELAY_PROTOCOL = "openclaw-extension-relay";
 const TOKEN_PROTOCOL_PREFIX = "openclaw-extension-token.";
 const EXTENSION_ROUTE = "/browser/extension";
+const MARITIME_EXTENSION_ROUTE = new RegExp(
+  String.raw`^/a/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}${EXTENSION_ROUTE}$`,
+  "u"
+);
+const UNRELATED_ROUTE = "/__vera_remote_extension_unrelated__";
 
 export interface RemoteExtensionProxySmokeEnvironment {
   readonly enabled: true;
@@ -77,17 +82,25 @@ function parseExtensionUrl(rawValue: string | undefined): string {
       "OPENCLAW_EXTENSION_GATEWAY_URL must not contain credentials, query, or fragment."
     );
   }
-  if (url.pathname !== EXTENSION_ROUTE) {
-    throw new Error(`OPENCLAW_EXTENSION_GATEWAY_URL must use the exact ${EXTENSION_ROUTE} route.`);
+  if (url.pathname !== EXTENSION_ROUTE && !MARITIME_EXTENSION_ROUTE.test(url.pathname)) {
+    throw new Error(
+      `OPENCLAW_EXTENSION_GATEWAY_URL must use ${EXTENSION_ROUTE} directly or behind one exact Maritime agent UUID prefix.`
+    );
   }
+  return url.href;
+}
+
+function unrelatedRouteFor(extensionUrl: string): string {
+  const url = new URL(extensionUrl);
+  url.pathname = `${url.pathname.slice(0, -EXTENSION_ROUTE.length)}${UNRELATED_ROUTE}`;
   return url.href;
 }
 
 function parsePairingSecret(rawValue: string | undefined): string {
   const value = rawValue?.trim() ?? "";
-  if (!/^[A-Za-z0-9_-]{43}$/u.test(value)) {
+  if (!/^[0-9a-f]{64}$/u.test(value)) {
     throw new Error(
-      "OPENCLAW_EXTENSION_PAIRING_SECRET must be one 32-byte base64url pairing token."
+      "OPENCLAW_EXTENSION_PAIRING_SECRET must be the 64-character lowercase hexadecimal token emitted by pinned OpenClaw 2026.7.1."
     );
   }
   return value;
@@ -269,7 +282,7 @@ export async function runRemoteExtensionProxySmoke(input: {
     );
   }
   const factory = input.socketFactory ?? nativeSocketFactory;
-  const unrelatedUrl = new URL("/__vera_remote_extension_unrelated__", extensionUrl).href;
+  const unrelatedUrl = unrelatedRouteFor(extensionUrl);
   const unrelated = await observeSocket({
     factory,
     url: unrelatedUrl,

@@ -9,7 +9,9 @@ import {
 } from "./remote-extension-proxy-smoke.ts";
 
 const validUrl = "wss://founder-browser.example.test/browser/extension";
-const pairingSecret = "a".repeat(43);
+const maritimeUrl =
+  "wss://api.maritime.sh/a/00000000-1111-2222-3333-444444444444/browser/extension";
+const pairingSecret = "a".repeat(64);
 
 class FakeSocket implements SmokeSocket {
   protocol = "";
@@ -51,7 +53,7 @@ function passingFactory(): SmokeSocketFactory {
 }
 
 describe("remote extension proxy smoke", () => {
-  it("requires an explicit flag, exact WSS route, and base64url pairing secret", () => {
+  it("requires an explicit flag, exact WSS route, and pinned OpenClaw hex pairing secret", () => {
     expect(
       parseRemoteExtensionProxySmokeEnvironment({
         VERA_REMOTE_EXTENSION_PROXY_SMOKE: "1",
@@ -79,6 +81,60 @@ describe("remote extension proxy smoke", () => {
         OPENCLAW_EXTENSION_PAIRING_SECRET: pairingSecret
       })
     ).toThrow(/query, or fragment/u);
+    expect(() =>
+      parseRemoteExtensionProxySmokeEnvironment({
+        VERA_REMOTE_EXTENSION_PROXY_SMOKE: "1",
+        OPENCLAW_EXTENSION_GATEWAY_URL: validUrl,
+        OPENCLAW_EXTENSION_PAIRING_SECRET: "a".repeat(43)
+      })
+    ).toThrow(/64-character lowercase hexadecimal token/u);
+    expect(
+      parseRemoteExtensionProxySmokeEnvironment({
+        VERA_REMOTE_EXTENSION_PROXY_SMOKE: "1",
+        OPENCLAW_EXTENSION_GATEWAY_URL: maritimeUrl,
+        OPENCLAW_EXTENSION_PAIRING_SECRET: pairingSecret
+      }).extensionUrl
+    ).toBe(maritimeUrl);
+    expect(() =>
+      parseRemoteExtensionProxySmokeEnvironment({
+        VERA_REMOTE_EXTENSION_PROXY_SMOKE: "1",
+        OPENCLAW_EXTENSION_GATEWAY_URL: "wss://api.maritime.sh/a/not-an-agent/browser/extension",
+        OPENCLAW_EXTENSION_PAIRING_SECRET: pairingSecret
+      })
+    ).toThrow(/exact Maritime agent UUID prefix/u);
+  });
+
+  it("keeps the unrelated-route denial inside the same Maritime agent prefix", async () => {
+    const attemptedUrls: string[] = [];
+    const factory: SmokeSocketFactory = (url, protocols) => {
+      attemptedUrls.push(url);
+      const socket = new FakeSocket();
+      queueMicrotask(() => {
+        if (
+          url === maritimeUrl &&
+          protocols[0] === "openclaw-extension-relay" &&
+          protocols[1] === `openclaw-extension-token.${pairingSecret}`
+        ) {
+          socket.protocol = "openclaw-extension-relay";
+          socket.emit("open");
+        } else {
+          socket.emit("error");
+        }
+      });
+      return socket;
+    };
+    const result = await runRemoteExtensionProxySmoke({
+      extensionUrl: maritimeUrl,
+      pairingSecret,
+      stabilityMilliseconds: 1000,
+      timeoutMilliseconds: 1500,
+      socketFactory: factory
+    });
+
+    expect(result.outcome).toBe("passed");
+    expect(attemptedUrls[0]).toBe(
+      "wss://api.maritime.sh/a/00000000-1111-2222-3333-444444444444/__vera_remote_extension_unrelated__"
+    );
   });
 
   it("passes only when unrelated routes and wrong secrets deny before the valid route stays open", async () => {

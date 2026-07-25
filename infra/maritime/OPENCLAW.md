@@ -47,6 +47,10 @@ replace, reuse credentials from, or silently migrate the existing RentCast analy
   returns only bounded data plus hashes.
 - `pnpm verify:remote-extension-config` verifies the immutable image, effective static boundary,
   separate browser-Gateway credential names, and absence of browser mutation operations.
+- Maritime currently starts custom containers as root even when the image declares `USER node`.
+  The hardened entrypoint accepts only `/data/.openclaw`, rejects symlinked state, normalizes
+  directories to `0700` and files to `0600`, then drops permanently to UID/GID `1000` before
+  OpenClaw starts.
 
 The upstream relay accepts at most 64 MiB per frame. Vera's tool is independently stricter: 64 KiB
 for tab inventory, 128 KiB for the raw accessibility snapshot, 32,768 source characters, 24
@@ -55,7 +59,8 @@ client accepts at most 20 KiB and defaults to a 15-second request timeout.
 
 ## Pairing and consent
 
-The pairing secret is a 32-byte base64url value. It is held in the extension URL fragment at rest
+The pinned OpenClaw 2026.7.1 pairing secret is 32 random bytes encoded as 64 lowercase hexadecimal
+characters. It is held in the extension URL fragment at rest
 and sent in `Sec-WebSocket-Protocol` as `openclaw-extension-token.<secret>` alongside
 `openclaw-extension-relay`. It must never be placed in a query string, Git, logs, chat, screenshots,
 release summaries, or ordinary evidence records.
@@ -71,10 +76,10 @@ between unrelated renters.
 
 ## Public proxy acceptance — currently blocked
 
-The only intended public application route is:
+Maritime prefixes the intended route with its opaque per-agent path:
 
 ```text
-wss://<dedicated-per-user-host>/browser/extension
+wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension
 ```
 
 Maritime's public documentation does not currently promise WebSocket upgrades, WSS,
@@ -82,13 +87,18 @@ Maritime's public documentation does not currently promise WebSocket upgrades, W
 stability. The repository therefore does not claim those properties and does not authorize a
 deployment.
 
-After a dedicated disposable Gateway exists, an operator may run the opt-in private probe from a
-restricted environment:
+The 2026-07-25 disposable spike proved that plain HTTPS reaches this route (`426 Upgrade Required`)
+but WebSocket upgrade attempts with the official Chrome-extension Origin return `403` before
+OpenClaw's expected pairing-authentication response. The same result occurs with no token, a wrong
+token, and the correct official 64-character token; no `101` or selected relay subprotocol is
+observed. This is a fail-closed Maritime transport blocker.
+
+An operator may repeat the opt-in private probe only after Maritime documents or changes the proxy:
 
 ```sh
 VERA_REMOTE_EXTENSION_PROXY_SMOKE=1 \
-OPENCLAW_EXTENSION_GATEWAY_URL='wss://<dedicated-per-user-host>/browser/extension' \
-OPENCLAW_EXTENSION_PAIRING_SECRET='<private-32-byte-base64url-secret>' \
+OPENCLAW_EXTENSION_GATEWAY_URL='wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension' \
+OPENCLAW_EXTENSION_PAIRING_SECRET='<private-64-character-lowercase-hex-secret>' \
 pnpm test:staging:remote-extension-proxy
 ```
 

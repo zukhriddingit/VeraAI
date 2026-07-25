@@ -159,9 +159,11 @@ until the public-proxy and security acceptance prerequisites authorize that sepa
 
 - The local Docker image ID is not a registry deployment digest.
 - The private local SBOM is not signed release provenance.
-- Maritime's documentation does not establish WSS upgrade behavior, subprotocol preservation,
-  path filtering, payload limits, idle timeouts, or stability for a public Gateway route. No
-  dedicated remote-extension Gateway has been live-probed.
+- The 2026-07-25 disposable Gateway probe reached the prefixed extension route over HTTPS but every
+  WebSocket upgrade returned `403` before OpenClaw's expected no-token `401`; the valid official
+  pairing secret did not produce `101` or a selected relay subprotocol. Maritime's current public
+  proxy therefore fails the direct-extension transport gate. Payload limits, idle timeouts,
+  stability, reconnect, pairing, and snapshot behavior remain unproven.
 - OpenClaw `2026.7.1` provides the direct extension relay, but its 64 MiB relay-frame bound does not
   prove Maritime's proxy limits. Vera's dedicated plugin and hosted client impose much smaller
   bounds and still require live evidence.

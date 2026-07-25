@@ -1,6 +1,6 @@
 # ADR 0013: Founder browser direct remote extension
 
-Status: accepted for connectivity spike; live acceptance pending
+Status: target architecture retained; current Maritime public transport rejected
 
 Date: 2026-07-25
 
@@ -76,11 +76,22 @@ accepted as connected, private evidence must prove:
 Failed or missing proof remains a code/security/live-validation blocker as applicable. It is not
 converted to N/A or silently skipped.
 
+### 2026-07-25 live result
+
+The approved disposable Maritime agent exposed the Gateway at an opaque `/a/<agent-id>` prefix.
+Plain HTTPS reached `/browser/extension` and returned `426 Upgrade Required`. Upgrade requests with
+the official Chrome-extension Origin returned `403` before the OpenClaw route's expected `401`
+no-token response. The correct official pairing secret also returned `403`, with no selected relay
+subprotocol. The current public proxy therefore does not satisfy this ADR's WSS acceptance
+contract. The Gateway was not paired to a founder browser and no tab snapshot was attempted.
+
 ## Consequences
 
 - `founder_core` is unchanged and continues to require positive proof that browser execution is
   disabled.
 - `founder_browser_experimental` remains release-ineligible and `no_go`.
+- The current Maritime public-proxy path is a concrete transport blocker, not pending
+  configuration and not an approved N/A.
 - No marketplace discovery implementation may begin until the connectivity and security evidence
   above passes.
 - The public endpoint is treated as internet reachable even if its hostname is unguessable.

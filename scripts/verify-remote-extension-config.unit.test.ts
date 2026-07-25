@@ -23,7 +23,8 @@ function fixture() {
     imageManifest: readJson("remote-extension-image.json"),
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
-    dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8")
+    dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
+    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8")
   };
 }
 
@@ -104,6 +105,17 @@ describe("remote extension configuration verifier", () => {
       expect.arrayContaining([
         "Security-audit device bootstrap must be read-only, private, removable, and token-redacting."
       ])
+    );
+  });
+
+  it("rejects an entrypoint that does not drop provider-overridden root", () => {
+    const input = fixture();
+    input.entrypointSource = input.entrypointSource.replace(
+      'exec setpriv --reuid=1000 --regid=1000 --clear-groups "$@"',
+      'exec "$@"'
+    );
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
     );
   });
 });

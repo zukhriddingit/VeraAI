@@ -46,6 +46,7 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly pluginSource: string;
   readonly auditDeviceSource: string;
   readonly dockerfile: string;
+  readonly entrypointSource: string;
 }): string[] {
   const violations: string[] = [];
   const {
@@ -55,7 +56,8 @@ export function findRemoteExtensionConfigViolations(input: {
     imageManifest,
     pluginSource,
     auditDeviceSource,
-    dockerfile
+    dockerfile,
+    entrypointSource
   } = input;
 
   if (objectAt(config, "meta")?.lastTouchedVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION) {
@@ -89,12 +91,31 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("--chmod=0600") ||
     !dockerfile.includes("--chmod=0500") ||
     !dockerfile.includes("seed-security-audit-device.mjs") ||
+    !dockerfile.includes("--chmod=0555") ||
+    !dockerfile.includes("remote-extension-entrypoint.sh") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
-    !dockerfile.includes("USER node")
+    !dockerfile.includes("USER node") ||
+    !dockerfile.includes(
+      'ENTRYPOINT ["tini", "-s", "--", "/opt/vera/bin/remote-extension-entrypoint.sh"]'
+    )
   ) {
     violations.push(
       "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+    );
+  }
+  if (
+    !entrypointSource.includes('EXPECTED_STATE_DIR="/data/.openclaw"') ||
+    !entrypointSource.includes('find "$OPENCLAW_STATE_DIR" -xdev -type l -print -quit') ||
+    !entrypointSource.includes('chown -R 1000:1000 "$OPENCLAW_STATE_DIR"') ||
+    !entrypointSource.includes("-type d -exec chmod 0700") ||
+    !entrypointSource.includes("-type f -exec chmod 0600") ||
+    !entrypointSource.includes("umask 077") ||
+    !entrypointSource.includes('exec setpriv --reuid=1000 --regid=1000 --clear-groups "$@"') ||
+    entrypointSource.includes("eval ")
+  ) {
+    violations.push(
+      "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
     );
   }
   if (
@@ -248,7 +269,8 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     imageManifest: readJson(resolve(directory, "remote-extension-image.json")),
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
-    dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8")
+    dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
+    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8")
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));
 }
