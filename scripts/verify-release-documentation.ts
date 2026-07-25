@@ -8,6 +8,7 @@ export const RELEASE_DEPLOYMENT_DOCUMENTS = [
   "docs/ARCHITECTURE.md",
   "docs/POSTGRES_OPERATIONS.md",
   "docs/GOOGLE_INTEGRATION_SETUP.md",
+  "docs/BROWSER_CONNECTOR.md",
   "docs/FOUNDER_STAGING_EVIDENCE.md",
   "docs/FOUNDER_CORE_STAGING_RUNBOOK.md",
   "infra/maritime/README.md",
@@ -90,6 +91,7 @@ export function findRemoteExtensionDocumentationViolations(
     Readonly<Record<(typeof RELEASE_DEPLOYMENT_DOCUMENTS)[number], string>>,
     | "docs/RELEASE_READINESS.md"
     | "docs/SECURITY_REVIEW.md"
+    | "docs/BROWSER_CONNECTOR.md"
     | "docs/FOUNDER_STAGING_EVIDENCE.md"
     | "infra/maritime/OPENCLAW.md"
     | "infra/maritime/ENVIRONMENT.md"
@@ -114,6 +116,7 @@ export function findRemoteExtensionDocumentationViolations(
     }
   }
   const operations = documents["infra/maritime/OPENCLAW.md"];
+  const browserConnector = documents["docs/BROWSER_CONNECTOR.md"];
   if (
     /founder (?:must|should|needs to) install (?:OpenClaw|a node|a CLI|a daemon|Maritime Companion)/iu.test(
       operations
@@ -125,6 +128,23 @@ export function findRemoteExtensionDocumentationViolations(
     violations.push(
       "Remote-extension operations must not claim undocumented Maritime WSS behavior."
     );
+  }
+  const browserConnectorRequired = [
+    "What the founder installs",
+    "Direct WSS topology",
+    "Pairing",
+    "Consent and the founder snapshot",
+    "Connection states and offline behavior",
+    "Kill switches and revocation",
+    "Exact founder live-test procedure",
+    "Hosted-browser future option",
+    "55b485060e0790bef384a0c3ef23d63c0df19580",
+    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:182712543bb55f9858544bfa3f14152669f560e352b46c4e2f4612c631a40300"
+  ] as const;
+  for (const phrase of browserConnectorRequired) {
+    if (!browserConnector.includes(phrase)) {
+      violations.push(`Browser Connector runbook must include ${phrase}.`);
+    }
   }
   return violations;
 }

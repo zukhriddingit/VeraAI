@@ -90,4 +90,15 @@ describe("remote extension release documentation", () => {
       })
     ).toContain("Remote-extension operations must not require a local OpenClaw component.");
   });
+
+  it("requires the dedicated Browser Connector operator runbook", () => {
+    expect(
+      findRemoteExtensionDocumentationViolations({
+        ...repositoryDocuments,
+        "docs/BROWSER_CONNECTOR.md": "incomplete"
+      })
+    ).toEqual(
+      expect.arrayContaining([expect.stringContaining("Browser Connector runbook must include")])
+    );
+  });
 });
