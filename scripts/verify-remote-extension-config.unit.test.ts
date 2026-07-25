@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import JSON5 from "json5";
 
 import {
-  REMOTE_EXTENSION_OPENCLAW_IMAGE,
+  REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE,
   findRemoteExtensionConfigViolations
 } from "./verify-remote-extension-config.ts";
 
@@ -21,14 +21,30 @@ function fixture() {
     pluginManifest: readJson("vera-read-shared-tab/openclaw.plugin.json"),
     pluginPackage: readJson("vera-read-shared-tab/package.json"),
     imageManifest: readJson("remote-extension-image.json"),
-    pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8")
+    pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
+    dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8")
   };
 }
 
 describe("remote extension configuration verifier", () => {
   it("accepts the dedicated pinned configuration", () => {
     expect(findRemoteExtensionConfigViolations(fixture())).toEqual([]);
-    expect(REMOTE_EXTENSION_OPENCLAW_IMAGE).toContain("@sha256:");
+    expect(REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE).toContain("@sha256:");
+  });
+
+  it("rejects a mutable or unbound Gateway image", () => {
+    const input = fixture();
+    (input.imageManifest as { publicationState: string; image: string | null }).publicationState =
+      "published";
+    (input.imageManifest as { publicationState: string; image: string | null }).image =
+      "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
+    input.dockerfile = input.dockerfile.replace("ARG VERA_SOURCE_COMMIT", "");
+    expect(findRemoteExtensionConfigViolations(input)).toEqual(
+      expect.arrayContaining([
+        "Remote extension image manifest must pin the reviewed release and stay blocked.",
+        "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+      ])
+    );
   });
 
   it("rejects a local-node route and browser tool exposure", () => {

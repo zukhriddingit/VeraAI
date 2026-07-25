@@ -4,8 +4,10 @@ import { pathToFileURL } from "node:url";
 import JSON5 from "json5";
 
 export const REMOTE_EXTENSION_OPENCLAW_VERSION = "2026.7.1";
-export const REMOTE_EXTENSION_OPENCLAW_IMAGE =
+export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
+export const REMOTE_EXTENSION_GATEWAY_IMAGE =
+  /^ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:[a-f0-9]{64}$/u;
 export const REMOTE_EXTENSION_TOOL = "vera_read_shared_tab_snapshot";
 
 type JsonObject = Record<string, unknown>;
@@ -41,21 +43,43 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly pluginPackage: unknown;
   readonly imageManifest: unknown;
   readonly pluginSource: string;
+  readonly dockerfile: string;
 }): string[] {
   const violations: string[] = [];
-  const { config, pluginManifest, pluginPackage, imageManifest, pluginSource } = input;
+  const { config, pluginManifest, pluginPackage, imageManifest, pluginSource, dockerfile } = input;
 
   if (objectAt(config, "meta")?.lastTouchedVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION) {
     violations.push("Remote extension config must declare OpenClaw 2026.7.1.");
   }
   if (
     objectAt(imageManifest)?.openclawVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION ||
-    objectAt(imageManifest)?.image !== REMOTE_EXTENSION_OPENCLAW_IMAGE ||
+    objectAt(imageManifest)?.baseImage !== REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE ||
+    !(
+      (objectAt(imageManifest)?.publicationState === "pending" &&
+        objectAt(imageManifest)?.image === null) ||
+      (objectAt(imageManifest)?.publicationState === "published" &&
+        typeof objectAt(imageManifest)?.image === "string" &&
+        REMOTE_EXTENSION_GATEWAY_IMAGE.test(String(objectAt(imageManifest)?.image)) &&
+        !String(objectAt(imageManifest)?.image).endsWith(`:${"0".repeat(64)}`))
+    ) ||
     objectAt(imageManifest)?.releaseProfile !== "founder_browser_experimental" ||
     objectAt(imageManifest)?.deployableBeforeLiveProxyAcceptance !== false
   ) {
     violations.push(
       "Remote extension image manifest must pin the reviewed release and stay blocked."
+    );
+  }
+  if (
+    !dockerfile.includes(`FROM ${REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE}`) ||
+    !dockerfile.includes("ARG VERA_SOURCE_COMMIT") ||
+    !dockerfile.includes('org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}"') ||
+    !dockerfile.includes("--chmod=0600") ||
+    !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
+    !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
+    !dockerfile.includes("USER node")
+  ) {
+    violations.push(
+      "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
     );
   }
 
@@ -193,7 +217,8 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     pluginManifest: readJson(resolve(directory, "vera-read-shared-tab/openclaw.plugin.json")),
     pluginPackage: readJson(resolve(directory, "vera-read-shared-tab/package.json")),
     imageManifest: readJson(resolve(directory, "remote-extension-image.json")),
-    pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8")
+    pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
+    dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8")
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));
 }
