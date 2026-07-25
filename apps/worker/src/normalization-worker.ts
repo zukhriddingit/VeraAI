@@ -116,13 +116,15 @@ function connectorMetadata(metadata: JsonObject): {
   networkAccess: unknown;
   untrustedContent: unknown;
   browserAccess: unknown;
+  searchProfileId: unknown;
 } {
   return {
     connectorId: metadata.connectorId,
     capability: metadata.capability,
     networkAccess: metadata.networkAccess,
     untrustedContent: metadata.untrustedContent,
-    browserAccess: metadata.browserAccess
+    browserAccess: metadata.browserAccess,
+    searchProfileId: metadata.searchProfileId
   };
 }
 
@@ -327,7 +329,17 @@ export async function processNextNormalizationJob(
           await repositories.fieldProvenance.insert(provenance);
         }
         await repositories.listingExtractions.insert(extractionRun);
-        const profiles = await repositories.searchProfiles.list();
+        const rawConnectorMetadata = connectorMetadata(raw.captureMetadata);
+        const explicitProfileId =
+          typeof rawConnectorMetadata.searchProfileId === "string"
+            ? rawConnectorMetadata.searchProfileId
+            : null;
+        const profiles =
+          explicitProfileId === null
+            ? await repositories.searchProfiles.list()
+            : [await repositories.searchProfiles.getById(explicitProfileId)].filter(
+                (profile) => profile !== null
+              );
         if (profiles.length !== 1) {
           throw new NormalizationProcessingError(
             "normalization_search_profile_ambiguous",

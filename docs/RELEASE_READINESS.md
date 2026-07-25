@@ -163,3 +163,10 @@ duplicate gateway.
   acceptable only for the guarded single-founder experiment, not a public multi-user beta.
 - Dependency advisory submission remains unperformed because it would disclose the frozen
   dependency inventory to a third-party advisory service and requires explicit user approval.
+### Founder live official-API demo does not enable browser release scope
+
+The opt-in RentCast-to-Maritime OpenClaw chat path documented in
+`docs/EOD_LIVE_AGENT_DEMO.md` is an `official_api` founder demonstration with browser execution
+disabled. It does not deploy an OpenClaw browser gateway, satisfy browser-positive phases, widen
+`founder_core`, or resolve the experimental browser ingress ADR. Real release evidence and every
+mandatory founder-core phase remain required for a release classification.

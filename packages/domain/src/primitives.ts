@@ -16,6 +16,7 @@ export const JsonValueSchema = z.json();
 export const JsonObjectSchema = z.record(z.string(), JsonValueSchema);
 
 export const ListingSourceLabelSchema = z.enum([
+  "rentcast",
   "zillow",
   "facebook_marketplace",
   "craigslist",

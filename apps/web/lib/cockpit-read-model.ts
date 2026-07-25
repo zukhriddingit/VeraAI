@@ -2,7 +2,8 @@ import type { UserRepositories } from "@vera/db";
 import {
   CanonicalListingCollectionResponseSchema,
   type CanonicalListingCollectionResponse,
-  type DemoStatusResponse
+  type DemoStatusResponse,
+  type SearchProfile
 } from "@vera/domain";
 
 import { getDemoStatus } from "./demo-search-service";
@@ -13,6 +14,7 @@ export type CockpitInitialState =
       readonly demoMode: boolean;
       readonly demoStatus: DemoStatusResponse | null;
       readonly listingCollection: CanonicalListingCollectionResponse;
+      readonly searchProfiles: readonly SearchProfile[];
     }
   | {
       readonly kind: "unavailable";
@@ -30,6 +32,7 @@ export async function projectCockpitInitialState(
     options.demoMode && demoStatus?.status === "not_run"
       ? []
       : await repositories.canonicalListings.listSummaries();
+  const searchProfiles = await repositories.searchProfiles.list();
 
   return {
     kind: "ready",
@@ -39,7 +42,8 @@ export async function projectCockpitInitialState(
       listings,
       count: listings.length,
       generatedAt
-    })
+    }),
+    searchProfiles
   };
 }
 

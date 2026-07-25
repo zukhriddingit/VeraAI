@@ -41,6 +41,7 @@
     "test:integration": "vitest run --project integration",
     "test:integration:postgres": "vitest run --project postgres-integration",
     "test:e2e": "playwright test",
+    "test:e2e:live-search": "playwright test --config playwright.live-search.config.ts",
     "db:generate": "pnpm --filter @vera/db run db:generate",
     "db:migrate": "pnpm --filter @vera/db run db:migrate",
     "db:seed": "pnpm --filter @vera/db run db:seed",
@@ -53,6 +54,8 @@
     "test:live:openclaw": "VERA_OPENCLAW_LIVE_TEST=1 vitest run --project unit packages/connectors/src/openclaw-current-tab.live.test.ts",
     "test:staging:maritime": "VERA_MARITIME_STAGING_TEST=1 vitest run --project unit packages/connectors/src/maritime.staging.test.ts",
     "test:staging:founder-release": "tsx scripts/staging/founder-release-smoke.ts",
+    "live-search:founder": "tsx scripts/live-search-founder.ts",
+    "test:live:founder-search": "VERA_RUN_LIVE_FOUNDER_SEARCH_TESTS=1 vitest run --project unit apps/web/lib/live-founder-search.live.test.ts",
     "test:staging:gateway-http": "tsx scripts/staging/gateway-http-smoke.ts",
     "test:staging:web-push": "VERA_WEB_PUSH_STAGING_TEST=1 vitest run --project unit packages/notifications/src/web-push.staging.test.ts",
     "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures"

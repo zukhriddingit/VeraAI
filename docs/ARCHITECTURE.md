@@ -167,3 +167,15 @@ an explicit OpenClaw gateway image is future-only until the ingress ADR changes.
 receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled
 release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus
 the PostgreSQL runbook for deploy, backup, restore, and rollback.
+## Founder-only live official-API search
+
+The opt-in EOD founder path is browserless: an authenticated allowlisted user starts one durable
+`official_api` source job bound to an owned SearchProfile. The server performs a bounded RentCast
+long-term-rental GET, sends only an allowlisted candidate projection to the configured OpenClaw
+agent through Maritime's authenticated chat endpoint, validates the versioned JSON response, and
+imports sanitized evidence through the existing RawListing, normalization, reconciliation, and
+scoring pipeline. Agent notes are advisory and are projected separately from deterministic Vera
+scores.
+
+No fixture connector, local OpenClaw node, browser gateway, public webhook, or shell command is
+reachable from this request path. See `docs/EOD_LIVE_AGENT_DEMO.md`.

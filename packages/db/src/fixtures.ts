@@ -969,6 +969,38 @@ export const LOCAL_SOURCE_MANIFEST_FIXTURES = [
       "Allows only an exact, payload-approved tentative private event with no attendees, conference data, or notifications.",
     createdAt: "2026-07-21T00:00:00.000Z",
     updatedAt: "2026-07-21T00:00:00.000Z"
+  },
+  {
+    schemaVersion: 2,
+    connectorId: "rentcast.rental-listings.v1",
+    displayName: "RentCast long-term rental listings",
+    version: 1,
+    source: "rentcast",
+    acquisitionMode: "official_api",
+    policyState: "user_triggered_only",
+    enabled: true,
+    execution: "manual",
+    capabilities: ["structured_feed.read"],
+    allowedOperations: ["rentcast.rental_listings.search"],
+    allowedDomains: ["api.rentcast.io"],
+    allowedOrigins: ["https://api.rentcast.io/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: false,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "integrations.disabled",
+    connectorKillSwitchKey: "connectors.rentcast.rental-listings.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules: [...redactionRules],
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera maintainers",
+    reviewedAt: "2026-07-24",
+    decisionRecord: "docs/EOD_LIVE_AGENT_DEMO.md",
+    notes:
+      "Reads at most ten active long-term rental listings from an explicit founder profile. No owner records, unrelated property records, pagination, contact details, or writes.",
+    createdAt: "2026-07-24T00:00:00.000Z",
+    updatedAt: "2026-07-24T00:00:00.000Z"
   }
 ] as const satisfies readonly SourcePolicyManifest[];
 

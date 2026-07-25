@@ -10,6 +10,7 @@ import { useState } from "react";
 
 import type { CockpitInitialState } from "../lib/cockpit-read-model";
 import { ListingDashboard } from "./listing-dashboard";
+import { LiveSearchPanel } from "./live-search-panel";
 
 type DemoState =
   | { kind: "loading" }
@@ -59,7 +60,13 @@ async function requestDemoStatus(signal?: AbortSignal): Promise<DemoStatusRespon
   return DemoStatusResponseSchema.parse((await response.json()) as unknown);
 }
 
-export function DemoSearch({ initialState }: { initialState: CockpitInitialState }) {
+export function DemoSearch({
+  initialState,
+  liveSearchPreview = false
+}: {
+  initialState: CockpitInitialState;
+  liveSearchPreview?: boolean;
+}) {
   const [state, setState] = useState<DemoState>(() =>
     initialState.kind === "unavailable"
       ? { kind: "error", message: initialState.message }
@@ -107,8 +114,13 @@ export function DemoSearch({ initialState }: { initialState: CockpitInitialState
     }
   }
 
-  if (!initialState.demoMode && initialState.kind === "ready") {
-    return <ListingDashboard initialListings={initialState.listingCollection.listings} />;
+  if ((!initialState.demoMode || liveSearchPreview) && initialState.kind === "ready") {
+    return (
+      <LiveSearchPanel
+        profiles={initialState.searchProfiles}
+        initialListings={initialState.listingCollection.listings}
+      />
+    );
   }
 
   if (state.kind === "loading") {

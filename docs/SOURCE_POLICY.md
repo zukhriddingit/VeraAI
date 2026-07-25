@@ -22,7 +22,7 @@ The hosted PostgreSQL seed installs global policy manifests only and creates no 
 
 Both stores also carry disabled source-label manifests for Zillow, Facebook Marketplace, Craigslist, and Apartments.com. These are status labels, not production connectors, and grant no operation. PostgreSQL is the canonical hosted policy store; the SQLite rows exist only for deterministic offline policy evaluation.
 
-The code defines the optional-operation `SourceConnector`, `BrowserExecutionProvider`, and `MaritimeOrchestrator` boundaries. Fixture and manual connectors remain deterministic adapters and mocks remain the default test composition. A pinned OpenClaw `2026.6.33` adapter implements one production-shaped, user-triggered current-tab operation. The server-only Maritime adapter persists an expiring hashed dispatch before waking the exact worker agent. Gmail alert ingestion implements a narrow, scheduled `gmail.readonly` connector for configured senders/subjects/label. Scheduled browser monitoring, broad discovery, official listing APIs, and additional site-specific browser adapters remain unimplemented.
+The code defines the optional-operation `SourceConnector`, `BrowserExecutionProvider`, and `MaritimeOrchestrator` boundaries. Fixture and manual connectors remain deterministic adapters and mocks remain the default test composition. A pinned OpenClaw `2026.6.33` adapter implements one production-shaped, user-triggered current-tab operation. The server-only Maritime adapter persists an expiring hashed dispatch before waking the exact worker agent. Gmail alert ingestion implements a narrow, scheduled `gmail.readonly` connector for configured senders/subjects/label. RentCast implements one opt-in founder-only official rental-listing API read. Scheduled browser monitoring, broad discovery, other official listing APIs, and additional site-specific browser adapters remain unimplemented.
 
 Maritime triggers only wake the worker. PostgreSQL remains authoritative for tenant schedules and idempotent run state, and the worker rechecks policy at execution. Gmail alert ingestion, deterministic reconciliation, stale checks, notification fan-out, health reconciliation, and cleanup may be scheduled when enabled. `local_browser` acquisition is not scheduled in the founder release.
 
@@ -302,3 +302,11 @@ A connector remains disabled until review confirms:
 - Every allow and deny appends an audit event with no secret or raw message body.
 
 The implemented capture route records `capture.requested`, `capture.policy_authorized` or `capture.policy_denied`, `capture.completed` or `capture.failed`, and the worker records `normalization.completed` or `normalization.failed`. The correlation and causation chain is stable even when injected test clocks give events the same timestamp.
+## RentCast founder live search
+
+`rentcast.rental-listings.v1` is a `user_triggered_only` `official_api` connector with the single
+capability `structured_feed.read` and operation `rentcast.rental_listings.search`. Its network
+surface is exactly `GET https://api.rentcast.io/`; the connector itself further fixes the path to
+`/v1/listings/rental/long-term`, caps results at ten, forbids pagination and unknown query fields,
+and strips provider contact fields before persistence. The application independently requires the
+disabled-by-default live flag and an exact founder user allowlist.

@@ -1,0 +1,34 @@
+[
+  {
+    "id": "rc-synthetic-1",
+    "formattedAddress": "10 Beacon St, Boston, MA 02108",
+    "addressLine1": "10 Beacon St",
+    "addressLine2": null,
+    "city": "Boston",
+    "state": "MA",
+    "zipCode": "02108",
+    "latitude": 42.357,
+    "longitude": -71.063,
+    "propertyType": "Apartment",
+    "bedrooms": 2,
+    "bathrooms": 1,
+    "squareFootage": 850,
+    "status": "Active",
+    "price": 2850,
+    "listedDate": "2026-07-20T10:00:00.000Z",
+    "lastSeenDate": "2026-07-24T10:00:00.000Z",
+    "daysOnMarket": 4,
+    "mlsName": "Synthetic MLS",
+    "mlsNumber": "SYNTHETIC-1",
+    "listingOffice": {
+      "name": "Synthetic Office",
+      "website": "https://office.example.com",
+      "phone": "+1 202 555 0101",
+      "email": "synthetic-agent@example.com"
+    },
+    "listedBy": {
+      "phone": "+1 202 555 0199",
+      "email": "synthetic-private@example.com"
+    }
+  }
+]

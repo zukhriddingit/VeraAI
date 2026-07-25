@@ -78,7 +78,9 @@ const completeText = [
   "Contact URL: https://contact.example/listing/synthetic"
 ].join("\n");
 
-function queueCapture(options: { maxAttempts?: number; text?: string } = {}): {
+function queueCapture(
+  options: { maxAttempts?: number; text?: string; searchProfileId?: string } = {}
+): {
   rawListingId: string;
   jobId: string;
 } {
@@ -98,7 +100,8 @@ function queueCapture(options: { maxAttempts?: number; text?: string } = {}): {
       capability: "manual.capture",
       networkAccess: false,
       untrustedContent: true,
-      browserAccess: "manual_policy_required"
+      browserAccess: "manual_policy_required",
+      ...(options.searchProfileId ? { searchProfileId: options.searchProfileId } : {})
     }
   });
   const jobId = randomUUID();
@@ -195,6 +198,23 @@ afterEach(() => {
 });
 
 describe("normalization worker extraction orchestration", () => {
+  it("uses an explicit live-search profile binding when the user owns multiple profiles", async () => {
+    const secondProfile = {
+      ...DEMO_SEARCH_PROFILE,
+      id: "profile-explicit-live",
+      name: "Explicit live profile"
+    };
+    repositories.searchProfiles.insert(secondProfile);
+    queueCapture({ searchProfileId: secondProfile.id });
+
+    await expect(
+      processNextNormalizationJob(dependencies(), new AbortController().signal)
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(repositories.decisionJobs.list()).toEqual([
+      expect.objectContaining({ searchProfileId: secondProfile.id })
+    ]);
+  });
+
   it("atomically completes deterministic extraction with 20 fields and 22 provenance rows", async () => {
     const { rawListingId } = queueCapture();
     const result = await processNextNormalizationJob(dependencies(), new AbortController().signal);
