@@ -21,12 +21,7 @@ if [ "$(id -u)" = "0" ]; then
     "$OPENCLAW_STATE_DIR/state" \
     "$OPENCLAW_STATE_DIR/workspace"
 
-  if find "$OPENCLAW_STATE_DIR" -xdev -type l -print -quit | grep -q .; then
-    echo "Refusing to start with symlinks inside the OpenClaw state boundary." >&2
-    exit 1
-  fi
-
-  chown -R 1000:1000 "$OPENCLAW_STATE_DIR"
+  chown -R -h 1000:1000 "$OPENCLAW_STATE_DIR"
   find "$OPENCLAW_STATE_DIR" -xdev -type d -exec chmod 0700 {} +
   find "$OPENCLAW_STATE_DIR" -xdev -type f -exec chmod 0600 {} +
 

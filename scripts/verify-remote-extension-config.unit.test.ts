@@ -119,6 +119,14 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it("rejects state ownership repair that could dereference provider symlinks", () => {
+    const input = fixture();
+    input.entrypointSource = input.entrypointSource.replace("chown -R -h", "chown -R");
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
+    );
+  });
+
   it("rejects an entrypoint override without an explicit Gateway command", () => {
     const input = fixture();
     input.dockerfile = input.dockerfile.replace('CMD ["node", "openclaw.mjs", "gateway"]', "");

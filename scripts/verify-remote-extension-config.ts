@@ -107,8 +107,7 @@ export function findRemoteExtensionConfigViolations(input: {
   }
   if (
     !entrypointSource.includes('EXPECTED_STATE_DIR="/data/.openclaw"') ||
-    !entrypointSource.includes('find "$OPENCLAW_STATE_DIR" -xdev -type l -print -quit') ||
-    !entrypointSource.includes('chown -R 1000:1000 "$OPENCLAW_STATE_DIR"') ||
+    !entrypointSource.includes('chown -R -h 1000:1000 "$OPENCLAW_STATE_DIR"') ||
     !entrypointSource.includes("-type d -exec chmod 0700") ||
     !entrypointSource.includes("-type f -exec chmod 0600") ||
     !entrypointSource.includes("umask 077") ||
