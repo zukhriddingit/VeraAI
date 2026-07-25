@@ -50,13 +50,13 @@ authenticated founder
 The image is:
 
 ```text
-ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:182712543bb55f9858544bfa3f14152669f560e352b46c4e2f4612c631a40300
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:09df62ba4ffc152f7c7c9467fa6a84c876a392e3dac157f53a4bd08711f127b7
 ```
 
 Its OCI source revision is:
 
 ```text
-55b485060e0790bef384a0c3ef23d63c0df19580
+bf448d6cf9f0f43450ccbcd0e80271e888da1eb8
 ```
 
 The Gateway is an internet-reachable trust boundary even when its hostname is unguessable. One
@@ -206,7 +206,7 @@ Prerequisites:
 5. deploy only the exact digest:
 
 ```sh
-maritime deploy <dedicated-browser-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:182712543bb55f9858544bfa3f14152669f560e352b46c4e2f4612c631a40300 --wait
+maritime deploy <dedicated-browser-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:09df62ba4ffc152f7c7c9467fa6a84c876a392e3dac157f53a4bd08711f127b7 --wait
 ```
 
 Acceptance order:

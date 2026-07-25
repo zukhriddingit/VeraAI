@@ -3,8 +3,8 @@
   "openclawVersion": "2026.7.1",
   "baseImage": "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c",
   "publicationState": "published",
-  "image": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:182712543bb55f9858544bfa3f14152669f560e352b46c4e2f4612c631a40300",
-  "sourceCommit": "55b485060e0790bef384a0c3ef23d63c0df19580",
+  "image": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:09df62ba4ffc152f7c7c9467fa6a84c876a392e3dac157f53a4bd08711f127b7",
+  "sourceCommit": "bf448d6cf9f0f43450ccbcd0e80271e888da1eb8",
   "releaseProfile": "founder_browser_experimental",
   "synthetic": false,
   "deployableBeforeLiveProxyAcceptance": false

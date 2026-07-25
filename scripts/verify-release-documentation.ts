@@ -138,8 +138,8 @@ export function findRemoteExtensionDocumentationViolations(
     "Kill switches and revocation",
     "Exact founder live-test procedure",
     "Hosted-browser future option",
-    "55b485060e0790bef384a0c3ef23d63c0df19580",
-    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:182712543bb55f9858544bfa3f14152669f560e352b46c4e2f4612c631a40300"
+    "bf448d6cf9f0f43450ccbcd0e80271e888da1eb8",
+    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:09df62ba4ffc152f7c7c9467fa6a84c876a392e3dac157f53a4bd08711f127b7"
   ] as const;
   for (const phrase of browserConnectorRequired) {
     if (!browserConnector.includes(phrase)) {
