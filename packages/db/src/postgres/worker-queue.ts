@@ -389,6 +389,7 @@ export function createPostgresWorkerQueue(connection: PostgresConnection): Syste
             .from(sourceJobs)
             .where(
               and(
+                eq(sourceJobs.acquisitionMode, "local_browser"),
                 inArray(sourceJobs.status, ["queued", "retryable_failed", "running"]),
                 lt(sourceJobs.attempts, sourceJobs.maxAttempts),
                 lte(sourceJobs.availableAt, now),

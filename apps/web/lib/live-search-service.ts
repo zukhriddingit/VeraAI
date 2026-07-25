@@ -508,6 +508,7 @@ export async function runLiveSearch(
   );
   let importedCount = 0;
   let rejectedCount = 0;
+  let pendingNormalizationCount = 0;
   let causationId = agentEventId;
   for (const candidate of provider.candidates) {
     try {
@@ -578,10 +579,15 @@ export async function runLiveSearch(
             id: importEventId
           });
           await repositories.activityEvents.append(importedEvent);
-          return { inserted: imported.inserted, eventId: importedEvent.id };
+          return {
+            inserted: imported.inserted,
+            eventId: importedEvent.id,
+            pendingNormalization: existingRecord === null
+          };
         }
       );
       if (result.inserted) importedCount += 1;
+      if (result.pendingNormalization) pendingNormalizationCount += 1;
       causationId = result.eventId;
     } catch {
       rejectedCount += 1;
@@ -644,10 +650,40 @@ export async function runLiveSearch(
     }
   });
 
+  let completedAt: string | null = null;
+  if (pendingNormalizationCount === 0) {
+    const decisionJob = await dependencies.repositories.decisionJobs.enqueueCurrentRevision({
+      id: dependencies.createId(),
+      searchProfileId: profile.id,
+      trigger: "manual_recompute",
+      now: importedAt
+    });
+    if (decisionJob.status === "succeeded" && decisionJob.outputHash !== null) {
+      const completed = makeEvent(dependencies, {
+        action: LIVE_SEARCH_ACTIONS.completed,
+        runId,
+        causationId: decisionJob.id,
+        actor: "system",
+        outcome: "succeeded",
+        payloadHash: decisionJob.outputHash,
+        metadata: {
+          profileId: profile.id,
+          provider: "rentcast",
+          normalizedCount: provider.candidates.length,
+          scoredCorpusRevision: decisionJob.targetCorpusRevision,
+          decisionJobId: decisionJob.id
+        },
+        occurredAt: importedAt
+      });
+      await dependencies.repositories.activityEvents.append(completed);
+      completedAt = completed.occurredAt;
+    }
+  }
+
   return LiveSearchStatusSchema.parse({
     searchRunId: runId,
     searchProfileId: profile.id,
-    state: "importing",
+    state: completedAt === null ? "importing" : "completed",
     dataProvider: "RentCast",
     maritimeAgent: "OpenClaw on Maritime",
     retrievedCount: provider.candidates.length,
@@ -656,7 +692,7 @@ export async function runLiveSearch(
     retrievalLatencyMilliseconds: provider.latencyMilliseconds,
     agentLatencyMilliseconds: agent.latencyMilliseconds,
     totalLatencyMilliseconds: Math.max(0, Date.parse(importedAt) - Date.parse(requestedAt)),
-    completedAt: null,
+    completedAt,
     queryHash: provider.queryHash,
     promptVersion: agent.promptVersion,
     agentSchemaVersion: "1"

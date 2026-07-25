@@ -13,6 +13,7 @@ import {
   seedDatabase,
   type VeraDatabaseConnection
 } from "@vera/db/demo";
+import { SOURCE_FIXTURES } from "@vera/db/fixtures";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -155,6 +156,43 @@ describe("live search application service", () => {
     const second = await runLiveSearch(request, deps);
     expect(second).toMatchObject({ importedCount: 0, rejectedCount: 0 });
     expect(await deps.repositories.rawListings.count()).toBe(13);
+  });
+
+  it("queues decision reconciliation when an idempotent rerun is already normalized", async () => {
+    const deps = dependencies();
+    const first = await runLiveSearch(request, deps);
+    const imported = (await deps.repositories.activityEvents.list()).find(
+      (event) =>
+        event.correlationId === first.searchRunId && event.action === "live_listing_imported"
+    )!;
+    const raw = await deps.repositories.rawListings.getById(imported.targetId);
+    expect(raw).not.toBeNull();
+    await deps.repositories.sourceRecords.insert({
+      ...SOURCE_FIXTURES[0]!.sourceRecord,
+      id: "src-live-idempotent-rerun",
+      rawListingId: imported.targetId,
+      source: "rentcast",
+      sourceListingId: "rc-live-1",
+      sourceUrl: raw!.sourceUrl,
+      observedAt: raw!.observedAt,
+      createdAt: raw!.observedAt
+    });
+
+    const second = await runLiveSearch(request, deps);
+
+    expect(second).toMatchObject({
+      state: "importing",
+      importedCount: 0,
+      rejectedCount: 0
+    });
+    expect(
+      (await deps.repositories.decisionJobs.list()).some(
+        (job) =>
+          job.searchProfileId === LIVE_PROFILE.id &&
+          job.trigger === "manual_recompute" &&
+          job.status === "queued"
+      )
+    ).toBe(true);
   });
 
   it("prevents concurrent runs for the same profile", async () => {
