@@ -70,6 +70,17 @@ describe("RentCast connector", () => {
     const result = await connector.search(query);
     const serialized = JSON.stringify(result);
     expect(result.candidates).toHaveLength(1);
+    expect(
+      connector.toEnvelope(result.candidates[0]!, result.queryHash, null).rawJson
+    ).toMatchObject({
+      monthlyRentCents: 285_000,
+      baseRent: {
+        amountMinorUnits: 285_000,
+        currency: "USD",
+        billingPeriod: "month",
+        rawAmount: "$2850.00/month"
+      }
+    });
     expect(serialized).not.toContain("private@example.com");
     expect(serialized).not.toContain("555");
     expect(serialized).not.toContain("rentcast-secret-test");

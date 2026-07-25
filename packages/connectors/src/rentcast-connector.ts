@@ -429,6 +429,12 @@ export class RentCastConnector {
       sourceListingId: candidate.providerListingId,
       title: `Rental at ${candidate.formattedAddress}`,
       monthlyRentCents: candidate.monthlyRentCents,
+      baseRent: {
+        amountMinorUnits: candidate.monthlyRentCents,
+        currency: "USD",
+        billingPeriod: "month",
+        rawAmount: `$${(candidate.monthlyRentCents / 100).toFixed(2)}/month`
+      },
       bedrooms: candidate.bedrooms,
       bathrooms: candidate.bathrooms,
       addressText: candidate.formattedAddress,
