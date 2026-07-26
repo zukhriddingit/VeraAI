@@ -8,6 +8,7 @@ export const RELEASE_DEPLOYMENT_DOCUMENTS = [
   "docs/ARCHITECTURE.md",
   "docs/POSTGRES_OPERATIONS.md",
   "docs/GOOGLE_INTEGRATION_SETUP.md",
+  "docs/BROWSER_CONNECTOR.md",
   "docs/FOUNDER_STAGING_EVIDENCE.md",
   "docs/FOUNDER_CORE_STAGING_RUNBOOK.md",
   "infra/maritime/README.md",
@@ -65,12 +66,12 @@ export function findFounderCoreRunbookViolations(document: string): string[] {
     );
   }
   if (
-    !/ADR 0012[\s\S]{0,160}founder_browser_experimental[\s\S]{0,80}(?:no_go|blocked)/iu.test(
+    !/ADR 0013[\s\S]{0,160}ADR 0012[\s\S]{0,160}founder_browser_experimental[\s\S]{0,100}no_go/iu.test(
       document
     )
   ) {
     violations.push(
-      "Founder-core runbook must scope the unresolved ingress ADR to browser experimental."
+      "Founder-core runbook must record the ADR replacement while browser experimental remains no-go."
     );
   }
   if (/\b(?:allow|deploy|start|expose) (?:a )?public OpenClaw gateway\b/iu.test(document)) {
@@ -81,6 +82,72 @@ export function findFounderCoreRunbookViolations(document: string): string[] {
   }
   if (/\bADR 0012 (?:blocks|prevents)[^\n]*founder_core\b/iu.test(document)) {
     violations.push("Founder-core runbook must not make ADR 0012 a founder-core blocker.");
+  }
+  return violations;
+}
+
+export function findRemoteExtensionDocumentationViolations(
+  documents: Pick<
+    Readonly<Record<(typeof RELEASE_DEPLOYMENT_DOCUMENTS)[number], string>>,
+    | "docs/RELEASE_READINESS.md"
+    | "docs/SECURITY_REVIEW.md"
+    | "docs/BROWSER_CONNECTOR.md"
+    | "docs/FOUNDER_STAGING_EVIDENCE.md"
+    | "infra/maritime/OPENCLAW.md"
+    | "infra/maritime/ENVIRONMENT.md"
+    | "infra/maritime/TOPOLOGY.md"
+  >
+): string[] {
+  const violations: string[] = [];
+  const combined = Object.values(documents).join("\n");
+  const required = [
+    "2026.7.1",
+    "/browser/extension",
+    "Sec-WebSocket-Protocol",
+    "dedicated per-user",
+    "remote_extension_live_acceptance_pending",
+    "openclaw security audit --deep",
+    "MARITIME_BROWSER_GATEWAY_API_KEY",
+    "founder_core"
+  ] as const;
+  for (const phrase of required) {
+    if (!combined.includes(phrase)) {
+      violations.push(`Remote-extension documentation must include ${phrase}.`);
+    }
+  }
+  const operations = documents["infra/maritime/OPENCLAW.md"];
+  const browserConnector = documents["docs/BROWSER_CONNECTOR.md"];
+  if (
+    /founder (?:must|should|needs to) install (?:OpenClaw|a node|a CLI|a daemon|Maritime Companion)/iu.test(
+      operations
+    )
+  ) {
+    violations.push("Remote-extension operations must not require a local OpenClaw component.");
+  }
+  if (!/Maritime[\s\S]{0,180}does not[\s\S]{0,180}(?:WebSocket|WSS)/iu.test(operations)) {
+    violations.push(
+      "Remote-extension operations must not claim undocumented Maritime WSS behavior."
+    );
+  }
+  const browserConnectorRequired = [
+    "What the founder installs",
+    "Direct WSS topology",
+    "Pairing",
+    "Consent and the founder snapshot",
+    "Connection states and offline behavior",
+    "Kill switches and revocation",
+    "Exact founder live-test procedure",
+    "Hosted-browser future option",
+    "ea95c6a2a92d12625b3db0d71f45823cf7c28b8e",
+    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c",
+    "rejected R1 artifact",
+    "replacement image has not been published",
+    "loopback port `18790`"
+  ] as const;
+  for (const phrase of browserConnectorRequired) {
+    if (!browserConnector.includes(phrase)) {
+      violations.push(`Browser Connector runbook must include ${phrase}.`);
+    }
   }
   return violations;
 }
@@ -97,7 +164,8 @@ async function main(): Promise<void> {
   >;
   const violations = [
     ...findReleaseDocumentationViolations(documents),
-    ...findFounderCoreRunbookViolations(documents["docs/FOUNDER_CORE_STAGING_RUNBOOK.md"])
+    ...findFounderCoreRunbookViolations(documents["docs/FOUNDER_CORE_STAGING_RUNBOOK.md"]),
+    ...findRemoteExtensionDocumentationViolations(documents)
   ];
   if (violations.length > 0) {
     for (const violation of violations) process.stderr.write(`- ${violation}\n`);

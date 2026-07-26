@@ -1,0 +1,216 @@
+{
+  meta: {
+    lastTouchedVersion: "2026.7.1"
+  },
+  env: {
+    shellEnv: {
+      enabled: false
+    }
+  },
+  diagnostics: {
+    enabled: false
+  },
+  update: {
+    channel: "extended-stable",
+    checkOnStart: false,
+    auto: {
+      enabled: false
+    }
+  },
+  logging: {
+    level: "info",
+    consoleLevel: "info",
+    redactSensitive: "tools"
+  },
+  acp: {
+    enabled: false
+  },
+  cron: {
+    enabled: false
+  },
+  browser: {
+    enabled: true,
+    evaluateEnabled: false,
+    defaultProfile: "chrome",
+    profiles: {
+      chrome: {
+        driver: "extension",
+        color: "#0F766E"
+      }
+    },
+    tabCleanup: {
+      enabled: true,
+      idleMinutes: 15,
+      maxTabsPerSession: 1,
+      sweepMinutes: 5
+    }
+  },
+  plugins: {
+    enabled: true,
+    bundledDiscovery: "allowlist",
+    allow: ["browser", "vera-read-shared-tab"],
+    deny: [],
+    load: {
+      paths: ["/opt/vera/plugins/vera-read-shared-tab"]
+    },
+    entries: {
+      browser: {
+        enabled: true,
+        hooks: {
+          allowPromptInjection: false,
+          allowConversationAccess: false
+        }
+      },
+      "vera-read-shared-tab": {
+        enabled: true
+      }
+    },
+    slots: {
+      memory: "none"
+    }
+  },
+  commands: {
+    native: false,
+    nativeSkills: false,
+    text: false,
+    bash: false,
+    config: false,
+    mcp: false,
+    plugins: false,
+    debug: false,
+    restart: false,
+    useAccessGroups: true,
+    ownerAllowFrom: []
+  },
+  tools: {
+    profile: "minimal",
+    allow: ["vera_read_shared_tab_snapshot"],
+    alsoAllow: [],
+    deny: [
+      "browser",
+      "canvas",
+      "terminal",
+      "exec",
+      "process",
+      "read",
+      "write",
+      "edit",
+      "apply_patch",
+      "message",
+      "nodes",
+      "gateway",
+      "cron",
+      "sessions_spawn",
+      "sessions_send",
+      "web_search",
+      "web_fetch"
+    ],
+    agentToAgent: {
+      enabled: false,
+      allow: []
+    },
+    sessions: {
+      visibility: "self"
+    },
+    elevated: {
+      enabled: false
+    },
+    web: {
+      search: {
+        enabled: false
+      },
+      fetch: {
+        enabled: false
+      }
+    },
+    experimental: {
+      planTool: false
+    }
+  },
+  channels: {},
+  gateway: {
+    port: 18790,
+    mode: "local",
+    bind: "loopback",
+    controlUi: {
+      enabled: false,
+      allowedOrigins: [],
+      embedSandbox: "strict",
+      allowExternalEmbedUrls: false,
+      dangerouslyAllowHostHeaderOriginFallback: false,
+      allowInsecureAuth: false,
+      dangerouslyDisableDeviceAuth: false
+    },
+    terminal: {
+      enabled: false
+    },
+    auth: {
+      mode: "token",
+      token: "${OPENCLAW_GATEWAY_TOKEN}",
+      allowTailscale: false,
+      rateLimit: {
+        maxAttempts: 5,
+        windowMs: 60000,
+        lockoutMs: 300000,
+        exemptLoopback: false
+      }
+    },
+    tailscale: {
+      mode: "off",
+      resetOnExit: false
+    },
+    remote: {
+      enabled: false
+    },
+    reload: {
+      mode: "restart",
+      debounceMs: 1000,
+      deferralTimeoutMs: 15000
+    },
+    http: {
+      endpoints: {
+        chatCompletions: {
+          enabled: false
+        },
+        responses: {
+          enabled: false
+        }
+      },
+      securityHeaders: {
+        strictTransportSecurity: "max-age=31536000; includeSubDomains"
+      }
+    },
+    nodes: {
+      browser: {
+        mode: "off"
+      },
+      pairing: {
+        autoApproveCidrs: []
+      },
+      allowCommands: [],
+      denyCommands: ["system.run", "browser.proxy"]
+    },
+    trustedProxies: [],
+    allowRealIpFallback: false,
+    tools: {
+      allow: [],
+      deny: [
+        "browser",
+        "nodes",
+        "gateway",
+        "exec",
+        "process",
+        "read",
+        "write",
+        "edit",
+        "apply_patch",
+        "message",
+        "cron",
+        "sessions_spawn",
+        "sessions_send",
+        "web_search",
+        "web_fetch"
+      ]
+    }
+  }
+}

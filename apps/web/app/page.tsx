@@ -43,14 +43,18 @@ export default async function HomePage() {
         </div>
       </header>
 
-      <DemoSearch initialState={initialState} />
+      <DemoSearch
+        initialState={initialState}
+        liveSearchPreview={process.env.VERA_E2E_LIVE_SEARCH_UI === "1"}
+      />
 
       <section className="next-step cockpit-safety" aria-labelledby="next-step-heading">
         <p className="eyebrow">Your decision, not an autonomous action</p>
         <h2 id="next-step-heading">Evidence first. Outreach comes next.</h2>
         <p>
-          This offline demo uses sanitized fixtures only. It does not connect to marketplace
-          accounts, send messages, create applications, or make payments.
+          {context.demoMode
+            ? "This offline demo uses sanitized fixtures only. It does not connect to marketplace accounts, send messages, create applications, or make payments."
+            : "Live RentCast search is read-only and founder-triggered. OpenClaw analyzes minimized candidate facts only; Vera does not browse, contact landlords, send messages, create applications, or make payments."}
         </p>
       </section>
     </main>

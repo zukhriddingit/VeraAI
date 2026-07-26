@@ -63,15 +63,29 @@ describe("PostgreSQL system worker queue", () => {
         userId,
         id: "source-one",
         correlationId: "source-correlation",
-        connectorId: "fixture.feed.v1",
-        source: "other",
-        acquisitionMode: "fixture",
+        connectorId: "zillow.current-tab.v1",
+        source: "zillow",
+        acquisitionMode: "local_browser",
         manifestVersion: 1,
         trigger: "manual",
-        capability: "fixture.read",
+        capability: "browser.capture",
         approvalId: null,
-        operation: "fixture.read_sanitized",
-        payload: { acquisitionMode: "fixture", fixtureSetId: "fixture-set" },
+        operation: "capture.current_tab",
+        payload: {
+          acquisitionMode: "local_browser",
+          captureKind: "current_tab",
+          nodeId: "node-queue-test",
+          profileId: "profile-queue-test",
+          expectedUrl: "https://www.zillow.com/homedetails/Test/12345_zpid/",
+          canonicalUrl: "https://www.zillow.com/homedetails/Test/12345_zpid/",
+          limits: {
+            maxPages: 1,
+            maxRecords: 1,
+            maxBytes: 250_000,
+            maxDurationMilliseconds: 30_000,
+            maxConcurrency: 1
+          }
+        },
         payloadHash: "a".repeat(64),
         idempotencyKey: "b".repeat(64),
         status: "queued",
@@ -95,6 +109,52 @@ describe("PostgreSQL system worker queue", () => {
         expect(results.filter((result) => result !== null)).toHaveLength(1);
         expect(results.find((result) => result !== null)?.userId).toBe(userId);
       }
+    });
+  });
+
+  it("does not lease inline official-API jobs to the browser acquisition worker", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await seedOwner(db);
+      await db.insert(sourceJobs).values({
+        userId,
+        id: "source-inline-official-api",
+        correlationId: "source-inline-official-api",
+        connectorId: "rentcast.rental-listings.v1",
+        source: "rentcast",
+        acquisitionMode: "official_api",
+        manifestVersion: 1,
+        trigger: "manual",
+        capability: "structured_feed.read",
+        approvalId: null,
+        operation: "rentcast.rental_listings.search",
+        payload: {
+          acquisitionMode: "official_api",
+          sourceConfigurationId: DEMO_SEARCH_PROFILE.id,
+          committedCursor: null
+        },
+        payloadHash: "7".repeat(64),
+        idempotencyKey: "8".repeat(64),
+        status: "running",
+        attempts: 1,
+        maxAttempts: 2,
+        availableAt: new Date(now),
+        createdAt: new Date(now),
+        updatedAt: new Date(now)
+      });
+
+      const queue = createPostgresWorkerQueue(connection);
+      await expect(
+        queue.claimNextSourceJob({
+          leaseOwner: "browser-worker",
+          now,
+          leaseExpiresAt
+        })
+      ).resolves.toBeNull();
+
+      const [persisted] = await db
+        .select({ status: sourceJobs.status, attempts: sourceJobs.attempts })
+        .from(sourceJobs);
+      expect(persisted).toEqual({ status: "running", attempts: 1 });
     });
   });
 

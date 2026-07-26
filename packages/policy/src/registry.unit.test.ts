@@ -296,6 +296,7 @@ describe("initial local manifests", () => {
       "manual.capture.v1",
       "google.gmail.listing-alerts.v1",
       "google.calendar.v1",
+      "rentcast.rental-listings.v1",
       "zillow.current-tab.v1"
     ]);
     for (const manifest of INITIAL_LOCAL_MANIFESTS) {
@@ -353,6 +354,18 @@ describe("initial local manifests", () => {
       requiresUserSession: true,
       requiresApproval: true
     });
+    expect(manifests["rentcast.rental-listings.v1"]).toMatchObject({
+      source: "rentcast",
+      acquisitionMode: "official_api",
+      policyState: "user_triggered_only",
+      capabilities: ["structured_feed.read"],
+      allowedOperations: ["rentcast.rental_listings.search"],
+      allowedDomains: ["api.rentcast.io"],
+      allowedOrigins: ["https://api.rentcast.io/"],
+      allowedHttpMethods: ["GET"],
+      requiresUserSession: true,
+      requiresApproval: false
+    });
     expect(manifests["zillow.current-tab.v1"]).toMatchObject({
       acquisitionMode: "local_browser",
       policyState: "experimental_personal",
@@ -409,5 +422,34 @@ describe("initial local manifests", () => {
         activeKillSwitches: new Set(["connectors.google.calendar.v1.disabled"])
       }).evaluate(request)
     ).toMatchObject({ allowed: false, reason: "connector_kill_switch_active" });
+  });
+
+  it("authorizes only the exact founder-triggered RentCast network operation", () => {
+    const request = {
+      connectorId: "rentcast.rental-listings.v1",
+      acquisitionMode: "official_api",
+      capability: "structured_feed.read",
+      execution: "manual",
+      operation: "rentcast.rental_listings.search",
+      hasUserSession: true,
+      hasApproval: false,
+      network: {
+        origin: "https://api.rentcast.io/",
+        domain: "api.rentcast.io",
+        httpMethod: "GET"
+      }
+    } as const satisfies SourcePolicyRequest;
+
+    const registry = new SourcePolicyRegistry(INITIAL_LOCAL_MANIFESTS);
+    expect(registry.evaluate(request)).toMatchObject({ allowed: true });
+    expect(registry.evaluate({ ...request, execution: "scheduled" })).toMatchObject({
+      allowed: false
+    });
+    expect(
+      registry.evaluate({
+        ...request,
+        network: { ...request.network, domain: "example.com" }
+      })
+    ).toMatchObject({ allowed: false, reason: "domain_not_allowed" });
   });
 });

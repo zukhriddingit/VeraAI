@@ -18,6 +18,7 @@ type DetailState =
   | { kind: "error"; message: string };
 
 const sourceNames: Record<ListingSourceLabel, string> = {
+  rentcast: "RentCast",
   zillow: "Zillow",
   facebook_marketplace: "Facebook Marketplace",
   craigslist: "Craigslist",

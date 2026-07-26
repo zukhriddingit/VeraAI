@@ -1,90 +1,158 @@
-# OpenClaw gateway and local-node operations
+# OpenClaw direct remote-extension operations
 
-Vera pins OpenClaw `2026.6.33` for both gateway compatibility and the local node. Maritime's current OpenClaw guide still names `2026.5.28`; Vera does not deploy that template pin because it is below the reviewed security floor. Founder staging currently selects ADR 0012 option C: browser capture remains disabled while Maritime staging validates non-browser work. Do not create, expose, pair, or deploy a browser gateway during this stage. If a later approved ingress decision permits a gateway, its image must be the reviewed immutable digest:
+ADR 0013 replaces the local-node ingress proposal for the founder browser spike. The founder
+installs only the official OpenClaw Chrome extension. The extension makes a direct outbound WSS
+connection to one dedicated per-user OpenClaw Gateway on Maritime; the founder does not install
+OpenClaw, a node, a CLI, a daemon, Maritime Companion, or a local Vera agent.
 
-```sh
-maritime deploy vera-openclaw-gateway --source docker --image ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee --wait
+OpenClaw `2026.7.1` is the first reviewed release that contains the direct remote Gateway extension
+topology and `/browser/extension` route. The older `2026.6.33` live-search pin does not satisfy this
+contract and remains isolated to Vera's existing non-browser RentCast analysis path. The founder
+browser spike binds this immutable multi-platform image:
+
+```text
+ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c
 ```
 
-The founder already has an OpenClaw deployment in Maritime. The command above is a digest-only
-placeholder-form example, not a step to execute before inventory. A future adoption requires a
-reviewed ingress topology, observed version/exposure/effective configuration, and rollback identity.
+That was the base for the rejected R1 Gateway artifact:
+
+```text
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c
+```
+
+R2 Test A proved that the artifact's intended extension route authenticates and upgrades locally,
+but its generic OpenClaw Gateway WebSocket also accepts an unrelated route. It is retained only as
+baseline evidence and must not be deployed. The route-isolation repair's replacement image has not
+been published, so `remote-extension-image.json` is `pending` with `image: null` and
+`deployableBeforeLiveProxyAcceptance: false`.
+
+The preserved non-browser RentCast analysis path remains pinned to:
+
+```text
+ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee
+```
+
+That older image does not satisfy the direct remote-extension contract. The browser image must not
+replace, reuse credentials from, or silently migrate the existing RentCast analysis agent.
 
 ## Reviewed configuration boundary
 
-- `infra/maritime/openclaw/openclaw.json5` is the desired gateway config. Gateway plugins, agent
-  tools, channels, cron, Control UI, and model endpoints remain disabled. Browser routing pins one
-  explicit node and the effective node command set is verified as exactly `browser.proxy`.
-- `infra/maritime/openclaw/node.openclaw.json5` is the desired local-node config. It enables only
-  the bundled browser plugin, disables page evaluation, disables prompt/conversation hooks, and
-  permits only profile `vera-zillow`.
-- `pnpm verify:openclaw-config` validates both files with the pinned CLI, verifies the enabled
-  plugin inventories, and runs OpenClaw's own runtime and pairing allowlist resolvers for every
-  supported/unknown platform.
+- `infra/maritime/openclaw/remote-extension.openclaw.json5` defines one extension-driver profile,
+  disables browser evaluation, nodes, Control UI, model HTTP endpoints, terminal, canvas, A2UI,
+  channels, cron, ACP, commands, updates, web access, exec, filesystem, messaging, and sessions.
+- Only the bundled browser plugin and `vera-read-shared-tab` plugin are allowed. The model cannot use
+  the bundled `browser` tool.
+- `vera_read_shared_tab_snapshot` accepts an empty object, uses fixed loopback `GET /tabs` and
+  `GET /snapshot` requests against the `chrome` profile, requires exactly one shared tab, minimizes
+  the result, reduces the page URL to its origin, strips raw target IDs and sensitive data, and
+  returns only bounded data plus hashes.
+- `pnpm verify:remote-extension-config` verifies the immutable image, effective static boundary,
+  separate browser-Gateway credential names, and absence of browser mutation operations.
+- Maritime currently starts custom containers as root even when the image declares `USER node`.
+  The hardened entrypoint accepts only `/data/.openclaw`, rejects symlinked state, normalizes
+  directories to `0700` and files to `0600`, then drops permanently to UID/GID `1000` before
+  OpenClaw starts.
+- `remote-extension-route-filter.mjs` listens on public container port `18789`, forwards raw
+  upgrades only for exact `/browser/extension`, and denies queries and unrelated routes. The
+  general OpenClaw Gateway listens only on loopback port `18790`.
 
-OpenClaw `2026.6.33` does not provide a path-level allowlist inside `browser.proxy`. That
-administrative capability can proxy more browser operations than Vera uses. Vera's adapter emits
-only `GET /tabs` and `GET /snapshot`, uses one exact matching Zillow tab, and requests no
-navigation or interaction, but this is an application restriction—not a native transport-enforced
-read-only guarantee. Protect the gateway credential accordingly. The connector remains
-founder-only, `experimental_personal`, disabled by default, and is not approved for multi-user
-beta. A future narrow node-side command/plugin must replace broad `browser.proxy` before claiming
-transport-enforced read-only access.
+The upstream relay accepts at most 64 MiB per frame. Vera's tool is independently stricter: 64 KiB
+for tab inventory, 128 KiB for the raw accessibility snapshot, 32,768 source characters, 24
+returned lines, 2,400 returned characters, and a five-second loopback timeout. The hosted Vera
+client accepts at most 20 KiB and defaults to a 15-second request timeout.
 
-## Pair the founder-controlled node — blocked for Maritime staging
+## Pairing and consent
 
-Do not run these steps during the current staging classification. They describe prerequisites for a
-future reviewed topology, not an approved network design:
+The pinned OpenClaw 2026.7.1 pairing secret is 32 random bytes encoded as 64 lowercase hexadecimal
+characters. It is held in the extension URL fragment at rest
+and sent in `Sec-WebSocket-Protocol` as `openclaw-extension-token.<secret>` alongside
+`openclaw-extension-relay`. It must never be placed in a query string, Git, logs, chat, screenshots,
+release summaries, or ordinary evidence records.
 
-1. Install the exact local version with `npm install --global openclaw@2026.6.33`.
-2. Configure only a reviewed authenticated and allowlisted TLS `wss` route; never infer private
-   Maritime networking or expose an unauthenticated/public gateway.
-3. Start the node host only after that review with the current supported command:
+An authorized operator prepares the official extension package and pairing material in restricted
+tooling associated with the dedicated Gateway. The founder receives only the extension and pairing
+handoff; no local CLI is required. The founder explicitly places one intended tab in the OpenClaw
+tab group before each snapshot. Removing the tab from that group revokes page access.
 
-```sh
-openclaw node run --host <gateway-host> --port 443 --tls --display-name "Vera Founder Browser"
+One Gateway, pairing secret, Vera browser API key, and agent ID belong to one Vera user. Never reuse
+the existing live-search agent, its `MARITIME_API_KEY`, or its agent ID. Never share a Gateway
+between unrelated renters.
+
+## Public proxy acceptance — currently blocked
+
+Maritime prefixes the intended route with its opaque per-agent path:
+
+```text
+wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension
 ```
 
-4. On an authenticated operator client, complete both device pairing and node capability approval.
-   Re-list immediately before each approval so a superseded request ID cannot be approved:
+Maritime's public documentation does not currently promise WebSocket upgrades, WSS,
+`Sec-WebSocket-Protocol` preservation, path filtering, payload limits, idle timeouts, or connection
+stability. The repository therefore does not claim those properties and does not authorize a
+deployment.
+
+The 2026-07-25 disposable spike proved that plain HTTPS reaches this route (`426 Upgrade Required`)
+but WebSocket upgrade attempts with the official Chrome-extension Origin return `403` before
+OpenClaw's expected pairing-authentication response. The same result occurs with no token, a wrong
+token, and the correct official 64-character token; no `101` or selected relay subprotocol is
+observed.
+
+R2 local differential testing corrected the earlier provider-only attribution. Without Maritime,
+the correct route returned `101` with the expected protocol and authentication failures returned
+the expected `401`/`403`, but an unrelated path also received `101` through OpenClaw's generic
+Gateway fallback. The R1 artifact therefore fails route isolation before Maritime is evaluated.
+The local exact-route repair passes focused tests, but its replacement image has not been
+published. Tests B through D remain blocked.
+
+An operator may repeat the opt-in private probe only after the repaired image is explicitly
+approved, published by immutable digest, and passes local Test A:
 
 ```sh
-openclaw devices list
-openclaw devices approve <request-id>
-openclaw nodes pending
-openclaw nodes approve <request-id>
-openclaw nodes status
-openclaw nodes describe --node <node-id>
+VERA_REMOTE_EXTENSION_PROXY_SMOKE=1 \
+OPENCLAW_EXTENSION_GATEWAY_URL='wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension' \
+OPENCLAW_EXTENSION_PAIRING_SECRET='<private-64-character-lowercase-hex-secret>' \
+pnpm test:staging:remote-extension-proxy
 ```
 
-5. Create/select a dedicated profile named `vera-zillow`, sign in manually, and register only the non-secret node/profile identifiers in Vera with `pnpm openclaw:register-node`.
-6. Keep user/source controls disabled until the exact node, profile, URL, version, and `browser.proxy` capability have been reviewed.
+The probe checks unrelated-route denial, wrong-secret denial, the exact WSS upgrade, selected relay
+subprotocol, a bounded stable connection, and client close behavior. Its output contains no host or
+secret. It intentionally reports Maritime payload and idle-timeout limits as requiring separate
+private provider evidence because a short connection test cannot prove those limits.
 
-Never ask Vera, Maritime, OpenClaw automation, an LLM, or Codex to type or store a marketplace password. `browser.proxy` is admin-sensitive and must be approved only for this dedicated founder node/profile after reviewing the exact declared surface. Never approve `system.run`, filesystem, camera, microphone, notification, shell, compose, send, apply, payment, upload, or download commands for Vera's browser node.
-
-## Health and incompatibility
-
-Gateway deployment status is reconciled through Maritime. Browser node heartbeat, pairing, capability approval, selected profile, and version are stored as non-secret Vera state. An offline or stale node defers the job visibly. Pairing, capability, login, 2FA, CAPTCHA, consent, challenge, stale snapshot, layout uncertainty, or version mismatch becomes a manual-action state.
-
-Upgrade the gateway first, then the node. Before changing the pin, review upstream release notes, the native pairing/browser-proxy contract, security advisories, serialization tests, and the live opt-in smoke test. A version outside Vera's exact pin is incompatible even if OpenClaw offers an N-1 protocol window.
-
-## Revocation and rollback
-
-Revoke a node without deleting Vera evidence:
+Before accepting internet exposure, also run both audits in the dedicated Gateway environment and
+store only sanitized report references and hashes outside Git:
 
 ```sh
-openclaw nodes remove --node <node-id>
+openclaw security audit
+openclaw security audit --deep
 ```
 
-Disable Vera's browser and source kill switches before gateway maintenance. Redeploy the reviewed pin if configuration drift occurs:
+Materialize the effective Gateway config outside Git at mode `0600` before either audit. A
+read-only checkout mount is normally mode `0644` and will correctly trigger OpenClaw's
+`fs.config.perms_world_readable` finding; that dry-run result is not acceptable live evidence. The
+deep audit must run while the dedicated Gateway is healthy so its loopback probe succeeds.
 
-```sh
-maritime deploy vera-openclaw-gateway --source docker --image ghcr.io/openclaw/openclaw@sha256:99546785a121ccac065263d4b609c3dc08a396d260b20c837722e7998be0a6ee --wait
-maritime restart vera-openclaw-gateway
-```
+Any exposed Control UI or unrelated HTTP/WebSocket surface, pairing bypass, subprotocol loss,
+unstable connection, undocumented/unbounded proxy behavior, audit finding, shared Gateway, or
+unminimized snapshot is `no_go`.
 
-Do not restore the historical Maritime template image. A different rollback version requires its own recorded security review.
+## Revocation, shutdown, and privacy
 
-## Privacy boundary
+Emergency shutdown order:
 
-The local browser profile and authenticated session artifacts remain on the founder's machine. The selected page's minimal content needed to produce a structured `RawListing` may traverse the configured OpenClaw gateway and Vera worker. Vera does not persist full screenshots, snapshots, cookies, storage, profile paths, or raw private pages by default. Logs and audit events carry only correlation IDs, hashes, safe state codes, and non-secret deployment references.
+1. set Vera's global browser kill switch;
+2. disable `VERA_REMOTE_EXTENSION_SNAPSHOT_ENABLED`;
+3. revoke the dedicated browser-specific Maritime API key;
+4. rotate/revoke the extension pairing secret;
+5. stop the dedicated Gateway; and
+6. confirm the public route no longer accepts WSS connections.
+
+The browser session, cookies, storage, and profile remain inside Chrome and are never uploaded as
+credentials. Selected shared-tab content crosses the internet-reachable Gateway boundary, so Vera
+minimizes it before returning it. Full snapshots, screenshots, cookies, storage, profile paths, raw
+target/node identifiers, marketplace credentials, and page instructions are prohibited in logs,
+database records, ordinary evidence, and final release summaries.
+
+The legacy `openclaw.json5` and `node.openclaw.json5` files remain only for regression protection of
+the disabled historical current-tab path. They are not the founder remote-extension architecture
+and must not be used to provision this spike.

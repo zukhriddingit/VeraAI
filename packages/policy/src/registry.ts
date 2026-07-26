@@ -109,7 +109,10 @@ const KNOWN_BROWSER_DOMAINS = [
   { domain: "facebook.com", source: "facebook_marketplace" },
   { domain: "craigslist.org", source: "craigslist" },
   { domain: "apartments.com", source: "apartments_com" }
-] as const satisfies readonly { domain: string; source: Exclude<ListingSourceLabel, "other"> }[];
+] as const satisfies readonly {
+  domain: string;
+  source: Exclude<ListingSourceLabel, "other" | "rentcast">;
+}[];
 
 function freezeManifest(manifest: SourcePolicyManifest): SourcePolicyManifest {
   Object.freeze(manifest.capabilities);

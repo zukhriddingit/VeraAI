@@ -1,9 +1,12 @@
 # Privacy operations
 
 Status: founder-release runbook
-Reviewed: 2026-07-23
+Reviewed: 2026-07-25
 
-This document describes the data Vera actually handles. It is an operator runbook, not a claim that a local browser session makes the entire capture local. The founder release has one founder account, one Vera web instance, one Vera worker, one managed PostgreSQL database, one existing Maritime-hosted OpenClaw gateway, and one explicitly paired local browser node/profile.
+This document describes the data Vera actually handles. Founder core has no browser Gateway. The
+separate browser connectivity spike uses one founder account, one dedicated per-user
+Maritime-hosted OpenClaw Gateway, and the official Chrome extension connected directly over WSS.
+It has no local OpenClaw installation, node, CLI, daemon, Companion, or Vera agent.
 
 ## Data inventory and location
 
@@ -12,8 +15,9 @@ This document describes the data Vera actually handles. It is an operator runboo
 | Vera identity and session state | Vera web | Browser to Vera over HTTPS | PostgreSQL | Server session cookie is secure, HTTP-only, and SameSite=Lax in production. No access token is stored in browser persistent storage. |
 | Search profile, shortlist state, and listing decisions | Vera user | Browser to Vera over HTTPS | PostgreSQL | Tenant-owned. Money is integer minor units; persisted instants are `timestamptz`. |
 | Listing source evidence and provenance | Deterministic fixture in the explicit offline demo only; hosted user capture, Gmail alert, approved API, or founder browser capture | Connector to Vera worker | PostgreSQL for hosted data; isolated SQLite for the deterministic demo | Raw evidence, source records, provenance, and activity history are append-only. The hosted connector composition and policy seed exclude fixture acquisition. Contact data is excluded from normal logs and audit metadata. |
-| Marketplace password, cookie, local/session storage, profile, and password-manager data | Dedicated user-controlled browser profile | Must remain on the local node | Local machine only | Vera never asks for, types, uploads, stores, logs, or backs up these artifacts. Manual login, reauthentication, 2FA, CAPTCHA, and consent remain manual. |
-| Current-tab capture content | Exact allowlisted tab in the local profile | Local node through the configured OpenClaw gateway to the Vera worker | Accepted minimal listing evidence in PostgreSQL | The bounded result may include title, exact canonical URL, listing text, a small scalar metadata map, and hashes. It excludes screenshots, snapshots, tab lists, cookies, storage, profile paths, and CDP credentials. Page content therefore is not purely local. |
+| Marketplace password, cookie, local/session storage, profile, and password-manager data | User-controlled Chrome profile | Must remain inside Chrome | Local machine only | Vera never asks for, types, uploads, stores, logs, or backs up these artifacts. Manual login, reauthentication, 2FA, CAPTCHA, and consent remain manual. |
+| Remote-extension consent-tab content | One tab explicitly placed in the OpenClaw tab group | Chrome extension over WSS to the dedicated per-user Gateway; minimized result to Vera | Not accepted as listing evidence; connectivity response is ephemeral | The result contains only page origin, sanitized title, at most 24 bounded accessibility lines, safe counts, UTC capture time, and hashes. Full snapshots, screenshots, tab lists, target IDs, query strings, paths, cookies, storage, profile paths, contacts, and credentials are rejected. |
+| Legacy local-node current-tab content | Disabled historical adapter | No authorized founder transport | None in the remote-extension spike | The legacy code remains for regression protection and cannot satisfy a remote-extension phase. |
 | Google connection | Google OAuth web flow | Browser redirects; server-to-Google code/token exchange | PostgreSQL | Account subject, display email, scopes, status, expiry metadata, and AES-256-GCM-encrypted refresh token only. Authorization codes and access tokens are not durable. |
 | Gmail alert state | Google Gmail API | Gmail to worker over HTTPS | PostgreSQL | Narrow sender/subject/label query state, last successful history marker, external message ID, and content/idempotency hashes. Full mailbox messages are not stored as OAuth state or audit data. |
 | Calendar availability | Google free/busy API | Calendar to Vera web/worker over HTTPS | PostgreSQL | Only primary-calendar check provenance, interval count/hash, state, time, and rule provenance. Raw busy intervals and event details are not persisted. |
@@ -23,7 +27,10 @@ This document describes the data Vera actually handles. It is an operator runboo
 | Application logs and metrics | Web, worker, PostgreSQL client, adapters | Runtime to configured logging/monitoring service | Hosted logging/monitoring service | Recursive sanitizer removes secret keys, contacts, bearer values, query strings, and bounded nested content. Metrics use a closed label vocabulary and never user, listing, source, URL, or error-text labels. |
 | Backups | Managed PostgreSQL | Managed provider snapshot/export path | Managed backup service or encrypted operator storage | Treat as private production data even when application credentials are encrypted. Never place dumps in Git, tickets, chat, or ordinary artifact storage. |
 
-The OpenClaw gateway is a transit boundary, not a credential vault. Its exact hosted log, diagnostic, and service-retention settings must be verified against the existing Maritime deployment before founder beta. Until verified, use sanitized capture fixtures for staging evidence and do not claim that page content is never retained by the platform.
+The internet-reachable OpenClaw Gateway is a transit boundary, not a credential vault. Its hosted
+log, diagnostic, proxy, and service-retention behavior must be verified against the dedicated
+deployment before browser acceptance. Until verified, do not enable the spike or claim that selected
+page content is never retained by the platform.
 
 ## Retention and cleanup
 
@@ -57,7 +64,10 @@ Do not run a broad database dump as a user export. Do not expose another user's 
 There is no self-service account-deletion endpoint. A privacy deletion is a separately approved maintenance operation, not a normal repository mutation and not an excuse to weaken append-only enforcement.
 
 1. Verify the exact founder UUID twice and obtain a fresh, explicit approval naming the production environment and deletion scope.
-2. Enable global/per-user kill switches, stop user schedules, cancel safe queued work by policy, and revoke the paired browser node/profile authorization. Local browser-profile deletion remains a user-controlled local action.
+2. Enable global/per-user kill switches, stop user schedules, cancel safe queued work by policy,
+   revoke the dedicated browser API key and extension pairing secret, and stop the user's dedicated
+   Gateway. Removing the consent tab and browser-profile deletion remain user-controlled local
+   actions.
 3. For Google, acquire the same database-backed integration refresh lease used by refresh. Attempt provider revocation first, then delete Vera's encrypted refresh-token material regardless of provider response. Record only the safe outcome and manual Google-account recovery link if revocation is unconfirmed.
 4. Remove Web Push subscriptions and revoke provider-side notification credentials where supported.
 5. Produce a pre-delete manifest containing only owner-scoped counts and hashes. A second operator or delayed re-verification must confirm the UUID and scope before execution.
@@ -71,8 +81,9 @@ The absence of self-service export/deletion is accepted only for the single-foun
 
 - PostgreSQL unavailable: `/api/health` may remain live, `/api/ready` fails, writes stop, and Vera does not fall back to SQLite or memory.
 - Maritime unavailable: canonical jobs remain queued in PostgreSQL. Only safe wake/status operations retry; the web process does not invent a second scheduler.
-- OpenClaw gateway unavailable or restarting: the job remains retryable/deferred and never becomes an empty capture.
-- Browser node stale/offline: state is `deferred_local_node_offline`; no RawListing or success event is created and no source cursor advances.
+- OpenClaw Gateway or extension unavailable: the request returns a typed safe failure and never
+  becomes an empty snapshot or RawListing. Legacy `deferred_local_node_offline` behavior remains a
+  regression invariant, not the selected architecture.
 - Google revoked/expired: connection becomes reconnect-required. Gmail failure is not an empty mailbox; Calendar failure is not a conflict-free interval.
 - Notification provider unavailable: delivery remains idempotently queued/retryable and may move to digest; it is not recorded as delivered.
 - Logging/metrics unavailable: product work must not block on telemetry, but the outage is operationally visible and the runtime must not buffer unbounded payloads.
@@ -81,7 +92,8 @@ The absence of self-service export/deletion is accepted only for the single-foun
 
 1. Activate the narrowest kill switch; use the global browser/integration/schedule/notification switches for uncertain scope.
 2. Stop new dispatch and provider work while preserving canonical PostgreSQL and sanitized audit evidence.
-3. Revoke the affected Google grant, Maritime credential, OpenClaw gateway token/node pairing, Web Push subscription, session, or encryption key.
+3. Revoke the affected Google grant, dedicated Maritime browser credential, OpenClaw Gateway
+   token/extension pairing secret, Web Push subscription, session, or encryption key.
 4. Rotate through protected operator tooling. Never paste raw secrets, browser artifacts, page snapshots, database URLs, or provider payloads into chat or tickets.
 5. Preserve source commit, image/config digests, safe correlation IDs, hashes, affected time range, and provider audit references.
 6. If an application-encryption key is affected, block decrypting flows, introduce a new key ID, re-encrypt through a separately reviewed procedure, verify every envelope, and retain the old key until no row references it.
@@ -110,7 +122,7 @@ Before founder beta, record without secrets:
 - actual managed PostgreSQL backup retention and one provider restore rehearsal;
 - runtime versus migration database roles and grants;
 - actual Maritime log/diagnostic retention;
-- existing Maritime/OpenClaw deployment and immutable version identities;
-- least-privilege OpenClaw tool/node/profile configuration;
+- dedicated Maritime/OpenClaw deployment and immutable version identities;
+- least-privilege OpenClaw tool, extension-profile, pairing, and per-user Gateway configuration;
 - sanitized positive and failure-path staging results;
 - verified Web Push provider behavior, or keep production push disabled.

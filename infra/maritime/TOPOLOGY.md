@@ -16,30 +16,39 @@ flowchart LR
 ```
 
 Founder core uses one region, one authenticated hosted web instance, one private Maritime worker,
-one managed PostgreSQL database, and no OpenClaw gateway or browser node. The worker requires only
-its exact worker agent ID and scoped Maritime API key. It exposes no public application endpoint.
-
-PostgreSQL owns identity, ownership, source policy, job state, dispatch attempts, schedules, results,
-notification delivery state, and audit history. Maritime state is execution evidence only. The
-worker serves health/readiness/metrics on its agent-local port and has no application job-invocation
-endpoint; the platform's secret invoke webhook is not a Vera authorization surface.
+one managed PostgreSQL database, and no OpenClaw browser Gateway or extension connection. The worker
+requires only its exact worker agent ID and scoped Maritime API key. It exposes no public
+application endpoint.
 
 The browser global kill switch remains set. Browser controls cannot be enabled through the
 authenticated UI/API, browser SourceJobs deny before dispatch, production schedule kinds contain no
-browser monitoring, gateway variables are absent, and no public browser endpoint exists.
+browser monitoring, browser-Gateway variables are absent, and no public browser endpoint exists.
+The remote-extension spike cannot satisfy any founder-core browser-disabled phase.
 
 ## Blocked `founder_browser_experimental`
 
-The experimental profile would add the pinned OpenClaw gateway and founder-controlled local
-node/profile to every founder-core capability. It remains `no_go` under ADR 0012, so the following
-is a non-deployable target architecture, not current staging:
+ADR 0013 defines this connectivity-only target:
 
 ```mermaid
 flowchart LR
-  V["Private Vera worker"] -. "reviewed TLS WSS route missing" .-> G["Pinned OpenClaw gateway"]
-  G -. "paired node command" .-> N["Founder-controlled local node"]
+  U["Authenticated founder"] --> W["Hosted Vera snapshot route"]
+  W -->|"fixed read-only request"| M["Maritime API"]
+  M --> G["Dedicated per-user OpenClaw Gateway\n2026.7.1 immutable digest"]
+  E["Official Chrome extension\none consent tab group"] -->|"outbound WSS\n/browser/extension"| G
+  G -->|"minimized snapshot only"| W
 ```
 
-No positive browser evidence, manual record, N/A result, or core release decision may make that
-profile eligible. A future ADR must resolve ingress, authentication, exposure, pairing, narrow
-command scope, shutdown, and multi-user isolation before the profile registry can change.
+There is no local OpenClaw installation, node, CLI, daemon, Companion, or Vera agent. Only the
+official Chrome extension runs on the founder's machine. Each Vera user requires a separate Gateway
+and credential set.
+
+The endpoint is internet reachable. Control UI and unrelated surfaces must be unavailable, pairing
+authentication is mandatory, and only `/browser/extension` may be exposed. The repaired container
+places an exact-path filter on public port `18789` and binds the general Gateway to loopback port
+`18790`; its replacement image has not been published. The profile remains
+`no_go` under `remote_extension_live_acceptance_pending` until its entire remote-extension phase
+set has accepted private evidence, including proxy behavior, route isolation, both security audits,
+one minimized shared-tab snapshot, non-interaction enforcement, revocation, and shutdown.
+
+No connectivity result authorizes Zillow, Apartments.com, Facebook Marketplace, broad discovery,
+navigation, typing, messaging, form submission, upload, download, application, or payment.

@@ -1,0 +1,116 @@
+# ADR 0013: Founder browser direct remote extension
+
+Status: target architecture retained; replacement route-isolated image pending
+
+Date: 2026-07-25
+
+Supersedes: ADR 0012 for the `founder_browser_experimental` target architecture only
+
+## Context
+
+ADR 0012 rejected an undocumented Maritime-to-local-node ingress design. OpenClaw `2026.7.1`
+subsequently introduced the documented direct remote-Gateway extension topology. The founder can
+install the official Chrome extension, place selected tabs in the OpenClaw tab group, and connect
+outbound over WSS to `/browser/extension` without installing OpenClaw, a node, a CLI, a daemon,
+Maritime Companion, or a local Vera agent.
+
+The OpenClaw route authenticates a host-local pairing secret from
+`Sec-WebSocket-Protocol`, rejects query-string credentials, checks the Chrome-extension origin,
+and preserves the tab group as the consent boundary.
+
+Maritime documents public HTTPS port exposure, but does not document WebSocket upgrades,
+`Sec-WebSocket-Protocol` preservation, route filtering, payload limits, idle timeouts, or
+connection stability. Those properties cannot be assumed from the HTTPS feature.
+
+## Decision
+
+Adopt the direct remote extension topology for a founder-only connectivity spike:
+
+```text
+authenticated founder
+  -> Vera server
+  -> dedicated per-founder Maritime OpenClaw Gateway
+  <- outbound WSS from official OpenClaw Chrome extension
+  <- exactly one tab explicitly placed in the OpenClaw tab group
+  -> deterministic snapshot-only Vera plugin
+  -> minimized schema-validated result
+```
+
+Use OpenClaw `2026.7.1` or a separately reviewed later release. The initial immutable image is:
+
+```text
+ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c
+```
+
+The existing RentCast analysis agent and `2026.6.33` legacy local-node configuration remain
+separate and unchanged.
+
+Each Vera user requires an isolated Gateway, state volume, extension pairing secret, Gateway
+credential, Maritime agent ID, and server runtime key. A Gateway may not be shared between
+unrelated renters.
+
+The public surface must expose only the extension route. The Control UI, Canvas, A2UI, model HTTP
+endpoints, tools HTTP endpoint, main Gateway WebSocket, terminal, channels, cron, ACP, commands,
+nodes, and all unrelated routes remain unavailable or denied.
+
+The built-in browser tool is denied to the model. A Vera plugin exposes one empty-input tool. It
+uses only GET requests against the fixed loopback `chrome` profile, requires exactly one shared
+tab, requests one bounded snapshot, and minimizes it before returning. It accepts no URL, target,
+selector, action, text, or file parameter.
+
+## Live acceptance
+
+This ADR accepts the architecture, not Maritime's unverified proxy behavior. Before the spike is
+accepted as connected, private evidence must prove:
+
+1. WSS and WebSocket upgrade success on the exact route.
+2. Preservation of both extension subprotocol values.
+3. Pairing-secret enforcement and wrong-secret denial.
+4. Denial of every unrelated HTTP and WebSocket route.
+5. Bounded connection stability, payload behavior, and timeouts.
+6. One explicitly shared tab and one minimized read-only snapshot.
+7. Pairing-secret rotation, tab revocation, and Gateway shutdown.
+8. `openclaw security audit`.
+9. `openclaw security audit --deep`.
+
+Failed or missing proof remains a code/security/live-validation blocker as applicable. It is not
+converted to N/A or silently skipped.
+
+### 2026-07-25 live result
+
+The approved disposable Maritime agent exposed the Gateway at an opaque `/a/<agent-id>` prefix.
+Plain HTTPS reached `/browser/extension` and returned `426 Upgrade Required`. Upgrade requests with
+the official Chrome-extension Origin returned `403` before the OpenClaw route's expected `401`
+no-token response. The correct official pairing secret also returned `403`, with no selected relay
+subprotocol. The current public proxy therefore does not satisfy this ADR's WSS acceptance
+contract. The Gateway was not paired to a founder browser and no tab snapshot was attempted.
+
+### 2026-07-25 R2 correction
+
+Local TLS testing against the exact R1 image proved that the authenticated extension route itself
+returns `101` and selects `openclaw-extension-relay`, while missing/wrong credentials and an invalid
+Origin return `401`/`403`. It also proved that an unrelated WebSocket path receives `101`. Source
+inspection shows the exact browser route hook declines that path and OpenClaw's generic Gateway
+WebSocket then handles it.
+
+The first divergent boundary is therefore the image's route isolation; Maritime cannot be blamed
+exclusively from the R1 evidence. The smallest repair exposes an exact-path filter on container port
+`18789`, binds the general OpenClaw Gateway to loopback port `18790`, and points Vera's read-only
+snapshot plugin at OpenClaw's derived loopback browser-control port `18792`. The image uses
+OpenClaw's eager browser-control lifecycle flag so this loopback-only HTTP service exists before the
+snapshot plugin calls it. Focused local tests pass. The replacement image has not been published,
+so no Maritime retry is authorized yet.
+
+## Consequences
+
+- `founder_core` is unchanged and continues to require positive proof that browser execution is
+  disabled.
+- `founder_browser_experimental` remains release-ineligible and `no_go`.
+- The rejected R1 image and incomplete Maritime acceptance are concrete blockers, not pending
+  configuration and not an approved N/A.
+- No marketplace discovery implementation may begin until the connectivity and security evidence
+  above passes.
+- The public endpoint is treated as internet reachable even if its hostname is unguessable.
+- Full snapshots, screenshots, raw target/profile IDs, cookies, storage, and pairing credentials
+  do not enter Vera, Git, logs, or committed evidence.
+- Removing a tab from the OpenClaw tab group is immediate user revocation.

@@ -4,7 +4,12 @@ import {
   type UserRepositories,
   type UserRepositoryProvider
 } from "@vera/db";
-import type { DecisionJob, DecisionJobErrorCode, VeraUserId } from "@vera/domain";
+import {
+  ActivityEventSchema,
+  type DecisionJob,
+  type DecisionJobErrorCode,
+  type VeraUserId
+} from "@vera/domain";
 import { DecisionEvaluationError, evaluateCorpus } from "@vera/scoring";
 
 export const DECISION_LEASE_DURATION_MILLISECONDS = 90_000;
@@ -19,6 +24,10 @@ export interface DecisionWorkerDependencies {
   readonly claimedJob?: DecisionJob;
   readonly leaseOwner: string;
   readonly evaluate?: Evaluator;
+  readonly reportAuditFailure?: (failure: {
+    readonly code: "live_search_completion_audit_failed";
+    readonly decisionJobId: string;
+  }) => void;
   now(): Date;
   createId(): string;
 }
@@ -116,6 +125,63 @@ function retryAt(attemptCount: number, failedAt: Date): string {
   return new Date(failedAt.getTime() + delayMilliseconds).toISOString();
 }
 
+async function finalizeCompletedLiveSearches(
+  dependencies: DecisionWorkerDependencies,
+  job: DecisionJob,
+  payloadHash: string,
+  completedAt: string
+): Promise<void> {
+  await dependencies.repositoryProvider.transaction(dependencies.userId, async (repositories) => {
+    const events = await repositories.activityEvents.list();
+    const requested = events.filter(
+      (event) =>
+        event.action === "live_search_requested" && event.metadata.profileId === job.searchProfileId
+    );
+    for (const request of requested) {
+      const runEvents = events.filter((event) => event.correlationId === request.correlationId);
+      if (
+        runEvents.some(
+          (event) =>
+            event.action === "live_search_completed" || event.action === "live_search_failed"
+        )
+      ) {
+        continue;
+      }
+      const imports = runEvents.filter((event) => event.action === "live_listing_imported");
+      if (imports.length === 0) continue;
+      const normalized = await Promise.all(
+        imports.map((event) => repositories.sourceRecords.getByRawListingId(event.targetId))
+      );
+      if (normalized.some((record) => record === null)) continue;
+
+      await repositories.activityEvents.append(
+        ActivityEventSchema.parse({
+          id: dependencies.createId(),
+          correlationId: request.correlationId,
+          causationId: job.id,
+          actor: "system",
+          action: "live_search_completed",
+          targetType: "live_search_run",
+          targetId: request.correlationId,
+          policyDecision: "not_applicable",
+          approvalId: null,
+          payloadHash,
+          outcome: "succeeded",
+          errorCategory: null,
+          metadata: {
+            profileId: job.searchProfileId,
+            provider: "rentcast",
+            normalizedCount: normalized.length,
+            scoredCorpusRevision: job.targetCorpusRevision,
+            decisionJobId: job.id
+          },
+          occurredAt: completedAt
+        })
+      );
+    }
+  });
+}
+
 export async function processNextDecisionJob(
   dependencies: DecisionWorkerDependencies,
   signal: AbortSignal
@@ -147,6 +213,21 @@ export async function processNextDecisionJob(
       leaseOwner: dependencies.leaseOwner,
       plan
     });
+    try {
+      await finalizeCompletedLiveSearches(dependencies, job, applied.run.outputHash, computedAt);
+    } catch {
+      const failure = {
+        code: "live_search_completion_audit_failed" as const,
+        decisionJobId: job.id
+      };
+      if (dependencies.reportAuditFailure) {
+        dependencies.reportAuditFailure(failure);
+      } else {
+        process.emitWarning("Live-search completion audit reconciliation failed.", {
+          code: failure.code
+        });
+      }
+    }
     return {
       status: "completed",
       jobId: job.id,

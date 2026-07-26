@@ -18,16 +18,17 @@ flowchart LR
   W -->|"agent-ID wake only"| M["Maritime control plane"]
   M --> K["Vera worker · one instance"]
   K --> P
-  K -. "browser staging blocked" .-> O["Pinned OpenClaw gateway · not deployed"]
-  O -. "no approved WSS route" .-> N["Founder local node/profile"]
-  N -. "manual login; local cookies" .-> S["Exact reviewed current listing tab"]
+  W -. "connectivity spike blocked" .-> O["Dedicated per-user OpenClaw Gateway · not deployed"]
+  E["Official Chrome extension"] -. "direct outbound WSS" .-> O
+  E -. "one explicit consent tab" .-> S["Shared browser tab"]
 ```
 
-The founder-staging topology is one region, one web instance, one Maritime worker, and one managed
-PostgreSQL database. The founder-controlled local node/profile remains local; no OpenClaw gateway is
-deployed for browser staging because ADR 0012 selects the explicit ingress block. Maritime is the
-primary execution and trigger plane, while PostgreSQL remains canonical. Scheduled browser polling
-remains disabled.
+The founder-core topology is one region, one web instance, one Maritime worker, and one managed
+PostgreSQL database with browser execution disabled. ADR 0013 separately selects a dedicated
+per-user Maritime Gateway plus the official direct-WSS Chrome extension for a connectivity-only
+spike. It requires no local OpenClaw component and remains undeployed and `no_go` pending proxy and
+security acceptance. Maritime is the primary execution plane, while PostgreSQL remains canonical.
+Scheduled browser polling remains disabled.
 
 ## Workspace boundaries
 
@@ -97,41 +98,41 @@ Acquisition mode and policy state remain independent:
 
 Connectors declare supported operations rather than implementing a universal interface. Discover, capture, and detail fetch are optional. Every result is schema-validated, untrusted, correlated, hashed, and idempotent. Disabled or missing policy fails closed. An offline browser node produces visible `deferred_node_offline`; it is never an empty success and never advances a cursor.
 
-### OpenClaw current-tab boundary
+### OpenClaw direct remote-extension boundary
 
-The following is the future founder-only current-tab contract, deliberately smaller than saved-search
-monitoring. It is not active in Maritime staging until ADR 0012 is superseded by a documented ingress
+The following is the founder-only connectivity contract, deliberately smaller than listing
+acquisition. It is not active in Maritime staging until every remote-extension live phase passes:
 topology:
 
 ```mermaid
 sequenceDiagram
   participant U as Authenticated founder
   participant W as Vera web
-  participant P as PostgreSQL
   participant M as Maritime control plane
-  participant K as Vera worker
-  participant G as OpenClaw gateway
-  participant N as Selected local node/profile
-  U->>W: Confirm exact current Zillow URL
-  W->>P: Approval + queued user-owned SourceJob
-  W->>P: Pending expiring dispatch (hashes only)
-  W->>M: Wake exact worker agent (no listing payload)
-  W->>P: Accept expiring hashed dispatch
-  K->>P: Claim with SKIP LOCKED and recheck policy/node/profile
-  K->>G: nodes invoke browser.proxy: GET /tabs
-  G->>N: Read selected profile current tab
-  K->>G: nodes invoke browser.proxy: GET /snapshot
-  G-->>K: One bounded untrusted evidence envelope
-  K->>P: Attempt + acceptance + RawListing + normalization + audit + completion
+  participant G as Dedicated per-user Gateway
+  participant E as Official Chrome extension
+  U->>E: Place exactly one tab in consent group
+  E->>G: Direct WSS /browser/extension with pairing subprotocol
+  U->>W: Confirm one read-only connectivity snapshot
+  W->>M: Fixed snapshot task to dedicated browser agent
+  M->>G: Invoke only vera_read_shared_tab_snapshot
+  G->>G: GET /tabs then GET /snapshot on fixed chrome profile
+  G-->>W: Origin-only minimized result plus hashes
+  W-->>U: Display sanitized connectivity result
 ```
 
-`OpenClawBrowserExecutionProvider` requires the worker-bundled CLI to report exactly `2026.6.33`, carries the gateway URL/token only in the child environment, executes with `shell:false`, and emits fixed `nodes invoke --node … --command browser.proxy` calls. Vera's application adapter can serialize only `GET /tabs` and `GET /snapshot` for the explicitly selected allowlisted profile. The worker never calls the legacy navigation method. Login, 2FA, CAPTCHA, consent, rate/bot challenge, redirect, active-URL mismatch, stale target, layout uncertainty, upload/download, camera/microphone, version mismatch, and policy uncertainty are typed non-success states.
+OpenClaw `2026.7.1` is the first reviewed release supporting this direct remote topology. One
+dedicated plugin accepts no target/action input, requires exactly one extension-shared tab, calls
+fixed loopback `GET /tabs` and `GET /snapshot`, reduces the URL to its origin, strips interactive and
+sensitive content, and returns bounded lines plus hashes. The hosted route requires an authenticated
+founder, same-origin request, four explicit confirmations, a separate browser-Gateway key/agent ID,
+and the global kill switch to be cleared. It creates no SourceJob, RawListing, cursor, navigation, or
+external side effect.
 
-This application restriction is not a transport-level read-only guarantee. OpenClaw `2026.6.33` does not provide a path-level allowlist within native `browser.proxy`, so another authorized proxy caller could exercise broader browser operations. The reviewed gateway/node configuration limits the effective node command set to `browser.proxy`, selects one profile, disables evaluation, and keeps the feature disabled and founder-only by default. A narrower node-side capture command is required before multi-user browser enrollment.
-
-The hosted authority stores five independent control layers: process-wide system kill switch, per-user browser enablement, per-user Zillow-source enablement, per-node disablement, and per-profile disablement. `browser_capture_acceptances` provides one immutable acceptance per user/job and one per invocation key. Acceptance is in the same transaction as immutable raw import, normalization enqueue, redacted audit, and job completion. Provider I/O occurs before that transaction.
-
-The current founder enrollment helper synchronizes a manually verified OpenClaw node/profile into Vera and gives it a five-minute heartbeat window. It does not pair or grant OpenClaw capability. Maritime deployment health is reconciled independently. A signed continuous node-enrollment channel remains a prerequisite before broader multi-user enrollment.
+The disabled `OpenClawBrowserExecutionProvider`/2026.6.33 local-node path remains only for regression
+protection. It is not the selected founder architecture and cannot satisfy a remote-extension phase.
+Source-specific discovery remains unimplemented until the connectivity spike, proxy constraints,
+pairing, route isolation, both security audits, revocation, and shutdown all pass.
 
 ### Maritime durable execution
 
@@ -163,7 +164,19 @@ Existing domain objects for canonical listings and duplicate clusters predate ex
 ## Deployment
 
 Railway or Vercel may host the single web instance. Maritime may host the immutable Vera worker image;
-an explicit OpenClaw gateway image is future-only until the ingress ADR changes. Both web and worker
+the dedicated OpenClaw Gateway image remains blocked until remote-extension live acceptance. Both web and worker
 receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled
 release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus
 the PostgreSQL runbook for deploy, backup, restore, and rollback.
+## Founder-only live official-API search
+
+The opt-in EOD founder path is browserless: an authenticated allowlisted user starts one durable
+`official_api` source job bound to an owned SearchProfile. The server performs a bounded RentCast
+long-term-rental GET, sends only an allowlisted candidate projection to the configured OpenClaw
+agent through Maritime's authenticated chat endpoint, validates the versioned JSON response, and
+imports sanitized evidence through the existing RawListing, normalization, reconciliation, and
+scoring pipeline. Agent notes are advisory and are projected separately from deterministic Vera
+scores.
+
+No fixture connector, local OpenClaw node, browser gateway, public webhook, or shell command is
+reachable from this request path. See `docs/EOD_LIVE_AGENT_DEMO.md`.

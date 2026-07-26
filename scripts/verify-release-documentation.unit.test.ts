@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   RELEASE_DEPLOYMENT_DOCUMENTS,
   findFounderCoreRunbookViolations,
+  findRemoteExtensionDocumentationViolations,
   findReleaseDocumentationViolations
 } from "./verify-release-documentation.ts";
 
@@ -66,5 +67,38 @@ describe("founder-core staging runbook", () => {
     ]
   ])("rejects %s", (unsafe, expected) => {
     expect(findFounderCoreRunbookViolations(`${runbook}\n${unsafe}\n`)).toContain(expected);
+  });
+});
+
+describe("remote extension release documentation", () => {
+  const repositoryDocuments = Object.fromEntries(
+    RELEASE_DEPLOYMENT_DOCUMENTS.map((path) => [
+      path,
+      readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+    ])
+  ) as Record<(typeof RELEASE_DEPLOYMENT_DOCUMENTS)[number], string>;
+
+  it("records the exact pin, route, pairing boundary, isolation, audits, and no-go state", () => {
+    expect(findRemoteExtensionDocumentationViolations(repositoryDocuments)).toEqual([]);
+  });
+
+  it("rejects instructions that require the founder to install OpenClaw locally", () => {
+    expect(
+      findRemoteExtensionDocumentationViolations({
+        ...repositoryDocuments,
+        "infra/maritime/OPENCLAW.md": `${repositoryDocuments["infra/maritime/OPENCLAW.md"]}\nFounder must install OpenClaw.\n`
+      })
+    ).toContain("Remote-extension operations must not require a local OpenClaw component.");
+  });
+
+  it("requires the dedicated Browser Connector operator runbook", () => {
+    expect(
+      findRemoteExtensionDocumentationViolations({
+        ...repositoryDocuments,
+        "docs/BROWSER_CONNECTOR.md": "incomplete"
+      })
+    ).toEqual(
+      expect.arrayContaining([expect.stringContaining("Browser Connector runbook must include")])
+    );
   });
 });

@@ -52,6 +52,93 @@ function dependencies(overrides: Partial<Parameters<typeof processNextDecisionJo
 }
 
 describe("durable decision worker", () => {
+  it("records live-search completion only after normalization evidence and scoring succeed", async () => {
+    const payloadHash = "a".repeat(64);
+    repositories.activityEvents.append({
+      id: "live-request-event",
+      correlationId: "live-search-run",
+      causationId: null,
+      actor: "user",
+      action: "live_search_requested",
+      targetType: "live_search_run",
+      targetId: "live-search-run",
+      policyDecision: "authorized",
+      approvalId: null,
+      payloadHash,
+      outcome: "recorded",
+      errorCategory: null,
+      metadata: { profileId: DEMO_SEARCH_PROFILE.id, provider: "rentcast" },
+      occurredAt: now
+    });
+    repositories.activityEvents.append({
+      id: "live-import-event",
+      correlationId: "live-search-run",
+      causationId: "live-request-event",
+      actor: "connector",
+      action: "live_listing_imported",
+      targetType: "raw_listing",
+      targetId: "raw-juniper-zillow",
+      policyDecision: "authorized",
+      approvalId: null,
+      payloadHash,
+      outcome: "succeeded",
+      errorCategory: null,
+      metadata: { profileId: DEMO_SEARCH_PROFILE.id, provider: "rentcast" },
+      occurredAt: now
+    });
+    repositories.decisionJobs.ensureCorpusState(DEMO_SEARCH_PROFILE.id, now);
+    repositories.decisionJobs.enqueueCurrentRevision({
+      id: "decision-worker-live-finalize",
+      searchProfileId: DEMO_SEARCH_PROFILE.id,
+      trigger: "normalization",
+      now
+    });
+
+    await expect(
+      processNextDecisionJob(dependencies(), new AbortController().signal)
+    ).resolves.toMatchObject({ status: "completed" });
+    expect(
+      repositories.activityEvents
+        .list()
+        .filter(
+          (event) =>
+            event.correlationId === "live-search-run" && event.action === "live_search_completed"
+        )
+    ).toHaveLength(1);
+  });
+
+  it("does not fail committed scoring when completion-audit reconciliation fails", async () => {
+    repositories.decisionJobs.ensureCorpusState(DEMO_SEARCH_PROFILE.id, now);
+    const job = repositories.decisionJobs.enqueueCurrentRevision({
+      id: "decision-worker-audit-failure",
+      searchProfileId: DEMO_SEARCH_PROFILE.id,
+      trigger: "seed",
+      now
+    });
+    const reportAuditFailure = vi.fn();
+    const failingAuditProvider: UserRepositoryProvider = {
+      forUser: repositoryProvider.forUser.bind(repositoryProvider),
+      transaction: vi.fn(async () => {
+        throw new Error("synthetic audit transaction failure");
+      })
+    };
+
+    await expect(
+      processNextDecisionJob(
+        dependencies({
+          repositoryProvider: failingAuditProvider,
+          reportAuditFailure
+        }),
+        new AbortController().signal
+      )
+    ).resolves.toMatchObject({ status: "completed", jobId: job.id });
+    expect(repositories.decisionJobs.getById(job.id)?.status).toBe("succeeded");
+    expect(reportAuditFailure).toHaveBeenCalledWith({
+      code: "live_search_completion_audit_failed",
+      decisionJobId: job.id
+    });
+  });
+
   it("computes outside persistence and applies the current corpus without network access", async () => {
     repositories.decisionJobs.ensureCorpusState(DEMO_SEARCH_PROFILE.id, now);
     const job = repositories.decisionJobs.enqueueCurrentRevision({

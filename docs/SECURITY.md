@@ -368,3 +368,17 @@ Before the applicable implementation or live-integration milestone is accepted:
 - The SQLite demo is intentionally single-owner and must never receive production data.
 
 These risks are accepted for the founder topology of one region, one web instance, one worker instance, one managed PostgreSQL database, and an optional user-controlled local browser node. They must be revisited before horizontal scaling, live browser enablement, broader source coverage, or higher-sensitivity data collection.
+## Live RentCast and Maritime secrets
+
+`RENTCAST_API_KEY` and `MARITIME_API_KEY` are server-only credentials.
+`MARITIME_OPENCLAW_AGENT_ID` is also server configuration and is not returned to the client; the UI
+uses the safe label “OpenClaw on Maritime.” None of these names may use the `NEXT_PUBLIC_` prefix.
+RentCast authentication is sent only in the `X-Api-Key` header to the fixed HTTPS RentCast host.
+Maritime authentication is sent only as a Bearer header to the fixed HTTPS Maritime API host.
+Redirects are rejected, responses and timeouts are bounded, and errors/activity events contain
+only safe codes, counts, versions, latency, and hashes.
+
+The agent prompt excludes credentials, contact data, browser state, email content, full audit
+history, arbitrary URLs, and protected-class information. Listing fields are untrusted data and
+cannot supply model instructions. Provider agent phone/email fields are discarded before raw
+evidence is constructed.

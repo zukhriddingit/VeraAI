@@ -80,15 +80,18 @@ const BROWSER_DISABLED_PHASE_IDS = [
 ] as const;
 
 const BROWSER_LIVE_PHASE_IDS = [
-  "gateway_unauthenticated_request",
-  "gateway_wrong_token",
-  "founder_positive_current_tab_capture",
-  "node_offline",
-  "stale_heartbeat",
-  "manual_login_2fa_captcha_blocker",
-  "kill_switch_after_queueing",
-  "worker_crash_after_browser_invocation",
-  "gateway_restart"
+  "remote_extension_image_and_config",
+  "remote_extension_wss_upgrade",
+  "remote_extension_subprotocol_preservation",
+  "remote_extension_pairing_auth",
+  "remote_extension_route_isolation",
+  "remote_extension_connection_stability",
+  "remote_extension_payload_and_timeouts",
+  "remote_extension_security_audit",
+  "remote_extension_deep_security_audit",
+  "founder_positive_shared_tab_snapshot",
+  "founder_noninteraction_enforcement",
+  "remote_extension_revocation_and_shutdown"
 ] as const;
 
 export const RELEASE_PHASE_IDS = [
@@ -200,34 +203,69 @@ const phaseDefinitions = [
     "automated_only"
   ),
   phase(
-    "gateway_unauthenticated_request",
-    "Gateway unauthenticated request",
+    "remote_extension_image_and_config",
+    "Remote extension immutable image and hardened configuration",
     "browserCapture",
-    true
+    false,
+    "automated_only"
   ),
-  phase("gateway_wrong_token", "Gateway wrong-token request", "browserCapture", true),
+  phase("remote_extension_wss_upgrade", "Remote extension WSS upgrade", "browserCapture", true),
   phase(
-    "founder_positive_current_tab_capture",
-    "Founder positive current-tab capture",
+    "remote_extension_subprotocol_preservation",
+    "Remote extension WebSocket subprotocol preservation",
     "browserCapture",
     true
   ),
-  phase("node_offline", "Browser node offline deferral", "browserCapture", true),
-  phase("stale_heartbeat", "Browser node stale heartbeat", "browserCapture", true),
   phase(
-    "manual_login_2fa_captcha_blocker",
-    "Login, 2FA, and CAPTCHA manual blockers",
+    "remote_extension_pairing_auth",
+    "Remote extension pairing authentication and wrong-secret denial",
     "browserCapture",
     true
   ),
-  phase("kill_switch_after_queueing", "Browser kill switch after queueing", "browserCapture", true),
   phase(
-    "worker_crash_after_browser_invocation",
-    "Worker crash after browser invocation",
+    "remote_extension_route_isolation",
+    "Remote extension public route isolation",
     "browserCapture",
     true
   ),
-  phase("gateway_restart", "OpenClaw gateway restart", "browserCapture", true)
+  phase(
+    "remote_extension_connection_stability",
+    "Remote extension bounded connection stability",
+    "browserCapture",
+    true
+  ),
+  phase(
+    "remote_extension_payload_and_timeouts",
+    "Remote extension payload and timeout bounds",
+    "browserCapture",
+    true
+  ),
+  phase("remote_extension_security_audit", "OpenClaw security audit", "browserCapture", true),
+  phase(
+    "remote_extension_deep_security_audit",
+    "OpenClaw deep security audit",
+    "browserCapture",
+    true
+  ),
+  phase(
+    "founder_positive_shared_tab_snapshot",
+    "Founder positive consent-tab minimized snapshot",
+    "browserCapture",
+    true
+  ),
+  phase(
+    "founder_noninteraction_enforcement",
+    "Founder consent-tab non-interaction enforcement",
+    "browserCapture",
+    false,
+    "automated_only"
+  ),
+  phase(
+    "remote_extension_revocation_and_shutdown",
+    "Remote extension revocation and dedicated Gateway shutdown",
+    "browserCapture",
+    true
+  )
 ] as const satisfies readonly ReleasePhaseDefinition[];
 
 export const RELEASE_PHASES: Readonly<Record<ReleasePhaseId, ReleasePhaseDefinition>> =
@@ -271,7 +309,7 @@ export const RELEASE_PROFILES: Readonly<Record<ReleaseProfileId, ReleaseProfileD
       capabilities: BROWSER_CAPABILITIES,
       requiredPhaseIds: Object.freeze([...CORE_PHASE_IDS, ...BROWSER_LIVE_PHASE_IDS]),
       releaseEligible: false,
-      releaseEligibilityBlocker: "openclaw_ingress_adr_unresolved"
+      releaseEligibilityBlocker: "remote_extension_live_acceptance_pending"
     })
   });
 

@@ -62,6 +62,99 @@ describe("tenant-scoped PostgreSQL core repositories", () => {
     });
   });
 
+  it("projects sanitized RentCast evidence and agent notes without contact fields", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await insertUsers(db);
+      const repositories = createPostgresRepositoryProvider(connection).forUser(aliceId);
+      await repositories.searchProfiles.insert(DEMO_SEARCH_PROFILE);
+      const fixture = SOURCE_FIXTURES[0];
+      const queryHash = "b".repeat(64);
+      const capture = {
+        ...fixture.capture,
+        id: "raw-rentcast-projection",
+        source: "rentcast" as const,
+        acquisitionMode: "official_api" as const,
+        sourceListingId: "rentcast-projection-1",
+        sourceUrl: null,
+        captureMethod: "official_api" as const,
+        rawJson: {
+          ...(fixture.capture.rawJson as Record<string, unknown>),
+          source: "rentcast",
+          sourceListingId: "rentcast-projection-1",
+          liveEvidence: {
+            provider: "rentcast",
+            providerListingId: "rentcast-projection-1",
+            queryHash,
+            observedAt: fixture.capture.observedAt,
+            activeStatus: "Active",
+            addressComponents: {
+              line1: "10 Synthetic St",
+              line2: null,
+              city: "Boston",
+              state: "MA",
+              postalCode: "02108"
+            },
+            latitude: 42.35,
+            longitude: -71.06,
+            listedAt: fixture.capture.sourcePostedAt,
+            lastSeenAt: fixture.capture.observedAt,
+            daysOnMarket: 4,
+            mlsName: "Synthetic MLS",
+            mlsNumber: "SYNTHETIC-1",
+            listingOfficeName: "Synthetic Office",
+            listingOfficeWebsite: "https://office.example.com",
+            agentAnalysis: {
+              providerListingId: "rentcast-projection-1",
+              recommended: true,
+              confidence: 0.8,
+              summary: "Matches the explicit bedroom and budget criteria.",
+              strengths: ["Within the stated maximum rent."],
+              watchouts: ["Pet policy is unknown."],
+              missingFacts: ["Required recurring fees."]
+            }
+          }
+        },
+        captureMetadata: {
+          connectorId: "rentcast.rental-listings.v1",
+          capability: "structured_feed.read",
+          networkAccess: true,
+          untrustedContent: true,
+          browserAccess: "not_applicable"
+        }
+      };
+      const raw = (await repositories.rawListings.import(capture)).record;
+      const source = await repositories.sourceRecords.insert({
+        ...fixture.sourceRecord,
+        id: "source-rentcast-projection",
+        rawListingId: raw.id,
+        source: "rentcast",
+        sourceListingId: "rentcast-projection-1",
+        sourceUrl: null
+      });
+      await repositories.canonicalListings.insert({
+        ...CANONICAL_FIXTURES[3].listing,
+        id: "canonical-rentcast-projection",
+        duplicateClusterId: null,
+        primarySourceRecordId: source.id
+      });
+      await repositories.canonicalListings.addSource({
+        canonicalListingId: "canonical-rentcast-projection",
+        listingSourceRecordId: source.id,
+        isPrimary: true
+      });
+
+      const summary = (await repositories.canonicalListings.listSummaries())[0];
+      expect(summary?.liveEvidence).toMatchObject({
+        provider: "rentcast",
+        providerListingId: "rentcast-projection-1",
+        agentAnalysis: {
+          summary: "Matches the explicit bedroom and budget criteria."
+        }
+      });
+      expect(JSON.stringify(summary)).not.toMatch(/phone|email/iu);
+    });
+  });
+
   it("rejects a child linked to another user's parent", async () => {
     await withPostgresTestDatabase(async ({ db }) => {
       await insertUsers(db);

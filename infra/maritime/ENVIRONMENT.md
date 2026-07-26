@@ -2,10 +2,9 @@
 
 Values live in environment-specific secret stores, never in Git. Development, staging, and production use separate credentials. The web application retains its own hosted secret configuration; this table covers Maritime services.
 
-For `founder_core`, set `VERA_BROWSER_DISABLED=1` and do not define
-`VERA_MARITIME_GATEWAY_AGENT_ID`, `OPENCLAW_GATEWAY_URL`, `OPENCLAW_GATEWAY_TOKEN`, or
-`VERA_BROWSER_FOUNDER_USER_IDS`. The worker agent ID and scoped API key form the complete Maritime
-control-plane tuple for core. OpenClaw variables below apply only to
+For `founder_core`, set `VERA_BROWSER_DISABLED=1` and do not define any remote-extension or legacy
+browser-Gateway variable. The worker agent ID and scoped API key form the complete Maritime
+control-plane tuple for core. Remote-extension variables below apply only to
 `founder_browser_experimental`, which remains `no_go`.
 
 ## Vera worker
@@ -42,18 +41,32 @@ control-plane tuple for core. OpenClaw variables below apply only to
 | `VERA_LLM_MODEL`                        | no     | Explicit provider model selection.                                 |
 | `PORT`                                  | no     | Maritime-injected HTTP port; Vera defaults to 8080.                |
 
-## OpenClaw gateway
+## Dedicated per-user remote-extension Gateway
 
-| Name                     | Secret | Purpose                                                            |
-| ------------------------ | ------ | ------------------------------------------------------------------ |
-| `OPENCLAW_HEADLESS`      | no     | Enables the official headless gateway mode.                        |
-| `OPENCLAW_CONFIG_PATH`   | no     | Exact reviewed `/data/.openclaw/openclaw.json` configuration path. |
-| `OPENCLAW_GATEWAY_TOKEN` | yes    | Authenticates worker and explicitly paired node connections.       |
-| `VERA_OPENCLAW_NODE_ID`  | no     | Exact founder node selected by manual browser routing.             |
+These values must not reuse the RentCast live-search agent or its credential. Repeat this isolated
+set per Vera user; do not share one Gateway across unrelated renters.
 
-Do not set `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, channel credentials, messaging credentials, or
-other model/provider secrets on the OpenClaw gateway. Vera uses it only as an authenticated
-gateway/node-browser proxy, not as an autonomous agent.
+| Name                                                | Secret | Purpose                                                         |
+| --------------------------------------------------- | ------ | --------------------------------------------------------------- |
+| `OPENCLAW_HEADLESS`                                 | no     | Enables official headless Gateway mode.                         |
+| `OPENCLAW_CONFIG_PATH`                              | no     | Exact reviewed remote-extension configuration path.             |
+| `OPENCLAW_GATEWAY_TOKEN`                            | yes    | Protects non-extension Gateway authentication surfaces.         |
+| `OPENCLAW_EXTENSION_PAIRING_SECRET`                 | yes    | Pinned OpenClaw 2026.7.1 64-character lowercase hex secret.     |
+| `MARITIME_BROWSER_GATEWAY_API_KEY`                  | yes    | Dedicated Vera server key for this user's browser Gateway only. |
+| `MARITIME_BROWSER_GATEWAY_AGENT_ID`                 | no     | Dedicated browser Gateway agent ID for this user.               |
+| `VERA_BROWSER_GATEWAY_FOUNDER_USER_ID`              | no     | Exact Vera founder UUID bound to this Gateway.                  |
+| `VERA_REMOTE_EXTENSION_SNAPSHOT_ENABLED`            | no     | Explicit connectivity-spike flag; missing or non-`1` denies.    |
+| `VERA_REMOTE_EXTENSION_SNAPSHOT_TIMEOUT_MS`         | no     | Bounded hosted Vera request timeout.                            |
+| `VERA_REMOTE_EXTENSION_SNAPSHOT_MAX_RESPONSE_BYTES` | no     | Bounded hosted Vera response size.                              |
+
+The dedicated Gateway requires a model only to invoke Vera's one allowlisted read-only snapshot
+tool. Do not configure channels, messaging, web search/fetch, exec, filesystem, node, or unrelated
+provider credentials. Control UI and model HTTP endpoints remain disabled.
+
+The live proxy probe reads `OPENCLAW_EXTENSION_GATEWAY_URL`,
+`OPENCLAW_EXTENSION_PAIRING_SECRET`, and `VERA_REMOTE_EXTENSION_PROXY_SMOKE` only from a restricted
+operator environment. Those probe values are not web application variables and never use a
+`NEXT_PUBLIC_` prefix.
 
 Marketplace passwords, cookies, storage state, profile directories, raw snapshots, OAuth refresh tokens, and Gmail message content are prohibited Maritime environment values.
 

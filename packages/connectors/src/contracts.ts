@@ -16,6 +16,7 @@ import {
   ListingExtractionFieldNameSchema,
   ListingExtractionSchema,
   ListingSourceLabelSchema,
+  LiveListingEvidenceSchema,
   ListingSourceRecordSchema,
   MoneyCentsSchema,
   NormalizationJobStateSchema,
@@ -114,7 +115,8 @@ export const StructuredListingInputSchema = z
       .url()
       .max(2_048)
       .regex(/^https?:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?:[/?][^\s#]*)?$/u)
-      .nullish()
+      .nullish(),
+    liveEvidence: LiveListingEvidenceSchema.nullish()
   })
   .strict();
 

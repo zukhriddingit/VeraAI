@@ -52,7 +52,7 @@ changes from disabled.
 | Maritime worker/direct capture | `maritime_worker_dispatch`, `direct_capture`, `duplicate_dispatch`, `replayed_result`, `worker_restart_recovery` | same |
 | Web Push | `web_push_delivery`, `web_push_deduplication`, `quiet_hours`, `provider_outage` | same |
 | Gmail/Calendar | `gmail_readonly_verification`, `calendar_freebusy_and_approved_hold` | same |
-| Browser boundary | `browser_global_kill_switch_enabled`, `browser_founder_capability_disabled`, `browser_source_jobs_rejected_before_dispatch`, `browser_gateway_not_required`, `browser_endpoint_not_exposed`, `browser_monitoring_not_scheduled`, `browser_activation_not_exposed` | `gateway_unauthenticated_request`, `gateway_wrong_token`, `founder_positive_current_tab_capture`, `node_offline`, `stale_heartbeat`, `manual_login_2fa_captcha_blocker`, `kill_switch_after_queueing`, `worker_crash_after_browser_invocation`, `gateway_restart` |
+| Browser boundary | `browser_global_kill_switch_enabled`, `browser_founder_capability_disabled`, `browser_source_jobs_rejected_before_dispatch`, `browser_gateway_not_required`, `browser_endpoint_not_exposed`, `browser_monitoring_not_scheduled`, `browser_activation_not_exposed` | `remote_extension_image_and_config`, `remote_extension_wss_upgrade`, `remote_extension_subprotocol_preservation`, `remote_extension_pairing_auth`, `remote_extension_route_isolation`, `remote_extension_connection_stability`, `remote_extension_payload_and_timeouts`, `remote_extension_security_audit`, `remote_extension_deep_security_audit`, `founder_positive_shared_tab_snapshot`, `founder_noninteraction_enforcement`, `remote_extension_revocation_and_shutdown` |
 
 The profile registry selects this matrix before evidence evaluation. N/A records never remove a
 phase.
@@ -362,5 +362,5 @@ capability mismatch, commit/environment/digest mismatch, implementation gap, tes
 gap, security finding, or unresolved architecture forces `no_go`.
 
 Neither allowed founder-core classification authorizes a browser-enabled beta or a multi-user
-browser beta. ADR 0012 keeps `founder_browser_experimental` `no_go` until a replacement decision is
-approved.
+browser beta. ADR 0013 supersedes ADR 0012 for `founder_browser_experimental`, but that profile
+remains `no_go` until every mandatory remote-extension live acceptance phase passes.

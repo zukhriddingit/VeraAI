@@ -231,15 +231,18 @@
         "browser_endpoint_not_exposed",
         "browser_monitoring_not_scheduled",
         "browser_activation_not_exposed",
-        "gateway_unauthenticated_request",
-        "gateway_wrong_token",
-        "founder_positive_current_tab_capture",
-        "node_offline",
-        "stale_heartbeat",
-        "manual_login_2fa_captcha_blocker",
-        "kill_switch_after_queueing",
-        "worker_crash_after_browser_invocation",
-        "gateway_restart"
+        "remote_extension_image_and_config",
+        "remote_extension_wss_upgrade",
+        "remote_extension_subprotocol_preservation",
+        "remote_extension_pairing_auth",
+        "remote_extension_route_isolation",
+        "remote_extension_connection_stability",
+        "remote_extension_payload_and_timeouts",
+        "remote_extension_security_audit",
+        "remote_extension_deep_security_audit",
+        "founder_positive_shared_tab_snapshot",
+        "founder_noninteraction_enforcement",
+        "remote_extension_revocation_and_shutdown"
       ]
     },
     "resultState": {

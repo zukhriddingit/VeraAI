@@ -43,18 +43,19 @@ export default async function IntegrationsSettingsPage() {
 
       <IntegrationCards initialStatus={status} />
       <GmailIntegrationCard initialStatus={gmailStatus} />
-      <section className="settings-section" aria-labelledby="browser-agent-link-heading">
+      <section className="settings-section" aria-labelledby="remote-browser-link-heading">
         <article className="integration-card">
-          <p className="eyebrow">Unsupported founder experiment</p>
-          <h2 id="browser-agent-link-heading">Local browser agent</h2>
+          <p className="eyebrow">Founder connectivity experiment</p>
+          <h2 id="remote-browser-link-heading">Remote consent-tab connector</h2>
           <p>
-            Pair a user-owned OpenClaw node and capture one already-open, exact Zillow listing tab.
+            Pair the official Chrome extension directly to a dedicated Maritime Gateway and request
+            one minimized read-only snapshot from a tab you explicitly share.
           </p>
           <Link
             className="secondary-button compact-button"
-            href="/settings/integrations/browser-agent"
+            href="/settings/integrations/remote-browser"
           >
-            Configure browser agent
+            Open remote browser connector
           </Link>
         </article>
       </section>

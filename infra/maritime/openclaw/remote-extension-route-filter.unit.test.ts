@@ -1,0 +1,201 @@
+import { createServer } from "node:http";
+
+import { afterEach, describe, expect, it } from "vitest";
+import WebSocket, { WebSocketServer } from "ws";
+
+import { runWebSocketTransportCase } from "../../../scripts/staging/websocket-transport-probe.ts";
+
+// Plain ESM is intentional because this exact source is copied into the Gateway image.
+// @ts-expect-error The runtime module has no generated declaration file.
+import { startRemoteExtensionRouteFilter } from "./remote-extension-route-filter.mjs";
+
+interface Closable {
+  close(): Promise<void>;
+}
+
+const active: Closable[] = [];
+
+afterEach(async () => {
+  await Promise.all(active.splice(0).map(async (value) => await value.close()));
+});
+
+async function startUpstream(): Promise<{
+  readonly port: number;
+  readonly observations: Array<{
+    readonly path: string;
+    readonly origin: string | undefined;
+    readonly protocols: string | undefined;
+  }>;
+  close(): Promise<void>;
+}> {
+  const observations: Array<{
+    readonly path: string;
+    readonly origin: string | undefined;
+    readonly protocols: string | undefined;
+  }> = [];
+  const server = createServer((_request, response) => {
+    response.writeHead(404, { Connection: "close" });
+    response.end();
+  });
+  const webSockets = new WebSocketServer({
+    noServer: true,
+    handleProtocols(protocols) {
+      return protocols.has("openclaw-extension-relay") ? "openclaw-extension-relay" : false;
+    }
+  });
+  server.on("upgrade", (request, socket, head) => {
+    observations.push({
+      path: request.url ?? "",
+      origin: request.headers.origin,
+      protocols: request.headers["sec-websocket-protocol"]
+    });
+    webSockets.handleUpgrade(request, socket, head, (webSocket) => {
+      webSockets.emit("connection", webSocket, request);
+    });
+  });
+  webSockets.on("connection", (webSocket) => {
+    webSocket.on("message", (value, binary) => {
+      webSocket.send(value, { binary });
+    });
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      resolve();
+    });
+  });
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Upstream did not bind.");
+
+  return {
+    port: address.port,
+    observations,
+    async close() {
+      for (const client of webSockets.clients) client.terminate();
+      await new Promise<void>((resolve, reject) => {
+        webSockets.close((webSocketError) => {
+          if (webSocketError) {
+            reject(webSocketError);
+            return;
+          }
+          server.close((serverError) => (serverError ? reject(serverError) : resolve()));
+        });
+      });
+    }
+  };
+}
+
+describe("remote extension route filter", () => {
+  it("forwards only the exact extension route without rewriting upgrade fields", async () => {
+    const upstream = await startUpstream();
+    active.push(upstream);
+    const filter = await startRemoteExtensionRouteFilter({
+      listenHost: "127.0.0.1",
+      listenPort: 0,
+      upstreamHost: "127.0.0.1",
+      upstreamPort: upstream.port
+    });
+    active.push(filter);
+
+    const origin = "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    const observation = await runWebSocketTransportCase({
+      caseId: "route-filter-exact",
+      url: `ws://127.0.0.1:${filter.port}/browser/extension`,
+      origin,
+      protocols: ["openclaw-extension-relay", "harmless-two"],
+      credentialProtocolIndexes: [],
+      stabilityMilliseconds: 50,
+      timeoutMilliseconds: 1_000,
+      payload: new Uint8Array([1, 2, 3])
+    });
+
+    expect(observation).toMatchObject({
+      reachedOpen: true,
+      httpStatus: 101,
+      selectedProtocol: "openclaw-extension-relay",
+      boundedEcho: "passed",
+      closeCode: 1000
+    });
+    expect(upstream.observations).toEqual([
+      {
+        path: "/browser/extension",
+        origin,
+        protocols: "openclaw-extension-relay,harmless-two"
+      }
+    ]);
+  });
+
+  it("rejects an unrelated WebSocket path before upstream", async () => {
+    const upstream = await startUpstream();
+    active.push(upstream);
+    const filter = await startRemoteExtensionRouteFilter({
+      listenHost: "127.0.0.1",
+      listenPort: 0,
+      upstreamHost: "127.0.0.1",
+      upstreamPort: upstream.port
+    });
+    active.push(filter);
+
+    const observation = await runWebSocketTransportCase({
+      caseId: "route-filter-unrelated",
+      url: `ws://127.0.0.1:${filter.port}/unrelated`,
+      origin: "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      protocols: ["openclaw-extension-relay"],
+      credentialProtocolIndexes: [],
+      stabilityMilliseconds: 25,
+      timeoutMilliseconds: 1_000,
+      payload: null
+    });
+
+    expect(observation).toMatchObject({ reachedOpen: false, httpStatus: 404 });
+    expect(upstream.observations).toEqual([]);
+  });
+
+  it("rejects a query-bearing extension route before upstream", async () => {
+    const upstream = await startUpstream();
+    active.push(upstream);
+    const filter = await startRemoteExtensionRouteFilter({
+      listenHost: "127.0.0.1",
+      listenPort: 0,
+      upstreamHost: "127.0.0.1",
+      upstreamPort: upstream.port
+    });
+    active.push(filter);
+
+    const status = await new Promise<number | undefined>((resolve, reject) => {
+      const webSocket = new WebSocket(
+        `ws://127.0.0.1:${filter.port}/browser/extension?profile=chrome`,
+        ["openclaw-extension-relay"]
+      );
+      webSocket.once("unexpected-response", (_request, response) => {
+        response.resume();
+        resolve(response.statusCode);
+      });
+      webSocket.once("open", () => reject(new Error("Query-bearing route opened.")));
+      webSocket.once("error", () => undefined);
+    });
+
+    expect(status).toBe(404);
+    expect(upstream.observations).toEqual([]);
+  });
+
+  it("exposes only the non-upgrading route hint over HTTP", async () => {
+    const upstream = await startUpstream();
+    active.push(upstream);
+    const filter = await startRemoteExtensionRouteFilter({
+      listenHost: "127.0.0.1",
+      listenPort: 0,
+      upstreamHost: "127.0.0.1",
+      upstreamPort: upstream.port
+    });
+    active.push(filter);
+
+    const accepted = await fetch(`http://127.0.0.1:${filter.port}/browser/extension`);
+    const rejected = await fetch(`http://127.0.0.1:${filter.port}/unrelated`);
+
+    expect(accepted.status).toBe(426);
+    expect(rejected.status).toBe(404);
+    expect(upstream.observations).toEqual([]);
+  });
+});

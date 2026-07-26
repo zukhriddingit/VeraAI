@@ -13,6 +13,7 @@ import {
   IsoDateTimeSchema,
   JobAttemptSchema,
   ListingLifecycleStateSchema,
+  LiveListingEvidenceSchema,
   ListingScoreSchema,
   ListingScoreV2Schema,
   ReminderMinutesSchema,
@@ -61,6 +62,7 @@ import {
   listingScores,
   listingSourceRecords,
   normalizationJobs,
+  rawListings,
   riskSignals,
   searchProfiles,
   sourceJobAttempts,
@@ -406,7 +408,8 @@ export function createStandardPostgresRepositories(
           canonicalListingId: canonicalListingSources.canonicalListingId,
           source: listingSourceRecords.source,
           observedAt: listingSourceRecords.observedAt,
-          sourcePostedAt: listingSourceRecords.sourcePostedAt
+          sourcePostedAt: listingSourceRecords.sourcePostedAt,
+          rawJson: rawListings.rawJson
         })
         .from(canonicalListingSources)
         .innerJoin(
@@ -414,6 +417,13 @@ export function createStandardPostgresRepositories(
           and(
             eq(canonicalListingSources.userId, listingSourceRecords.userId),
             eq(canonicalListingSources.listingSourceRecordId, listingSourceRecords.id)
+          )
+        )
+        .innerJoin(
+          rawListings,
+          and(
+            eq(listingSourceRecords.userId, rawListings.userId),
+            eq(listingSourceRecords.rawListingId, rawListings.id)
           )
         )
         .where(eq(canonicalListingSources.userId, userId));
@@ -442,6 +452,20 @@ export function createStandardPostgresRepositories(
           (left, right) => right.observedAt.getTime() - left.observedAt.getTime()
         )[0];
         const posted = freshestMembership?.sourcePostedAt ?? null;
+        const liveEvidence =
+          [...listingMemberships]
+            .sort((left, right) => right.observedAt.getTime() - left.observedAt.getTime())
+            .map((membership) => {
+              const raw =
+                typeof membership.rawJson === "object" &&
+                membership.rawJson !== null &&
+                !Array.isArray(membership.rawJson)
+                  ? (membership.rawJson as Record<string, unknown>).liveEvidence
+                  : null;
+              const parsed = LiveListingEvidenceSchema.safeParse(raw);
+              return parsed.success ? parsed.data : null;
+            })
+            .find((evidence) => evidence !== null) ?? null;
         const unknownFields = [
           ["monthly rent", listing.monthlyRentCents],
           ["recurring fees", listing.recurringFeesCents],
@@ -503,7 +527,8 @@ export function createStandardPostgresRepositories(
                   : null,
             riskIndicatorCount: currentRisks.filter(({ status }) => status === "open").length,
             highestRiskSeverity:
-              highestRiskSeverity === "informational" ? "info" : (highestRiskSeverity ?? null)
+              highestRiskSeverity === "informational" ? "info" : (highestRiskSeverity ?? null),
+            liveEvidence
           })
         );
       }

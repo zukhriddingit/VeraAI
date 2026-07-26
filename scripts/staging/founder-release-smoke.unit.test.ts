@@ -265,9 +265,9 @@ describe("founder staging report redaction", () => {
       gatewayToken: "secret-gateway-token",
       phases: [
         {
-          id: "gateway_wrong_token",
+          id: "remote_extension_pairing_auth",
           status: "failed_assertion",
-          code: "gateway_wrong_token_failed",
+          code: "remote_extension_pairing_failed",
           detail:
             "Bearer secret-gateway-token user@example.test +1 617 555 0100 postgresql://vera:secret@db.test/vera"
         }
@@ -277,7 +277,7 @@ describe("founder staging report redaction", () => {
     expect(serializeSafeSmokeReport(report)).not.toMatch(
       /secret-gateway-token|user@example\.test|617 555 0100|postgresql:\/\//u
     );
-    expect(renderSafeSmokeMarkdownReport(report)).toContain("gateway_wrong_token_failed");
+    expect(renderSafeSmokeMarkdownReport(report)).toContain("remote_extension_pairing_failed");
     expect(renderSafeSmokeMarkdownReport(report)).toContain("no_go");
   });
 });

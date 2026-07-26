@@ -22,7 +22,6 @@ import {
   type ReleasePhaseResultState,
   type ReleaseProfileId
 } from "./release-profiles.ts";
-import { runGatewayHttpSmoke, runGatewayWrongTokenSmoke } from "./gateway-http-smoke.ts";
 
 export type FounderReleasePhaseId = ReleasePhaseId;
 
@@ -456,20 +455,6 @@ async function main(): Promise<void> {
       })
     : { bundle: null, violations: ["private_evidence_path_not_configured"] };
   const phaseRunners: Partial<Record<FounderReleasePhaseId, SmokePhaseRunner>> = {};
-  if (environment.releaseProfile === "founder_browser_experimental" && environment.gatewayUrl) {
-    phaseRunners.gateway_unauthenticated_request = async () => {
-      const result = await runGatewayHttpSmoke({ gatewayUrl: environment.gatewayUrl ?? "" });
-      return result.outcome === "passed"
-        ? { status: "passed_automated", code: "gateway_unauthenticated_denied" }
-        : { status: "failed_assertion", code: "gateway_unauthenticated_failed" };
-    };
-    phaseRunners.gateway_wrong_token = async () => {
-      const result = await runGatewayWrongTokenSmoke({ gatewayUrl: environment.gatewayUrl ?? "" });
-      return result.outcome === "passed"
-        ? { status: "passed_automated", code: "gateway_wrong_token_denied" }
-        : { status: "failed_assertion", code: "gateway_wrong_token_failed" };
-    };
-  }
   const report = await runFounderReleaseSmoke({
     releaseProfile: environment.releaseProfile,
     identity: environment.identity,

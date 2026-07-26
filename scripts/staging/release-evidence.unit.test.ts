@@ -386,9 +386,9 @@ describe("founder staging external evidence", () => {
   it("allows manual evidence only for its named profile phase", () => {
     const validRecord = record("direct_capture", "passed_manual_evidence");
     expect(validateEvidenceRecord(validRecord)).toEqual([]);
-    expect(validateEvidenceRecord({ ...validRecord, phaseId: "gateway_restart" })).toContain(
-      "record.phaseId is not required by record.releaseProfile."
-    );
+    expect(
+      validateEvidenceRecord({ ...validRecord, phaseId: "remote_extension_wss_upgrade" })
+    ).toContain("record.phaseId is not required by record.releaseProfile.");
     expect(
       validateEvidenceRecord({
         ...record("release_static_readiness"),

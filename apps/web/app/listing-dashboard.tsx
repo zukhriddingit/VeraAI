@@ -27,6 +27,7 @@ type ListingState =
   | { kind: "unavailable"; message: string };
 
 const sourceNames: Record<ListingSourceLabel, string> = {
+  rentcast: "RentCast",
   zillow: "Zillow",
   facebook_marketplace: "Facebook Marketplace",
   craigslist: "Craigslist",
@@ -162,6 +163,9 @@ function ListingCard({
             {lifecycleLabel(listing.lifecycleState)}
           </span>
           <div className="listing-card-badges">
+            {listing.liveEvidence ? (
+              <span className="duplicate-badge">Real data · RentCast</span>
+            ) : null}
             {stale ? <span className="stale-badge">Stale</span> : null}
             {listing.duplicateCount > 0 ? (
               <span className="duplicate-badge" data-testid="duplicate-badge">
@@ -176,9 +180,12 @@ function ListingCard({
             <h3>{listing.title}</h3>
             <p className="listing-address">{formatAddress(listing)}</p>
           </div>
-          <div className="score-orb" aria-label={`${fitScore(listing.fitScoreBasisPoints)} fit`}>
+          <div
+            className="score-orb"
+            aria-label={`Vera fit score ${fitScore(listing.fitScoreBasisPoints)}`}
+          >
             <strong>{fitScore(listing.fitScoreBasisPoints)}</strong>
-            <small>fit</small>
+            <small>Vera fit</small>
           </div>
         </div>
 
@@ -215,6 +222,13 @@ function ListingCard({
           ) : null}
         </div>
 
+        {listing.liveEvidence?.agentAnalysis ? (
+          <div className="listing-reasons" aria-label="OpenClaw agent notes">
+            <p className="eyebrow">OpenClaw agent notes</p>
+            <p className="fit-reason">{listing.liveEvidence.agentAnalysis.summary}</p>
+          </div>
+        ) : null}
+
         <div className="listing-card-meta">
           <span>
             Posted{" "}
@@ -223,6 +237,14 @@ function ListingCard({
               : "unknown"}
           </span>
           <span>Observed {date.format(new Date(listing.freshestObservedAt))}</span>
+          {listing.liveEvidence ? (
+            <span>
+              RentCast observed {date.format(new Date(listing.liveEvidence.observedAt))}
+              {listing.liveEvidence.lastSeenAt
+                ? ` · last seen ${date.format(new Date(listing.liveEvidence.lastSeenAt))}`
+                : ""}
+            </span>
+          ) : null}
           <span>{formatLatency(listing.alertLatencySeconds)}</span>
           <span
             className={

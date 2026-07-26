@@ -206,10 +206,51 @@ export const GOOGLE_GMAIL_ALERT_MANIFEST = freezeManifest(
   })
 );
 
+/**
+ * Founder-triggered live inventory reads. This grants one bounded GET operation
+ * against RentCast's rental-listing endpoint; the separate live-mode flag and
+ * founder allowlist remain mandatory application-level controls.
+ */
+export const RENTCAST_RENTAL_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "rentcast.rental-listings.v1",
+    displayName: "RentCast long-term rental listings",
+    version: 1,
+    source: "rentcast",
+    acquisitionMode: "official_api",
+    policyState: "user_triggered_only",
+    enabled: true,
+    execution: "manual",
+    capabilities: ["structured_feed.read"],
+    allowedOperations: ["rentcast.rental_listings.search"],
+    allowedDomains: ["api.rentcast.io"],
+    allowedOrigins: ["https://api.rentcast.io/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: false,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "integrations.disabled",
+    connectorKillSwitchKey: "connectors.rentcast.rental-listings.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera maintainers",
+    reviewedAt: "2026-07-24",
+    decisionRecord: "docs/EOD_LIVE_AGENT_DEMO.md",
+    notes:
+      "Reads at most ten active long-term rental listings from an explicit founder profile. No owner records, unrelated property records, pagination, contact details, or writes.",
+    createdAt: "2026-07-24T00:00:00.000Z",
+    updatedAt: "2026-07-24T00:00:00.000Z"
+  })
+);
+
 export const INITIAL_LOCAL_MANIFESTS = Object.freeze([
   fixtureManifest,
   manualCaptureManifest,
   GOOGLE_GMAIL_ALERT_MANIFEST,
   GOOGLE_CALENDAR_MANIFEST,
+  RENTCAST_RENTAL_MANIFEST,
   ZILLOW_CURRENT_TAB_MANIFEST
 ]) satisfies readonly SourcePolicyManifest[];
