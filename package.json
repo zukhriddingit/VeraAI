@@ -56,23 +56,25 @@
     "test:staging:maritime": "VERA_MARITIME_STAGING_TEST=1 vitest run --project unit packages/connectors/src/maritime.staging.test.ts",
     "test:staging:founder-release": "tsx scripts/staging/founder-release-smoke.ts",
     "test:staging:remote-extension-proxy": "tsx scripts/staging/remote-extension-proxy-smoke.ts",
+    "test:staging:remote-extension-transport": "tsx scripts/staging/websocket-transport-probe.ts",
+    "test:staging:websocket-diagnostic": "node infra/maritime/diagnostics/websocket-diagnostic-server.mjs",
     "live-search:founder": "tsx scripts/live-search-founder.ts",
     "test:live:founder-search": "VERA_RUN_LIVE_FOUNDER_SEARCH_TESTS=1 vitest run --project unit apps/web/lib/live-founder-search.live.test.ts",
     "test:staging:gateway-http": "tsx scripts/staging/gateway-http-smoke.ts",
     "test:staging:web-push": "VERA_WEB_PUSH_STAGING_TEST=1 vitest run --project unit packages/notifications/src/web-push.staging.test.ts",
     "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures"
   },
-  "dependencies": {},
   "devDependencies": {
     "@playwright/test": "1.61.1",
     "@types/node": "24.13.3",
     "@types/react": "19.2.17",
     "@types/react-dom": "19.2.3",
-    "@vitest/coverage-v8": "4.1.10",
+    "@types/ws": "8.18.1",
     "@vera/connectors": "workspace:*",
     "@vera/db": "workspace:*",
     "@vera/domain": "workspace:*",
     "@vera/policy": "workspace:*",
+    "@vitest/coverage-v8": "4.1.10",
     "esbuild": "0.28.1",
     "eslint": "9.39.5",
     "eslint-config-next": "16.2.10",
@@ -80,6 +82,7 @@
     "prettier": "3.9.5",
     "tsx": "4.23.1",
     "typescript": "6.0.3",
-    "vitest": "4.1.10"
+    "vitest": "4.1.10",
+    "ws": "8.21.1"
   }
 }

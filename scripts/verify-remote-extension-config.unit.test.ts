@@ -24,7 +24,11 @@ function fixture() {
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
-    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8")
+    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8"),
+    diagnosticSource: readFileSync(
+      resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
+      "utf8"
+    )
   };
 }
 
@@ -132,6 +136,35 @@ describe("remote extension configuration verifier", () => {
     input.dockerfile = input.dockerfile.replace('CMD ["node", "openclaw.mjs", "gateway"]', "");
     expect(findRemoteExtensionConfigViolations(input)).toContain(
       "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+    );
+  });
+
+  it.each([
+    ["raw request headers", "\nconsole.log(request.headers);\n"],
+    ["raw WebSocket protocols", '\nwriteObservation(request.headers["sec-websocket-protocol"]);\n'],
+    ["URL query logging", "\nwriteObservation(parsed.search);\n"],
+    [
+      "unbounded payloads",
+      (source: string) =>
+        source.replace("maxPayload: options.maxPayloadBytes", "maxPayload: Infinity")
+    ],
+    ["wildcard Origins", '\nallowedOriginSchemes.includes("*");\n'],
+    [
+      "prefix path matching",
+      (source: string) =>
+        source.replace(
+          "parsed.pathname === options.acceptedPath",
+          "parsed.pathname.startsWith(options.acceptedPath)"
+        )
+    ]
+  ])("rejects diagnostic source with %s", (_label, mutation) => {
+    const input = fixture();
+    input.diagnosticSource =
+      typeof mutation === "function"
+        ? mutation(input.diagnosticSource)
+        : `${input.diagnosticSource}${mutation}`;
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "WebSocket diagnostic must enforce an exact path, closed Origins, bounded payloads, and secret-safe observations."
     );
   });
 });

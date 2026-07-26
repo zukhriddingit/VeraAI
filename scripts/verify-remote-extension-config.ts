@@ -47,6 +47,7 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly auditDeviceSource: string;
   readonly dockerfile: string;
   readonly entrypointSource: string;
+  readonly diagnosticSource: string;
 }): string[] {
   const violations: string[] = [];
   const {
@@ -57,7 +58,8 @@ export function findRemoteExtensionConfigViolations(input: {
     pluginSource,
     auditDeviceSource,
     dockerfile,
-    entrypointSource
+    entrypointSource,
+    diagnosticSource
   } = input;
 
   if (objectAt(config, "meta")?.lastTouchedVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION) {
@@ -251,6 +253,25 @@ export function findRemoteExtensionConfigViolations(input: {
     violations.push("Snapshot plugin must not reuse the RentCast live-search Maritime identity.");
   }
 
+  if (
+    /console\.log\(\s*(?:req|request)\.headers\s*\)/u.test(diagnosticSource) ||
+    /(?:console\.log|process\.stdout\.write|writeObservation)\s*\([\s\S]{0,200}(?:req|request)\.headers\[['"]sec-websocket-protocol['"]\]/iu.test(
+      diagnosticSource
+    ) ||
+    /(?:console\.log|process\.stdout\.write|writeObservation)\s*\([\s\S]{0,200}(?:parsed\.search|(?:req|request)\.url)/u.test(
+      diagnosticSource
+    ) ||
+    !diagnosticSource.includes("maxPayload: options.maxPayloadBytes") ||
+    !diagnosticSource.includes("options.maxPayloadBytes > 65_536") ||
+    /allowedOriginSchemes\.includes\(\s*["']\*["']\s*\)/u.test(diagnosticSource) ||
+    !diagnosticSource.includes("parsed.pathname === options.acceptedPath") ||
+    !diagnosticSource.includes('parsed.search === ""')
+  ) {
+    violations.push(
+      "WebSocket diagnostic must enforce an exact path, closed Origins, bounded payloads, and secret-safe observations."
+    );
+  }
+
   return violations;
 }
 
@@ -270,7 +291,11 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
-    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8")
+    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8"),
+    diagnosticSource: readFileSync(
+      resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
+      "utf8"
+    )
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));
 }
