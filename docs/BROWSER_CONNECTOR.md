@@ -68,7 +68,10 @@ The repaired container exposes an exact-path filter on public port `18789`. The 
 Gateway binds only to loopback port `18790`; the filter forwards raw upgrade bytes only for exact
 `/browser/extension` requests and rejects query-bearing or unrelated paths before OpenClaw.
 OpenClaw derives its browser-control service as Gateway port plus two, so Vera's read-only snapshot
-plugin uses loopback port `18792`; the public filter never exposes that control service.
+plugin uses loopback port `18792`. The image explicitly starts that service with OpenClaw's
+`OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1` lifecycle flag because a connected extension starts only
+the in-process relay runtime, not the HTTP listener. The public filter never exposes the control
+service.
 
 The Gateway is an internet-reachable trust boundary even when its hostname is unguessable. One
 Gateway, state volume, Gateway token, extension pairing secret, Maritime agent ID, and

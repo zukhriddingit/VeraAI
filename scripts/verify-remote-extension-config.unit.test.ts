@@ -143,6 +143,17 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it("rejects an image that leaves the loopback browser-control server unstarted", () => {
+    const input = fixture();
+    input.dockerfile = input.dockerfile.replace(
+      "OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1",
+      ""
+    );
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+    );
+  });
+
   it("rejects a publicly bound internal OpenClaw Gateway", () => {
     const input = fixture();
     const gateway = (input.config as { gateway: { port: number; bind: string } }).gateway;

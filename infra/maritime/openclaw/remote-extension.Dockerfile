@@ -41,6 +41,7 @@ COPY --chown=node:node --chmod=0444 \
   /opt/vera/plugins/vera-read-shared-tab/
 
 ENV OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json \
+  OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1 \
   OPENCLAW_HEADLESS=true \
   OPENCLAW_STATE_DIR=/data/.openclaw
 

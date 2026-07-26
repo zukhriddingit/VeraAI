@@ -99,6 +99,7 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("remote-extension-entrypoint.sh") ||
     !dockerfile.includes("remote-extension-route-filter.mjs") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
+    !dockerfile.includes("OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
     !dockerfile.includes("EXPOSE 18789") ||
     !dockerfile.includes("USER node") ||
