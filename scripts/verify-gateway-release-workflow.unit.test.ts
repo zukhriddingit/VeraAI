@@ -39,6 +39,15 @@ describe("Gateway release workflow verifier", () => {
       "approved public package"
     ],
     [
+      "repository token for the existing unlinked package",
+      (source: string) =>
+        source.replace(
+          "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
+          "password: ${{ github.token }}"
+        ),
+      "must not use the repository token"
+    ],
+    [
       "vulnerability suppression",
       (source: string) => `${source}\n# --skip-db-update\n`,
       "must not suppress"
