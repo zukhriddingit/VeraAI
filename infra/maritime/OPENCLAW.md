@@ -17,7 +17,7 @@ ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a020
 That is the base for Vera's source-bound hardened Gateway image:
 
 ```text
-ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:09df62ba4ffc152f7c7c9467fa6a84c876a392e3dac157f53a4bd08711f127b7
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c
 ```
 
 `infra/maritime/openclaw/remote-extension-image.json` records that published digest and keeps
