@@ -24,6 +24,7 @@
     "verify:release-manifest": "tsx scripts/verify-release-manifest.ts",
     "verify:worker-image-boundaries": "tsx scripts/verify-worker-image-boundaries.ts",
     "verify:worker-release-workflow": "tsx scripts/verify-worker-release-workflow.ts",
+    "verify:gateway-release-workflow": "tsx scripts/verify-gateway-release-workflow.ts",
     "verify:worker-release-promotion": "tsx scripts/verify-worker-release-promotion.ts",
     "verify:release-documentation": "tsx scripts/verify-release-documentation.ts",
     "maritime:validate": "node infra/maritime/validate.mjs",
