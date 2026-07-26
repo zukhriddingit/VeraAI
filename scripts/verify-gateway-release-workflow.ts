@@ -4,7 +4,7 @@ import { pathToFileURL } from "node:url";
 
 const ACTIONS = new Map([
   ["actions/checkout", { commit: "de0fac2e4500dabe0009e67214ff5f5447ce83dd", count: 2 }],
-  ["docker/login-action", { commit: "b45d80f862d83dbcd57f89517bcf500b2ab88fb2", count: 1 }],
+  ["docker/login-action", { commit: "b45d80f862d83dbcd57f89517bcf500b2ab88fb2", count: 2 }],
   ["docker/setup-buildx-action", { commit: "4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd", count: 1 }],
   ["docker/build-push-action", { commit: "f9f3042f7e2789586610d6e8b85c8f03e5195baf", count: 1 }],
   ["aquasecurity/setup-trivy", { commit: "81e514348e19b6112ce2a7e3ecbafe19c1e1f567", count: 1 }],
@@ -66,6 +66,17 @@ export function findGatewayReleaseWorkflowViolations(workflow: string): string[]
     "Gateway release must target only the approved public package.",
     violations
   );
+  requireText(
+    workflow,
+    "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
+    "Gateway release must use the temporary package-write credential for the existing unlinked package.",
+    violations
+  );
+  if (workflow.includes("password: ${{ github.token }}")) {
+    violations.push(
+      "Gateway release must not use the repository token for the existing unlinked package."
+    );
+  }
   requireText(
     workflow,
     "file: infra/maritime/openclaw/remote-extension.Dockerfile",
