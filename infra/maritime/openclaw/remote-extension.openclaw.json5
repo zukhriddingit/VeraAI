@@ -129,9 +129,9 @@
   },
   channels: {},
   gateway: {
-    port: 18789,
+    port: 18790,
     mode: "local",
-    bind: "lan",
+    bind: "loopback",
     controlUi: {
       enabled: false,
       allowedOrigins: [],

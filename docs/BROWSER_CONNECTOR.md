@@ -1,6 +1,6 @@
 # Vera Browser Connector
 
-Status: founder connectivity spike; current Maritime public-proxy acceptance failed closed
+Status: founder connectivity spike; local route-isolation repair awaits image publication
 
 Reviewed: 2026-07-25
 
@@ -47,7 +47,7 @@ authenticated founder
   -> Vera activity event
 ```
 
-The image is:
+The rejected R1 artifact is:
 
 ```text
 ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c
@@ -58,6 +58,15 @@ Its OCI source revision is:
 ```text
 ea95c6a2a92d12625b3db0d71f45823cf7c28b8e
 ```
+
+R2 Test A retained that identity only as evidence of the failed baseline. The artifact accepts the
+authenticated extension route, but its generic OpenClaw Gateway WebSocket also upgrades an
+unrelated path. Do not deploy it. The route-isolation repair has no published replacement image;
+`remote-extension-image.json` therefore remains `pending` with `image: null`.
+
+The repaired container exposes an exact-path filter on public port `18789`. The general OpenClaw
+Gateway binds only to loopback port `18790`; the filter forwards raw upgrade bytes only for exact
+`/browser/extension` requests and rejects query-bearing or unrelated paths before OpenClaw.
 
 The Gateway is an internet-reachable trust boundary even when its hostname is unguessable. One
 Gateway, state volume, Gateway token, extension pairing secret, Maritime agent ID, and
@@ -196,18 +205,16 @@ private artifact store under the documented retention/deletion policy.
 
 Prerequisites:
 
-1. obtain explicit approval for the internet-reachable endpoint and any container-package visibility
-   needed by Maritime;
-2. verify the image digest and OCI source revision above;
-3. create one disposable `custom`, always-on Maritime agent for one founder, with public port
-   `18789`;
-4. generate a unique `OPENCLAW_GATEWAY_TOKEN` without printing it and store it as a secret on that
-   agent; and
-5. deploy only the exact digest:
+1. obtain separate explicit approval to publish the repaired internet-facing image;
+2. record the resulting immutable digest and exact R2 source commit in
+   `remote-extension-image.json`;
+3. rerun local Test A against that digest and require exact-route-only exposure;
+4. only then obtain approval for one disposable `custom`, always-on Maritime agent with public port
+   `18789`; and
+5. generate a unique `OPENCLAW_GATEWAY_TOKEN` without printing it and store it as a secret on that
+   agent.
 
-```sh
-maritime deploy <dedicated-browser-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c --wait
-```
+There is deliberately no deploy command while the replacement image has not been published.
 
 Acceptance order:
 
@@ -260,7 +267,7 @@ N/A.
 profile stays `no_go` under `remote_extension_live_acceptance_pending` until every mandatory live
 phase passes. It can never classify a browser-enabled multi-user beta as released.
 
-## 2026-07-25 live Maritime proxy result
+## 2026-07-25 R1 and R2 transport result
 
 One explicitly approved disposable Gateway was deployed from the recorded immutable image digest.
 Plain HTTPS reached the exact prefixed extension route and returned OpenClaw's expected `426
@@ -272,9 +279,17 @@ Upgrade Required`. WebSocket controls then failed before OpenClaw pairing authen
 - the correct official 64-character OpenClaw pairing secret also returned `403`; and
 - no `101 Switching Protocols` or selected `openclaw-extension-relay` subprotocol was observed.
 
-The current Maritime public proxy therefore rejects or rewrites the official extension upgrade
-before OpenClaw authentication. WSS, subprotocol preservation, stability, reconnect, extension
-pairing, and snapshot acceptance are not proven. The spike remains `no_go`; no source browsing,
+R2 then tested the exact same immutable image behind local TLS without Maritime. The intended route
+behaved correctly: no and wrong pairing credentials returned `401`, an invalid Origin returned
+`403`, and the correct official pairing protocol opened with `101`, selected
+`openclaw-extension-relay`, and remained stable for five seconds. However, an unrelated WebSocket
+path also opened with `101`. Upstream source confirms that the browser plugin declines unrelated
+paths and OpenClaw's generic Gateway handler then accepts the upgrade.
+
+The first divergent boundary is therefore the R1 image's public route isolation, not a proven
+Maritime-only defect. Tests B through D were not run. A local repair now puts an exact-path filter
+on `18789` and the generic Gateway on loopback port `18790`; focused tests pass, but the replacement
+image has not been published or accepted. The spike remains `no_go`; no source browsing,
 shared-tab capture, or Milestone 13B work is authorized.
 
 ## Hosted-browser future option

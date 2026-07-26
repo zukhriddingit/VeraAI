@@ -12,6 +12,7 @@ const demo = read("packages/db/src/demo/index.ts");
 const remotePlugin = read("infra/maritime/openclaw/vera-read-shared-tab/index.mjs");
 const remoteConfig = read("infra/maritime/openclaw/remote-extension.openclaw.json5");
 const remoteImage = read("infra/maritime/openclaw/remote-extension-image.json");
+const remoteRouteFilter = read("infra/maritime/openclaw/remote-extension-route-filter.mjs");
 const remoteClient = read("packages/connectors/src/maritime-remote-extension-client.ts");
 const remoteService = read("apps/web/lib/remote-extension-snapshot-service.ts");
 const remoteRoute = read("apps/web/app/api/integrations/remote-browser/snapshot/route.ts");
@@ -101,9 +102,19 @@ requireText(
   "The direct remote extension image must remain immutable."
 );
 requireText(
+  remoteImage,
+  /"publicationState":\s*"pending"[\s\S]*"image":\s*null/u,
+  "The route-isolation repair must remain unpublished until approved."
+);
+requireText(
   remoteConfig,
   /controlUi:\s*\{[\s\S]*?enabled:\s*false/iu,
   "The direct remote Gateway Control UI must remain disabled."
+);
+requireText(
+  remoteConfig,
+  /gateway:\s*\{[\s\S]*?port:\s*18790[\s\S]*?bind:\s*"loopback"/iu,
+  "The general OpenClaw Gateway must remain loopback-only on port 18790."
 );
 requireText(
   remoteConfig,
@@ -124,6 +135,21 @@ rejectText(
   remotePlugin,
   /method:\s*"(?:POST|PUT|PATCH|DELETE)"/u,
   "The consent-tab tool contains a mutating loopback method."
+);
+requireText(
+  remoteRouteFilter,
+  /request\.url\s*!==\s*EXTENSION_ROUTE/u,
+  "The public browser Gateway filter must require the exact extension route."
+);
+requireText(
+  remoteRouteFilter,
+  /request\.rawHeaders/u,
+  "The public browser Gateway filter must preserve raw upgrade headers."
+);
+rejectText(
+  remoteRouteFilter,
+  /request\.url\.(?:startsWith|includes|endsWith)\(/u,
+  "The public browser Gateway filter must not use partial route matching."
 );
 requireText(
   remoteClient,

@@ -14,16 +14,17 @@ browser spike binds this immutable multi-platform image:
 ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c
 ```
 
-That is the base for Vera's source-bound hardened Gateway image:
+That was the base for the rejected R1 Gateway artifact:
 
 ```text
 ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c
 ```
 
-`infra/maritime/openclaw/remote-extension-image.json` records that published digest and keeps
-`deployableBeforeLiveProxyAcceptance: false`. A separately authorized disposable transport spike
-may deploy it only to collect the mandatory acceptance evidence. It is not an application release
-authorization.
+R2 Test A proved that the artifact's intended extension route authenticates and upgrades locally,
+but its generic OpenClaw Gateway WebSocket also accepts an unrelated route. It is retained only as
+baseline evidence and must not be deployed. The route-isolation repair's replacement image has not
+been published, so `remote-extension-image.json` is `pending` with `image: null` and
+`deployableBeforeLiveProxyAcceptance: false`.
 
 The preserved non-browser RentCast analysis path remains pinned to:
 
@@ -51,6 +52,9 @@ replace, reuse credentials from, or silently migrate the existing RentCast analy
   The hardened entrypoint accepts only `/data/.openclaw`, rejects symlinked state, normalizes
   directories to `0700` and files to `0600`, then drops permanently to UID/GID `1000` before
   OpenClaw starts.
+- `remote-extension-route-filter.mjs` listens on public container port `18789`, forwards raw
+  upgrades only for exact `/browser/extension`, and denies queries and unrelated routes. The
+  general OpenClaw Gateway listens only on loopback port `18790`.
 
 The upstream relay accepts at most 64 MiB per frame. Vera's tool is independently stricter: 64 KiB
 for tab inventory, 128 KiB for the raw accessibility snapshot, 32,768 source characters, 24
@@ -91,9 +95,17 @@ The 2026-07-25 disposable spike proved that plain HTTPS reaches this route (`426
 but WebSocket upgrade attempts with the official Chrome-extension Origin return `403` before
 OpenClaw's expected pairing-authentication response. The same result occurs with no token, a wrong
 token, and the correct official 64-character token; no `101` or selected relay subprotocol is
-observed. This is a fail-closed Maritime transport blocker.
+observed.
 
-An operator may repeat the opt-in private probe only after Maritime documents or changes the proxy:
+R2 local differential testing corrected the earlier provider-only attribution. Without Maritime,
+the correct route returned `101` with the expected protocol and authentication failures returned
+the expected `401`/`403`, but an unrelated path also received `101` through OpenClaw's generic
+Gateway fallback. The R1 artifact therefore fails route isolation before Maritime is evaluated.
+The local exact-route repair passes focused tests, but its replacement image has not been
+published. Tests B through D remain blocked.
+
+An operator may repeat the opt-in private probe only after the repaired image is explicitly
+approved, published by immutable digest, and passes local Test A:
 
 ```sh
 VERA_REMOTE_EXTENSION_PROXY_SMOKE=1 \

@@ -139,7 +139,10 @@ export function findRemoteExtensionDocumentationViolations(
     "Exact founder live-test procedure",
     "Hosted-browser future option",
     "ea95c6a2a92d12625b3db0d71f45823cf7c28b8e",
-    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c"
+    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c",
+    "rejected R1 artifact",
+    "replacement image has not been published",
+    "loopback port `18790`"
   ] as const;
   for (const phrase of browserConnectorRequired) {
     if (!browserConnector.includes(phrase)) {

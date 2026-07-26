@@ -43,7 +43,9 @@ official Chrome extension runs on the founder's machine. Each Vera user requires
 and credential set.
 
 The endpoint is internet reachable. Control UI and unrelated surfaces must be unavailable, pairing
-authentication is mandatory, and only `/browser/extension` may be exposed. The profile remains
+authentication is mandatory, and only `/browser/extension` may be exposed. The repaired container
+places an exact-path filter on public port `18789` and binds the general Gateway to loopback port
+`18790`; its replacement image has not been published. The profile remains
 `no_go` under `remote_extension_live_acceptance_pending` until its entire remote-extension phase
 set has accepted private evidence, including proxy behavior, route isolation, both security audits,
 one minimized shared-tab snapshot, non-interaction enforcement, revocation, and shutdown.

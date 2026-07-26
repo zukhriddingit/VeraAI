@@ -48,6 +48,7 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly dockerfile: string;
   readonly entrypointSource: string;
   readonly diagnosticSource: string;
+  readonly routeFilterSource: string;
 }): string[] {
   const violations: string[] = [];
   const {
@@ -59,7 +60,8 @@ export function findRemoteExtensionConfigViolations(input: {
     auditDeviceSource,
     dockerfile,
     entrypointSource,
-    diagnosticSource
+    diagnosticSource,
+    routeFilterSource
   } = input;
 
   if (objectAt(config, "meta")?.lastTouchedVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION) {
@@ -95,13 +97,17 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("seed-security-audit-device.mjs") ||
     !dockerfile.includes("--chmod=0555") ||
     !dockerfile.includes("remote-extension-entrypoint.sh") ||
+    !dockerfile.includes("remote-extension-route-filter.mjs") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
+    !dockerfile.includes("EXPOSE 18789") ||
     !dockerfile.includes("USER node") ||
     !dockerfile.includes(
       'ENTRYPOINT ["tini", "-s", "--", "/opt/vera/bin/remote-extension-entrypoint.sh"]'
     ) ||
-    !dockerfile.includes('CMD ["node", "openclaw.mjs", "gateway"]')
+    !dockerfile.includes(
+      'CMD ["node", "/opt/vera/bin/remote-extension-route-filter.mjs", "node", "openclaw.mjs", "gateway"]'
+    )
   ) {
     violations.push(
       "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
@@ -182,9 +188,10 @@ export function findRemoteExtensionConfigViolations(input: {
   }
 
   const gateway = objectAt(config, "gateway");
+  if (gateway?.mode !== "local" || gateway.port !== 18_790 || gateway.bind !== "loopback") {
+    violations.push("The internal OpenClaw Gateway must remain loopback-only on port 18790.");
+  }
   if (
-    gateway?.mode !== "local" ||
-    gateway.bind !== "lan" ||
     objectAt(gateway, "controlUi")?.enabled !== false ||
     objectAt(gateway, "terminal")?.enabled !== false
   ) {
@@ -272,6 +279,28 @@ export function findRemoteExtensionConfigViolations(input: {
     );
   }
 
+  if (
+    !routeFilterSource.includes('const EXTENSION_ROUTE = "/browser/extension"') ||
+    !routeFilterSource.includes('const PUBLIC_GATEWAY_HOST = "0.0.0.0"') ||
+    !routeFilterSource.includes("const PUBLIC_GATEWAY_PORT = 18789") ||
+    !routeFilterSource.includes('const INTERNAL_GATEWAY_HOST = "127.0.0.1"') ||
+    !routeFilterSource.includes("const INTERNAL_GATEWAY_PORT = 18790") ||
+    !routeFilterSource.includes("request.url !== EXTENSION_ROUTE") ||
+    !routeFilterSource.includes("request.rawHeaders") ||
+    !routeFilterSource.includes("SOCKET_TIMEOUT_MILLISECONDS = 40_000") ||
+    !routeFilterSource.includes('command !== "node"') ||
+    !routeFilterSource.includes('args[0] !== "openclaw.mjs"') ||
+    !routeFilterSource.includes('args[1] !== "gateway"') ||
+    /(?:console\.log|process\.stdout\.write)\s*\([\s\S]{0,200}(?:request\.(?:url|headers|rawHeaders)|sec-websocket-protocol)/iu.test(
+      routeFilterSource
+    ) ||
+    /request\.url\.(?:startsWith|includes|endsWith)\(/u.test(routeFilterSource)
+  ) {
+    violations.push(
+      "Public Gateway ingress must expose only the exact extension route and preserve its upgrade bytes."
+    );
+  }
+
   return violations;
 }
 
@@ -295,7 +324,8 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     diagnosticSource: readFileSync(
       resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
       "utf8"
-    )
+    ),
+    routeFilterSource: readFileSync(resolve(directory, "remote-extension-route-filter.mjs"), "utf8")
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));
 }

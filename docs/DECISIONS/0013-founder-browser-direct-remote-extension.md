@@ -1,6 +1,6 @@
 # ADR 0013: Founder browser direct remote extension
 
-Status: target architecture retained; current Maritime public transport rejected
+Status: target architecture retained; replacement route-isolated image pending
 
 Date: 2026-07-25
 
@@ -85,12 +85,26 @@ no-token response. The correct official pairing secret also returned `403`, with
 subprotocol. The current public proxy therefore does not satisfy this ADR's WSS acceptance
 contract. The Gateway was not paired to a founder browser and no tab snapshot was attempted.
 
+### 2026-07-25 R2 correction
+
+Local TLS testing against the exact R1 image proved that the authenticated extension route itself
+returns `101` and selects `openclaw-extension-relay`, while missing/wrong credentials and an invalid
+Origin return `401`/`403`. It also proved that an unrelated WebSocket path receives `101`. Source
+inspection shows the exact browser route hook declines that path and OpenClaw's generic Gateway
+WebSocket then handles it.
+
+The first divergent boundary is therefore the image's route isolation; Maritime cannot be blamed
+exclusively from the R1 evidence. The smallest repair exposes an exact-path filter on container port
+`18789` and binds the general OpenClaw Gateway to loopback port `18790`. Focused local tests pass.
+The replacement image has not been published, so no Maritime retry or extension snapshot is
+authorized yet.
+
 ## Consequences
 
 - `founder_core` is unchanged and continues to require positive proof that browser execution is
   disabled.
 - `founder_browser_experimental` remains release-ineligible and `no_go`.
-- The current Maritime public-proxy path is a concrete transport blocker, not pending
+- The rejected R1 image and incomplete Maritime acceptance are concrete blockers, not pending
   configuration and not an approved N/A.
 - No marketplace discovery implementation may begin until the connectivity and security evidence
   above passes.

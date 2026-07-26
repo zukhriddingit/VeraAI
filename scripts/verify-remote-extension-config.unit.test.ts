@@ -28,7 +28,8 @@ function fixture() {
     diagnosticSource: readFileSync(
       resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
       "utf8"
-    )
+    ),
+    routeFilterSource: readFileSync(resolve(directory, "remote-extension-route-filter.mjs"), "utf8")
   };
 }
 
@@ -133,9 +134,33 @@ describe("remote extension configuration verifier", () => {
 
   it("rejects an entrypoint override without an explicit Gateway command", () => {
     const input = fixture();
-    input.dockerfile = input.dockerfile.replace('CMD ["node", "openclaw.mjs", "gateway"]', "");
+    input.dockerfile = input.dockerfile.replace(
+      'CMD ["node", "/opt/vera/bin/remote-extension-route-filter.mjs", "node", "openclaw.mjs", "gateway"]',
+      ""
+    );
     expect(findRemoteExtensionConfigViolations(input)).toContain(
       "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
+    );
+  });
+
+  it("rejects a publicly bound internal OpenClaw Gateway", () => {
+    const input = fixture();
+    const gateway = (input.config as { gateway: { port: number; bind: string } }).gateway;
+    gateway.port = 18_789;
+    gateway.bind = "lan";
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "The internal OpenClaw Gateway must remain loopback-only on port 18790."
+    );
+  });
+
+  it("rejects a route filter that uses prefix matching", () => {
+    const input = fixture();
+    input.routeFilterSource = input.routeFilterSource.replace(
+      "request.url !== EXTENSION_ROUTE",
+      "!request.url?.startsWith(EXTENSION_ROUTE)"
+    );
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Public Gateway ingress must expose only the exact extension route and preserve its upgrade bytes."
     );
   });
 
