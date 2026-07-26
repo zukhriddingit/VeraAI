@@ -256,6 +256,15 @@ export function findRemoteExtensionConfigViolations(input: {
   ) {
     violations.push("Snapshot plugin must use only the fixed tabs and snapshot routes.");
   }
+  if (
+    !pluginSource.includes(
+      'const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18792"'
+    )
+  ) {
+    violations.push(
+      "Snapshot plugin must use the browser-control port derived from internal Gateway port 18790."
+    );
+  }
   if (/MARITIME_(?:API_KEY|OPENCLAW_AGENT_ID)/u.test(pluginSource)) {
     violations.push("Snapshot plugin must not reuse the RentCast live-search Maritime identity.");
   }

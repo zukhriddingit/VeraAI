@@ -95,9 +95,9 @@ WebSocket then handles it.
 
 The first divergent boundary is therefore the image's route isolation; Maritime cannot be blamed
 exclusively from the R1 evidence. The smallest repair exposes an exact-path filter on container port
-`18789` and binds the general OpenClaw Gateway to loopback port `18790`. Focused local tests pass.
-The replacement image has not been published, so no Maritime retry or extension snapshot is
-authorized yet.
+`18789`, binds the general OpenClaw Gateway to loopback port `18790`, and points Vera's read-only
+snapshot plugin at OpenClaw's derived loopback browser-control port `18792`. Focused local tests
+pass. The replacement image has not been published, so no Maritime retry is authorized yet.
 
 ## Consequences
 

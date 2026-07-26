@@ -67,6 +67,8 @@ unrelated path. Do not deploy it. The route-isolation repair has no published re
 The repaired container exposes an exact-path filter on public port `18789`. The general OpenClaw
 Gateway binds only to loopback port `18790`; the filter forwards raw upgrade bytes only for exact
 `/browser/extension` requests and rejects query-bearing or unrelated paths before OpenClaw.
+OpenClaw derives its browser-control service as Gateway port plus two, so Vera's read-only snapshot
+plugin uses loopback port `18792`; the public filter never exposes that control service.
 
 The Gateway is an internet-reachable trust boundary even when its hostname is unguessable. One
 Gateway, state volume, Gateway token, extension pairing secret, Maritime agent ID, and
@@ -288,9 +290,10 @@ paths and OpenClaw's generic Gateway handler then accepts the upgrade.
 
 The first divergent boundary is therefore the R1 image's public route isolation, not a proven
 Maritime-only defect. Tests B through D were not run. A local repair now puts an exact-path filter
-on `18789` and the generic Gateway on loopback port `18790`; focused tests pass, but the replacement
-image has not been published or accepted. The spike remains `no_go`; no source browsing,
-shared-tab capture, or Milestone 13B work is authorized.
+on `18789`, the generic Gateway on loopback port `18790`, and the derived browser-control client on
+loopback port `18792`; focused tests pass, but the replacement image has not been published or
+accepted. The spike remains `no_go`; no source browsing, shared-tab capture, or Milestone 13B work
+is authorized.
 
 ## Hosted-browser future option
 

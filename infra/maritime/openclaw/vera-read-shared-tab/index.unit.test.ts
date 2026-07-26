@@ -91,10 +91,10 @@ describe("Vera read-shared-tab OpenClaw plugin", () => {
       expect(call[1]).toMatchObject({ method: "GET", redirect: "error" });
     }
     expect(String(fetchImplementation.mock.calls[0]?.[0])).toBe(
-      "http://127.0.0.1:18791/tabs?profile=chrome"
+      "http://127.0.0.1:18792/tabs?profile=chrome"
     );
     expect(String(fetchImplementation.mock.calls[1]?.[0])).toContain(
-      "http://127.0.0.1:18791/snapshot?"
+      "http://127.0.0.1:18792/snapshot?"
     );
     expect(JSON.stringify(result)).not.toContain("raw-target-never-returned");
     expect(result.page.url).toBe("https://example.test/");

@@ -18,8 +18,9 @@ security audit has accepted private evidence.
 R2 local transport testing found that the published R1 browser image accepts an unrelated
 WebSocket path through OpenClaw's generic Gateway fallback. That digest is rejected. A focused
 route-isolation repair passes locally by exposing only an exact filter on port `18789` and moving
-the general Gateway to loopback port `18790`, but its replacement image has not been published.
-This does not affect `founder_core`; it remains a code/artifact blocker for browser experimental.
+the general Gateway to loopback port `18790`; its browser-control client uses the derived loopback
+port `18792`. The replacement image has not been published. This does not affect `founder_core`; it
+remains a code/artifact blocker for browser experimental.
 
 For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
 external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A

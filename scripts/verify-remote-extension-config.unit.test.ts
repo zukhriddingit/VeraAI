@@ -153,6 +153,14 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it("rejects a snapshot plugin wired to the pre-filter browser-control port", () => {
+    const input = fixture();
+    input.pluginSource = input.pluginSource.replace("127.0.0.1:18792", "127.0.0.1:18791");
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Snapshot plugin must use the browser-control port derived from internal Gateway port 18790."
+    );
+  });
+
   it("rejects a route filter that uses prefix matching", () => {
     const input = fixture();
     input.routeFilterSource = input.routeFilterSource.replace(

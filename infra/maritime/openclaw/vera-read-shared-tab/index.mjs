@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18791";
+const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18792";
 const BROWSER_PROFILE = "chrome";
 const REQUEST_TIMEOUT_MS = 5_000;
 const TABS_RESPONSE_MAX_BYTES = 64 * 1024;
