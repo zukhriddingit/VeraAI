@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_sha:
-        description: Exact full source commit SHA reachable from the reviewed founder-browser branch.
+        description: Exact full source commit SHA reachable from merged main.
         required: true
         type: string
 
@@ -16,12 +16,12 @@ concurrency:
 
 env:
   IMAGE_REPOSITORY: ghcr.io/zukhriddingit/vera-openclaw-gateway
-  TRUSTED_SOURCE_BRANCH: codex/founder-browser-remote-extension
+  TRUSTED_SOURCE_BRANCH: main
 
 jobs:
   build_scan:
     name: Build and scan Gateway candidate
-    if: github.repository == 'zukhriddingit/VeraAI' && github.ref == 'refs/heads/codex/founder-browser-remote-extension'
+    if: github.repository == 'zukhriddingit/VeraAI' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     permissions:
@@ -33,10 +33,10 @@ jobs:
       source_sha: ${{ steps.source.outputs.source_sha }}
 
     steps:
-      - name: Check out reviewed workflow branch
+      - name: Check out merged workflow branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: codex/founder-browser-remote-extension
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -63,6 +63,21 @@ jobs:
           printf 'release_tag=r2-%s\n' "${REQUESTED_SOURCE_SHA:0:7}" >> "$GITHUB_OUTPUT"
           printf 'created_at=%s\n' "$created_at" >> "$GITHUB_OUTPUT"
 
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.14.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install exact-source dependencies
+        run: pnpm install --frozen-lockfile
+
       - name: Verify immutable source context
         shell: bash
         env:
@@ -77,6 +92,8 @@ jobs:
             infra/maritime/openclaw/remote-extension.Dockerfile
           grep -F 'const EXTENSION_ROUTE = "/browser/extension"' \
             infra/maritime/openclaw/remote-extension-route-filter.mjs
+          pnpm verify:gateway-runtime-supply-chain
+          pnpm verify:remote-extension-config
 
       - name: Sign in to GitHub Container Registry
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
@@ -121,6 +138,10 @@ jobs:
           mkdir -p release-evidence/gateway
           printf '%s\n' "$image_ref" > release-evidence/gateway/image-reference.txt
           printf '%s\n' "$RELEASE_SOURCE_SHA" > release-evidence/gateway/source-commit.txt
+          cp infra/maritime/openclaw/remote-extension-runtime-lock.json \
+            release-evidence/gateway/remote-extension-runtime-lock.json
+          sha256sum release-evidence/gateway/remote-extension-runtime-lock.json \
+            > release-evidence/gateway/remote-extension-runtime-lock.sha256
           printf 'image_ref=%s\n' "$image_ref" >> "$GITHUB_OUTPUT"
           printf 'GATEWAY_IMAGE_REF=%s\n' "$image_ref" >> "$GITHUB_ENV"
           printf 'Published immutable Gateway: `%s`\n' "$image_ref" >> "$GITHUB_STEP_SUMMARY"
@@ -130,6 +151,15 @@ jobs:
         with:
           version: v0.72.0
           cache: false
+
+      - name: Verify minimal published runtime identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(docker run --rm --entrypoint /usr/bin/node \
+            "$GATEWAY_IMAGE_REF" \
+            -e 'const fs=require("node:fs"); process.stdout.write(JSON.stringify({uid:process.getuid(),gid:process.getgid(),executables:fs.readdirSync("/usr/bin").sort(),shell:fs.existsSync("/bin/sh"),npm:fs.existsSync("/usr/bin/npm"),npmLibrary:fs.existsSync("/usr/lib/node_modules"),corepack:fs.existsSync("/usr/bin/corepack"),pnpm:fs.existsSync("/usr/bin/pnpm")}));')"
+          test "$observed" = '{"uid":1000,"gid":1000,"executables":["node"],"shell":false,"npm":false,"npmLibrary":false,"corepack":false,"pnpm":false}'
 
       - name: Generate SBOM and vulnerability evidence
         shell: bash
@@ -183,10 +213,10 @@ jobs:
       CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
 
     steps:
-      - name: Check out reviewed workflow branch
+      - name: Check out merged workflow branch
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: codex/founder-browser-remote-extension
+          ref: main
           fetch-depth: 0
           persist-credentials: false
 
@@ -226,6 +256,11 @@ jobs:
           grep -Fx "$RELEASE_SOURCE_SHA" release-evidence/gateway/source-commit.txt
           test -s release-evidence/gateway/gateway.spdx.json
           test -s release-evidence/gateway/trivy-vulnerabilities.json
+          sha256sum --check \
+            release-evidence/gateway/remote-extension-runtime-lock.sha256
+          cmp -- \
+            infra/maritime/openclaw/remote-extension-runtime-lock.json \
+            release-evidence/gateway/remote-extension-runtime-lock.json
 
       - name: Write exact-source provenance predicate
         shell: bash
