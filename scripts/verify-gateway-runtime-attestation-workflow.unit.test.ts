@@ -35,6 +35,24 @@ describe("existing Gateway runtime attestation workflow verifier", () => {
       /bind and revalidate/u
     ],
     [
+      "an unverified evidence workflow identity",
+      (source: string) =>
+        source.replace(
+          '"Attest existing zero-finding Vera OpenClaw Gateway"',
+          '"Release immutable Vera OpenClaw Gateway"'
+        ),
+      /bind and revalidate/u
+    ],
+    [
+      "a source-scan artifact instead of the verified index attestation",
+      (source: string) =>
+        source.replace(
+          "vera-openclaw-gateway-attestation-${{ steps.subject.outputs.release_index_hex }}",
+          "vera-openclaw-gateway-scan-${{ steps.subject.outputs.source_sha }}"
+        ),
+      /bind and revalidate/u
+    ],
+    [
       "login before zero scan",
       (source: string) => {
         const login = source.match(
