@@ -8,9 +8,11 @@ export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 export const REMOTE_EXTENSION_RUNTIME_BASE_IMAGE =
   "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
-export const REMOTE_EXTENSION_GATEWAY_IMAGE =
-  /^ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:[a-f0-9]{64}$/u;
-export const REMOTE_EXTENSION_SOURCE_COMMIT = /^[a-f0-9]{40}$/u;
+export const REMOTE_EXTENSION_RELEASE_INDEX =
+  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4";
+export const REMOTE_EXTENSION_RUNTIME_MANIFEST =
+  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a";
+export const REMOTE_EXTENSION_SOURCE_COMMIT = "69fee2fcedf7d0474d5a75d64323318b993f7a6a";
 export const REMOTE_EXTENSION_TOOL = "vera_read_shared_tab_snapshot";
 
 type JsonObject = Record<string, unknown>;
@@ -37,6 +39,16 @@ function exact(values: readonly string[] | null, expected: readonly string[]): b
     values !== null &&
     values.length === expected.length &&
     values.every((value, index) => value === expected[index])
+  );
+}
+
+function exactObjectKeys(value: JsonObject | null, expected: readonly string[]): boolean {
+  if (value === null) return false;
+  const actual = Object.keys(value).sort();
+  const sortedExpected = [...expected].sort();
+  return (
+    actual.length === sortedExpected.length &&
+    actual.every((key, index) => key === sortedExpected[index])
   );
 }
 
@@ -70,23 +82,35 @@ export function findRemoteExtensionConfigViolations(input: {
     violations.push("Remote extension config must declare OpenClaw 2026.7.1.");
   }
   if (
+    !exactObjectKeys(objectAt(imageManifest), [
+      "schemaVersion",
+      "openclawVersion",
+      "baseImage",
+      "runtimeBaseImage",
+      "runtimeLock",
+      "publicationState",
+      "releaseIndex",
+      "runtimeManifest",
+      "sourceCommit",
+      "runtimeSelectionState",
+      "releaseProfile",
+      "synthetic",
+      "deployableBeforeLiveProxyAcceptance"
+    ]) ||
+    objectAt(imageManifest)?.schemaVersion !== "2" ||
     objectAt(imageManifest)?.openclawVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION ||
     objectAt(imageManifest)?.baseImage !== REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE ||
     objectAt(imageManifest)?.runtimeBaseImage !== REMOTE_EXTENSION_RUNTIME_BASE_IMAGE ||
     objectAt(imageManifest)?.runtimeLock !==
       "infra/maritime/openclaw/remote-extension-runtime-lock.json" ||
-    !(
-      (objectAt(imageManifest)?.publicationState === "pending" &&
-        objectAt(imageManifest)?.image === null &&
-        objectAt(imageManifest)?.sourceCommit === undefined) ||
-      (objectAt(imageManifest)?.publicationState === "published" &&
-        typeof objectAt(imageManifest)?.image === "string" &&
-        REMOTE_EXTENSION_GATEWAY_IMAGE.test(String(objectAt(imageManifest)?.image)) &&
-        !String(objectAt(imageManifest)?.image).endsWith(`:${"0".repeat(64)}`) &&
-        typeof objectAt(imageManifest)?.sourceCommit === "string" &&
-        REMOTE_EXTENSION_SOURCE_COMMIT.test(String(objectAt(imageManifest)?.sourceCommit)))
-    ) ||
+    objectAt(imageManifest)?.publicationState !== "published" ||
+    objectAt(imageManifest)?.releaseIndex !== REMOTE_EXTENSION_RELEASE_INDEX ||
+    objectAt(imageManifest)?.runtimeManifest !== REMOTE_EXTENSION_RUNTIME_MANIFEST ||
+    objectAt(imageManifest)?.releaseIndex === objectAt(imageManifest)?.runtimeManifest ||
+    objectAt(imageManifest)?.sourceCommit !== REMOTE_EXTENSION_SOURCE_COMMIT ||
+    objectAt(imageManifest)?.runtimeSelectionState !== "diagnostic_pending" ||
     objectAt(imageManifest)?.releaseProfile !== "founder_browser_experimental" ||
+    objectAt(imageManifest)?.synthetic !== false ||
     objectAt(imageManifest)?.deployableBeforeLiveProxyAcceptance !== false
   ) {
     violations.push(

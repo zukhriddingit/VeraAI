@@ -39,35 +39,41 @@ describe("remote extension configuration verifier", () => {
     expect(REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE).toContain("@sha256:");
   });
 
-  it("rejects a mutable or unbound Gateway image", () => {
+  it("rejects a mutable or unbound Gateway release index", () => {
     const input = fixture();
     (
       input.imageManifest as {
         publicationState: string;
-        image: string | null;
-        sourceCommit?: string;
+        releaseIndex: string;
       }
     ).publicationState = "published";
     (
       input.imageManifest as {
         publicationState: string;
-        image: string | null;
-        sourceCommit?: string;
+        releaseIndex: string;
       }
-    ).image = "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
-    delete (
-      input.imageManifest as {
-        publicationState: string;
-        image: string | null;
-        sourceCommit?: string;
-      }
-    ).sourceCommit;
+    ).releaseIndex = "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
     input.dockerfile = input.dockerfile.replace("ARG VERA_SOURCE_COMMIT", "");
     expect(findRemoteExtensionConfigViolations(input)).toEqual(
       expect.arrayContaining([
         "Remote extension image manifest must pin the reviewed release and stay blocked.",
         "Hardened Gateway image must pin its base, bind source identity, restrict config permissions, and run as node."
       ])
+    );
+  });
+
+  it.each([
+    ["mixed runtime child", "runtimeManifest", `ghcr.io/other/gateway@sha256:${"a".repeat(64)}`],
+    ["missing runtime child", "runtimeManifest", undefined],
+    ["approved before acceptance", "deployableBeforeLiveProxyAcceptance", true],
+    ["unexpected field", "metadata", "not-allowed"]
+  ])("rejects %s", (_label, key, value) => {
+    const input = fixture();
+    const image = input.imageManifest as Record<string, unknown>;
+    if (value === undefined) delete image[key];
+    else image[key] = value;
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Remote extension image manifest must pin the reviewed release and stay blocked."
     );
   });
 

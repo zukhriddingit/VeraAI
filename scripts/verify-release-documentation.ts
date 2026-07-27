@@ -164,6 +164,55 @@ export function findRemoteExtensionDocumentationViolations(
   return violations;
 }
 
+export function findGatewayR3DocumentationViolations(
+  documents: Pick<
+    Readonly<Record<(typeof RELEASE_DEPLOYMENT_DOCUMENTS)[number], string>>,
+    "docs/RELEASE_READINESS.md" | "docs/SECURITY_REVIEW.md" | "infra/maritime/OPENCLAW.md"
+  >
+): string[] {
+  const violations: string[] = [];
+  const combined = Object.values(documents).join("\n");
+  const operations = documents["infra/maritime/OPENCLAW.md"];
+  const requiredCombined = [
+    "release index identity",
+    "runtime child identity",
+    "sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4",
+    "sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3",
+    "sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a",
+    "attest-openclaw-gateway-runtime.yml",
+    "compatibility publication",
+    "provider/agent/registry incident"
+  ] as const;
+  for (const phrase of requiredCombined) {
+    if (!combined.includes(phrase)) {
+      violations.push(`Gateway R3 documentation must include ${phrase}.`);
+    }
+  }
+  const requiredOperations = [
+    "fifteen-minute terminal",
+    "A — previous release index",
+    "B — current release index",
+    "C — current direct runtime child",
+    "without `--public`",
+    "browser route",
+    "pairing credential",
+    "zero triggers",
+    "quay.io/skopeo/stable@sha256:47853bb9fb24202af9110531ebd6e43c5f97701254ca290596640290d17942f4",
+    "R3_OCI_OUTPUT",
+    "mode-`0700`",
+    "mode `0600`",
+    "delete the temporary secret",
+    "provider escalation",
+    "raw IDs"
+  ] as const;
+  for (const phrase of requiredOperations) {
+    if (!operations.includes(phrase)) {
+      violations.push(`Gateway R3 operations must include ${phrase}.`);
+    }
+  }
+  return violations;
+}
+
 async function main(): Promise<void> {
   const entries = await Promise.all(
     RELEASE_DEPLOYMENT_DOCUMENTS.map(
@@ -177,7 +226,8 @@ async function main(): Promise<void> {
   const violations = [
     ...findReleaseDocumentationViolations(documents),
     ...findFounderCoreRunbookViolations(documents["docs/FOUNDER_CORE_STAGING_RUNBOOK.md"]),
-    ...findRemoteExtensionDocumentationViolations(documents)
+    ...findRemoteExtensionDocumentationViolations(documents),
+    ...findGatewayR3DocumentationViolations(documents)
   ];
   if (violations.length > 0) {
     for (const violation of violations) process.stderr.write(`- ${violation}\n`);

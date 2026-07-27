@@ -103,8 +103,8 @@ requireText(
 );
 requireText(
   remoteImage,
-  /"publicationState":\s*"pending"[\s\S]*"image":\s*null/u,
-  "The route-isolation repair must remain unpublished until approved."
+  /"publicationState":\s*"published"[\s\S]*"releaseIndex":\s*"ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4"[\s\S]*"runtimeManifest":\s*"ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a"[\s\S]*"runtimeSelectionState":\s*"diagnostic_pending"[\s\S]*"deployableBeforeLiveProxyAcceptance":\s*false/u,
+  "The published route-isolation index and child must remain blocked pending live acceptance."
 );
 requireText(
   remoteConfig,

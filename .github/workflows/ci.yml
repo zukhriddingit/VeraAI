@@ -76,7 +76,7 @@ jobs:
         run: pnpm verify:worker-image-boundaries && pnpm verify:worker-release-workflow && pnpm verify:openclaw-config
 
       - name: Verify Gateway runtime and release boundaries
-        run: pnpm verify:gateway-runtime-supply-chain && pnpm verify:remote-extension-config && pnpm verify:gateway-release-workflow
+        run: pnpm verify:gateway-runtime-supply-chain && pnpm verify:remote-extension-config && pnpm verify:gateway-release-workflow && pnpm verify:gateway-registry-workflow && pnpm verify:gateway-runtime-attestation-workflow
 
       - name: Lint
         run: pnpm lint

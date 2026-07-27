@@ -40,6 +40,26 @@ it create GitHub provenance/SBOM attestations and a Cosign signature. The tempor
 `GHCR_PUBLISH_TOKEN` must be deleted immediately after the recovery workflow reaches a terminal
 state. Maritime remains out of scope until all recovered evidence verifies.
 
+R3 distinguishes the signed release index identity from the pull-critical runtime child identity.
+The current release index is
+`ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4`;
+its only runnable `linux/amd64` runtime child is
+`ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a`.
+The index also contains one `unknown/unknown` BuildKit attestation descriptor. Both the previous
+index and current index use an OCI index with one OCI gzip runtime, so index shape alone does not
+prove a Maritime incompatibility. The non-publishing PR check verifies the top-level index, child
+manifest, config, and every runtime layer from a GitHub-hosted runner. A deterministic binding
+record separately binds the selected child, source revision, image config, rootfs diff IDs,
+signature, provenance subject, and SBOM subject.
+
+The browser profile remains `no_go` until the bounded Maritime A/B/C matrix and final Gateway
+acceptance pass. The matrix uses one private trigger-free diagnostic agent for, in order, the
+previous index, current index, and current child, with a fifteen-minute bound per case. A current
+child that reaches `fc-manager` or runtime is selected without publishing another image. If all
+three hang, the result is a provider/agent/registry incident. A compatibility publication is
+permitted only after verified public blobs and a concrete direct-child media-type, compression, or
+descriptor failure; otherwise it is unreachable.
+
 For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
 external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A
 mandatory phase, invalid/stale/mismatched evidence, missing phase, implementation gap, policy gap,
