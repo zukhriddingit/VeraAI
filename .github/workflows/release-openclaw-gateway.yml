@@ -272,20 +272,32 @@ jobs:
             --arg workflowRef "$GITHUB_WORKFLOW_REF" \
             '{
               buildDefinition: {
-                buildType: "https://github.com/docker/build-push-action",
+                buildType: "https://actions.github.io/buildtypes/workflow/v1",
                 externalParameters: {
+                  workflow: {
+                    path: ".github/workflows/release-openclaw-gateway.yml",
+                    ref: "refs/heads/main",
+                    repository: $sourceRepository
+                  },
                   sourceCommit: $sourceCommit,
                   dockerfile: "infra/maritime/openclaw/remote-extension.Dockerfile"
                 },
                 internalParameters: {},
                 resolvedDependencies: [{
-                  uri: ("git+" + $sourceRepository),
+                  uri: ("git+" + $sourceRepository + "@refs/heads/main"),
                   digest: { gitCommit: $sourceCommit }
                 }]
               },
               runDetails: {
                 builder: { id: ("https://github.com/" + $workflowRef) },
-                metadata: { invocationId: env.GITHUB_RUN_ID }
+                metadata: {
+                  invocationId: (
+                    "https://github.com/" +
+                    env.GITHUB_REPOSITORY +
+                    "/actions/runs/" +
+                    env.GITHUB_RUN_ID
+                  )
+                }
               }
             }' > release-evidence/gateway/source-provenance-predicate.json
 

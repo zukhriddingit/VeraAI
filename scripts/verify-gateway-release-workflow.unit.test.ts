@@ -12,10 +12,16 @@ const ciWorkflow = readFileSync(
   resolve(import.meta.dirname, "../.github/workflows/ci.yml"),
   "utf8"
 );
+const resumeWorkflow = readFileSync(
+  resolve(import.meta.dirname, "../.github/workflows/attest-openclaw-gateway.yml"),
+  "utf8"
+);
 
 describe("Gateway release workflow verifier", () => {
   it("accepts the manual exact-source build, scan, sign, and attestation boundary", () => {
-    expect(findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow)).toEqual([]);
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, resumeWorkflow)
+    ).toEqual([]);
   });
 
   it.each([
@@ -92,6 +98,15 @@ describe("Gateway release workflow verifier", () => {
       "only after the zero-finding scan succeeds"
     ],
     [
+      "unsupported SLSA build type",
+      (source: string) =>
+        source.replace(
+          "https://actions.github.io/buildtypes/workflow/v1",
+          "https://github.com/docker/build-push-action"
+        ),
+      "required boundary: buildType"
+    ],
+    [
       "deployment command",
       (source: string) => `${source}\n# maritime deploy\n`,
       "must not contain deployment"
@@ -106,15 +121,30 @@ describe("Gateway release workflow verifier", () => {
       "not pinned"
     ]
   ])("rejects %s", (_label, mutate, expected) => {
-    expect(findGatewayReleaseWorkflowViolations(mutate(releaseWorkflow), ciWorkflow)).toEqual(
-      expect.arrayContaining([expect.stringMatching(expected)])
-    );
+    expect(
+      findGatewayReleaseWorkflowViolations(mutate(releaseWorkflow), ciWorkflow, resumeWorkflow)
+    ).toEqual(expect.arrayContaining([expect.stringMatching(expected)]));
   });
 
   it("rejects a missing secretless PR Gateway scan", () => {
     const mutatedCi = ciWorkflow.replace("  gateway_image:", "  removed:");
-    expect(findGatewayReleaseWorkflowViolations(releaseWorkflow, mutatedCi)).toEqual(
-      expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")])
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, mutatedCi, resumeWorkflow)
+    ).toEqual(expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")]));
+  });
+
+  it("rejects a signing resume path that can build or publish another image", () => {
+    const mutatedResume = `${resumeWorkflow}
+      - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
+        with:
+          push: true
+`;
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must never build or publish another candidate")
+      ])
     );
   });
 });
