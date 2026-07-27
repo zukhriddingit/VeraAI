@@ -181,6 +181,7 @@ jobs:
             --arg repositoryId "$GITHUB_REPOSITORY_ID" \
             --arg repositoryOwnerId "$GITHUB_REPOSITORY_OWNER_ID" \
             --arg runnerEnvironment "$RUNNER_ENVIRONMENT" \
+            --arg serverUrl "$GITHUB_SERVER_URL" \
             --arg sourceCommit "$RELEASE_SOURCE_SHA" \
             --arg sourceRepository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --arg workflowCommit "$GITHUB_SHA" \
@@ -221,7 +222,7 @@ jobs:
                 }]
               },
               runDetails: {
-                builder: { id: ($sourceRepository + "/" + $workflowRef) },
+                builder: { id: ($serverUrl + "/" + $workflowRef) },
                 metadata: { invocationId: $attestationInvocationId }
               }
             }' > release-evidence/gateway/source-provenance-predicate.json
