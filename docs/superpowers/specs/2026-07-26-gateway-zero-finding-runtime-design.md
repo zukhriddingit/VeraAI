@@ -73,22 +73,26 @@ runs as numeric UID/GID `1000:1000` even though the upstream base has a differen
 
 ## Dependency repair boundary
 
-The sanitizer may replace only these vulnerable runtime packages and versions:
+The sanitizer may replace only these vulnerable `/app` runtime packages and versions:
 
 | Package | Rejected installed versions | Fixed version |
 | --- | --- | --- |
 | `@opentelemetry/propagator-jaeger` | `2.8.0` | `2.9.0` |
 | `@vitest/browser` | `4.1.9` | `4.1.10` |
-| `brace-expansion` | `5.0.5`, `5.0.7` | `5.0.8` |
+| `brace-expansion` | `5.0.7` | `5.0.8` |
 | `fast-uri` | `3.1.2` | `3.1.4` |
 | `postcss` | `8.5.16` | `8.5.18` |
-| `sigstore` | `4.1.0` | `4.1.1` |
-| `tar` | `7.5.13`, `7.5.15` | `7.5.19` |
-| `undici` | `6.25.0` | `6.27.0` |
 
-The final image omits pnpm instead of updating it because package management is not a Gateway
-runtime capability. Each replacement tarball is pinned by package name, exact version, registry
-URL, and registry integrity value in a committed lock file.
+The rejected image's remaining Node findings occur only below npm or Corepack/pnpm:
+
+- npm: `brace-expansion@5.0.5`, `sigstore@4.1.0`, `tar@7.5.13`, and `undici@6.25.0`;
+- Corepack/pnpm: `pnpm@11.2.2`, `tar@7.5.15`, and `undici@6.25.0`.
+
+The final image omits npm, Corepack, and pnpm instead of updating their private dependency graphs
+because package management is not a Gateway runtime capability. The clean application instances
+`tar@7.5.19`, `undici@8.5.0`, and jsdom's `undici@7.28.0` remain unchanged. Each replacement
+tarball is pinned by package name, exact version, registry URL, and registry integrity value in a
+committed lock file.
 
 The sanitizer must:
 
