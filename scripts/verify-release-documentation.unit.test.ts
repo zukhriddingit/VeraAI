@@ -101,4 +101,23 @@ describe("remote extension release documentation", () => {
       expect.arrayContaining([expect.stringContaining("Browser Connector runbook must include")])
     );
   });
+
+  it.each([
+    "exact existing digest",
+    "no rebuild",
+    "no replacement publication",
+    "independent zero-finding scan",
+    "GHCR_PUBLISH_TOKEN",
+    "delete the temporary secret"
+  ])("requires the recovery boundary: %s", (required) => {
+    expect(
+      findRemoteExtensionDocumentationViolations({
+        ...repositoryDocuments,
+        "infra/maritime/OPENCLAW.md": repositoryDocuments["infra/maritime/OPENCLAW.md"].replace(
+          required,
+          "removed recovery boundary"
+        )
+      })
+    ).toContain("Remote-extension operations must document exact-digest signing recovery.");
+  });
 });

@@ -18,6 +18,7 @@ const ACTIONS = new Map([
 const RESUME_ACTIONS = new Map([
   ["actions/checkout", { commit: "de0fac2e4500dabe0009e67214ff5f5447ce83dd", count: 1 }],
   ["actions/download-artifact", { commit: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", count: 1 }],
+  ["aquasecurity/setup-trivy", { commit: "81e514348e19b6112ce2a7e3ecbafe19c1e1f567", count: 1 }],
   ["docker/login-action", { commit: "b45d80f862d83dbcd57f89517bcf500b2ab88fb2", count: 1 }],
   ["actions/attest", { commit: "f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6", count: 2 }],
   ["sigstore/cosign-installer", { commit: "6f9f17788090df1f26f669e9d70d6ae9567deba6", count: 1 }],
@@ -145,6 +146,25 @@ export function findGatewayReleaseWorkflowViolations(
     "Gateway release must verify the published runtime identity before scanning.",
     violations
   );
+  const publishedPullIndex = workflow.indexOf('          docker pull "$GATEWAY_IMAGE_REF"');
+  const publishedInspectionIndex = workflow.indexOf(
+    "      - name: Verify minimal published runtime identity"
+  );
+  const publishedVerifierIndex = workflow.indexOf(
+    "          node scripts/verify-gateway-image-layout.mjs",
+    publishedInspectionIndex
+  );
+  if (
+    publishedPullIndex < 0 ||
+    publishedInspectionIndex < 0 ||
+    publishedVerifierIndex < 0 ||
+    publishedPullIndex < publishedInspectionIndex ||
+    publishedPullIndex > publishedVerifierIndex
+  ) {
+    violations.push(
+      "Gateway release must pull the immutable digest before published-image inspection."
+    );
+  }
   for (const verifier of [
     "pnpm verify:gateway-runtime-supply-chain",
     "pnpm verify:remote-extension-config"
@@ -283,13 +303,43 @@ export function findGatewayReleaseWorkflowViolations(
   ]) {
     requireText(resumeWorkflow, required, resumeBoundaryMessage, violations);
   }
+  const recoveryBoundaryMessage =
+    "Gateway signing resume must independently revalidate the existing digest before registry writes.";
+  for (const required of [
+    "name: Verify source publication run is recoverable",
+    '.conclusion == "success" or',
+    '.conclusion == "failure" and',
+    '"Build and publish the commit-bound Gateway"',
+    '"Resolve immutable Gateway reference"',
+    '"Verify minimal published runtime identity"',
+    '"Generate SBOM and vulnerability evidence"',
+    '"Enforce zero unresolved critical or high findings"',
+    '"Preserve pre-signing Gateway evidence"',
+    "name: Revalidate retained publication evidence",
+    "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567",
+    "version: v0.72.0",
+    "name: Generate fresh SBOM and vulnerability evidence",
+    "release-evidence/gateway/gateway.spdx.json",
+    "release-evidence/gateway/trivy-vulnerabilities.json",
+    "name: Enforce fresh zero unresolved critical or high findings",
+    "--scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 1"
+  ]) {
+    requireText(resumeWorkflow, required, recoveryBoundaryMessage, violations);
+  }
   if (
     /^\s{2}(?:push|pull_request|schedule|repository_dispatch|workflow_run):/mu.test(
       resumeWorkflow
     ) ||
-    /docker\/build-push-action|docker\s+(?:build|buildx)|\bpush:\s*true\b/iu.test(resumeWorkflow)
+    /docker\/build-push-action|docker\s+(?:build|buildx|push)\b|\bpush:\s*true\b/iu.test(
+      resumeWorkflow
+    )
   ) {
     violations.push("Gateway signing resume must never build or publish another candidate.");
+  }
+  if (
+    /\.trivyignore|--ignore-policy|--skip-db-update|--ignore-unfixed=true/iu.test(resumeWorkflow)
+  ) {
+    violations.push(recoveryBoundaryMessage);
   }
   if (resumeWorkflow.includes("--cert-identity")) {
     violations.push(
@@ -304,9 +354,11 @@ export function findGatewayReleaseWorkflowViolations(
     violations.push("Gateway signing resume must not contain deployment or release side effects.");
   }
   if (
-    resumeWorkflow.indexOf("Revalidate retained zero-finding evidence") >
+    resumeWorkflow.indexOf("Revalidate retained publication evidence") >
       resumeWorkflow.indexOf("Sign in to GitHub Container Registry") ||
     resumeWorkflow.indexOf("Verify anonymous image pull and immutable runtime") >
+      resumeWorkflow.indexOf("Sign in to GitHub Container Registry") ||
+    resumeWorkflow.indexOf("Enforce fresh zero unresolved critical or high findings") >
       resumeWorkflow.indexOf("Sign in to GitHub Container Registry") ||
     resumeWorkflow.indexOf("Sign in to GitHub Container Registry") >
       resumeWorkflow.indexOf("Attest exact-source provenance")

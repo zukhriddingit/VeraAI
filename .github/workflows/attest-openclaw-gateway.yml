@@ -12,7 +12,7 @@ on:
         required: true
         type: string
       evidence_run_id:
-        description: Failed signing run whose build-and-scan job succeeded.
+        description: Publication run whose candidate push completed.
         required: true
         type: string
 
@@ -75,7 +75,7 @@ jobs:
           printf 'image_ref=%s\n' "$image_ref" >> "$GITHUB_OUTPUT"
           printf 'evidence_run_id=%s\n' "$REQUESTED_EVIDENCE_RUN_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Verify source scan run succeeded
+      - name: Verify source publication run is recoverable
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -93,10 +93,47 @@ jobs:
           gh api \
             "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID/jobs" \
             | jq -e '
+                def step_ok($name; $conclusion):
+                  [
+                    .steps[]? |
+                    select(
+                      .name == $name and
+                      .conclusion == $conclusion
+                    )
+                  ] | length == 1;
                 [.jobs[] |
                   select(
-                    .name == "Build and scan Gateway candidate" and
-                    .conclusion == "success"
+                    .name == "Build and scan Gateway candidate"
+                  ) |
+                  select(
+                    .conclusion == "success" or
+                    (
+                      .conclusion == "failure" and
+                      step_ok(
+                        "Build and publish the commit-bound Gateway";
+                        "success"
+                      ) and
+                      step_ok(
+                        "Resolve immutable Gateway reference";
+                        "success"
+                      ) and
+                      step_ok(
+                        "Verify minimal published runtime identity";
+                        "failure"
+                      ) and
+                      step_ok(
+                        "Generate SBOM and vulnerability evidence";
+                        "skipped"
+                      ) and
+                      step_ok(
+                        "Enforce zero unresolved critical or high findings";
+                        "skipped"
+                      ) and
+                      step_ok(
+                        "Preserve pre-signing Gateway evidence";
+                        "success"
+                      )
+                    )
                   )
                 ] | length == 1
               '
@@ -110,7 +147,7 @@ jobs:
           name: vera-openclaw-gateway-scan-${{ steps.subject.outputs.source_sha }}
           path: release-evidence/gateway
 
-      - name: Revalidate retained zero-finding evidence
+      - name: Revalidate retained publication evidence
         shell: bash
         env:
           GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
@@ -119,10 +156,6 @@ jobs:
           set -euo pipefail
           grep -Fx "$GATEWAY_IMAGE_REF" release-evidence/gateway/image-reference.txt
           grep -Fx "$RELEASE_SOURCE_SHA" release-evidence/gateway/source-commit.txt
-          test -s release-evidence/gateway/gateway.spdx.json
-          test -s release-evidence/gateway/trivy-vulnerabilities.json
-          test "$(jq '[.Results[]?.Vulnerabilities[]?] | length' \
-            release-evidence/gateway/trivy-vulnerabilities.json)" = "0"
           expected_lock_hash="$(cut -d ' ' -f1 \
             release-evidence/gateway/remote-extension-runtime-lock.sha256)"
           observed_lock_hash="$(sha256sum \
@@ -132,6 +165,12 @@ jobs:
           cmp -- \
             infra/maritime/openclaw/remote-extension-runtime-lock.json \
             release-evidence/gateway/remote-extension-runtime-lock.json
+
+      - name: Install pinned Trivy
+        uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
+        with:
+          version: v0.72.0
+          cache: false
 
       - name: Verify anonymous image pull and immutable runtime
         shell: bash
@@ -153,6 +192,37 @@ jobs:
           node scripts/verify-gateway-image-layout.mjs \
             --image-ref "$GATEWAY_IMAGE_REF" \
             --simulate-bootstrap
+
+      - name: Generate fresh SBOM and vulnerability evidence
+        shell: bash
+        env:
+          GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          trivy --config /dev/null image --quiet --ignorefile /dev/null --list-all-pkgs \
+            --format spdx-json \
+            --output release-evidence/gateway/gateway.spdx.json \
+            "$GATEWAY_IMAGE_REF"
+          trivy --config /dev/null image --quiet --ignorefile /dev/null --list-all-pkgs \
+            --scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 0 \
+            --format json \
+            --output release-evidence/gateway/trivy-vulnerabilities.json \
+            "$GATEWAY_IMAGE_REF"
+          trivy version --format json > release-evidence/gateway/trivy-version.json
+
+      - name: Enforce fresh zero unresolved critical or high findings
+        shell: bash
+        env:
+          GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          test -s release-evidence/gateway/gateway.spdx.json
+          test -s release-evidence/gateway/trivy-vulnerabilities.json
+          test "$(jq '[.Results[]?.Vulnerabilities[]?] | length' \
+            release-evidence/gateway/trivy-vulnerabilities.json)" = "0"
+          trivy --config /dev/null image --quiet --ignorefile /dev/null --list-all-pkgs \
+            --scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 1 \
+            "$GATEWAY_IMAGE_REF"
 
       - name: Sign in to GitHub Container Registry
         uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
