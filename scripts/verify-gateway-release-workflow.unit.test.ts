@@ -56,6 +56,11 @@ describe("Gateway release workflow verifier", () => {
       (source: string) => `${source}\n# --ignore-unfixed=true\n`,
       "must not suppress"
     ],
+    [
+      "vulnerability suppression",
+      (source: string) => `${source}\n# --skip-db-update\n`,
+      "must not suppress"
+    ],
     ["Trivy ignore file", (source: string) => `${source}\n# .trivyignore\n`, "must not suppress"],
     [
       "weakened scan severity",
