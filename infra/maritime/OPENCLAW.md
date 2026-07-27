@@ -23,8 +23,9 @@ ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952
 R2 Test A proved that the artifact's intended extension route authenticates and upgrades locally,
 but its generic OpenClaw Gateway WebSocket also accepts an unrelated route. It is retained only as
 baseline evidence and must not be deployed. The bootstrap-compatible candidate described below is
-published but is not deployable, so `remote-extension-image.json` remains `pending` with
-`image: null` and `deployableBeforeLiveProxyAcceptance: false`.
+published but is not deployable. `remote-extension-image.json` records separate `releaseIndex` and
+`runtimeManifest` identities with `runtimeSelectionState: diagnostic_pending` and
+`deployableBeforeLiveProxyAcceptance: false`.
 
 A later public route-filter candidate was also rejected:
 
@@ -132,6 +133,112 @@ Maritime deployment.
 
 Always delete the temporary secret.
 
+## R3 release-index and runtime-child pull procedure
+
+R3 treats the signed release index identity and selected runtime child identity as different
+objects:
+
+```text
+release index identity:
+  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
+runtime child identity:
+  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a
+previous comparison index:
+  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3
+```
+
+Create
+`release-evidence/private/m13a-r3-maritime-image-pull-20260727-01/` at mode `0700`; every
+evidence file is mode `0600`. Never store raw agent IDs, endpoint paths, credentials, signed blob
+URLs, provider helper bytes, or raw logs in the sanitized bundle.
+
+Inspect all public runtime objects before any Maritime mutation:
+
+```bash
+pnpm inspect:gateway-registry -- \
+  --current-index ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 \
+  --previous-index ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3 \
+  --output release-evidence/private/m13a-r3-maritime-image-pull-20260727-01/registry-inspection.json
+chmod 0600 release-evidence/private/m13a-r3-maritime-image-pull-20260727-01/registry-inspection.json
+```
+
+For an independent child copy, set `R3_OCI_OUTPUT` to a newly created mode-`0700` temporary
+directory outside Git. Run the pinned Skopeo image, verify the resulting OCI layout selects the
+accepted child manifest, and remove that exact temporary directory:
+
+```bash
+docker run --rm \
+  -v "$R3_OCI_OUTPUT:/var/lib/vera-output" \
+  quay.io/skopeo/stable@sha256:47853bb9fb24202af9110531ebd6e43c5f97701254ca290596640290d17942f4 \
+  copy \
+  --override-os linux \
+  --override-arch amd64 \
+  docker://ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a \
+  oci:/var/lib/vera-output/runtime:accepted
+```
+
+If the child does not already have a verified signature, SLSA provenance subject, and SPDX SBOM
+subject, use the direct-child supply-chain workflow only after its CI-gated merge:
+
+```bash
+gh workflow run attest-openclaw-gateway-runtime.yml --ref main \
+  -f source_sha=69fee2fcedf7d0474d5a75d64323318b993f7a6a \
+  -f release_index_digest=sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 \
+  -f runtime_manifest_digest=sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a \
+  -f evidence_run_id=30298185379
+```
+
+This workflow performs an anonymous child pull, image-layout check, and independent zero-finding
+scan before registry login. It signs and attests the exact existing digest; it performs no build,
+no rebuild, no image push, and no replacement publication. Create `GHCR_PUBLISH_TOKEN` without
+printing it and delete the temporary secret immediately when the run reaches a terminal state.
+
+### Bounded Maritime A/B/C matrix
+
+Use exactly one private, non-production, custom diagnostic agent. Confirm the installed Maritime
+CLI 1.7.0 create/delete syntax immediately before the run. Create it without `--public`, without a
+port, browser route, pairing credential, Gateway credential, model credential, environment
+secret, or trigger. A later known bootstrap failure is retrieval evidence; API acceptance alone is
+not.
+
+Run these deployments sequentially with an operator watchdog enforcing a fifteen-minute terminal
+bound for each. Capture sanitized `status`, `info`, `history`, build-log state, UTC start/end,
+terminal state, and hashes of opaque provider references after each case:
+
+```bash
+# A — previous release index
+maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3 --wait
+# B — current release index
+maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 --wait
+# C — current direct runtime child
+maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a --wait
+```
+
+| A/B/C observation                                                  | Required decision                                                                   |
+| ------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| A starts, B hangs, C starts                                        | Select C; publish no compatibility image.                                           |
+| A starts, B hangs, C hangs for a proven current-child format error | Consider the one compatibility publication only after all preconditions below pass. |
+| A, B, and C all hang                                               | Provider/agent/registry incident; publish no image and remain `no_go`.              |
+| C reaches `fc-manager` or runtime                                  | Direct-child pull compatibility passes; select C and continue final acceptance.     |
+
+Delete the matrix agent after C or immediately after a fail-closed terminal condition. Confirm the
+agent is absent and had zero triggers; destroy the raw ID file. A compatibility publication
+requires verified local child execution, successful public-blob verification from founder and
+GitHub-hosted environments, a direct-child failure, and a concrete manifest media-type,
+compression, or descriptor incompatibility. An undecided cause, timeout, common A/B/C failure, or
+provider incident cannot satisfy those preconditions.
+
+If all three approved digests fail on the same agent, the provider escalation contains only UTC
+times, CLI version, region when non-sensitive, hashed agent/environment reference, the three
+immutable digests, sanitized terminal states, duration, build-log availability, HTTP status class,
+request/correlation hashes, zero-trigger confirmation, and cleanup result. Do not include raw IDs,
+credentials, endpoint paths, signed object-store URLs, or secret-bearing logs.
+
+The final accepted runtime still needs one separate disposable public Gateway with the exact
+`/browser/extension` route, pairing, WSS/subprotocol, origin, bounded payload, stability, shallow
+audit, deep audit, and one-tab Chrome consent checkpoint. The matrix agent itself has no public
+browser endpoint and cannot satisfy transport acceptance.
+
 The preserved non-browser RentCast analysis path remains pinned to:
 
 ```text
@@ -211,7 +318,8 @@ the correct route returned `101` with the expected protocol and authentication f
 the expected `401`/`403`, but an unrelated path also received `101` through OpenClaw's generic
 Gateway fallback. The R1 artifact therefore fails route isolation before Maritime is evaluated.
 The exact-route and zero-finding runtime repair passes focused tests and local container
-acceptance, but its replacement image has not been published. Tests B through D remain blocked.
+acceptance. Its release index and runtime child are published, but the runtime selection and live
+transport remain unaccepted. Tests B through D remain blocked.
 
 An operator may repeat the opt-in private probe only after the repaired image is explicitly
 approved, published by immutable digest, and passes local Test A:

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import {
   RELEASE_DEPLOYMENT_DOCUMENTS,
   findFounderCoreRunbookViolations,
+  findGatewayR3DocumentationViolations,
   findRemoteExtensionDocumentationViolations,
   findReleaseDocumentationViolations
 } from "./verify-release-documentation.ts";
@@ -113,11 +114,47 @@ describe("remote extension release documentation", () => {
     expect(
       findRemoteExtensionDocumentationViolations({
         ...repositoryDocuments,
-        "infra/maritime/OPENCLAW.md": repositoryDocuments["infra/maritime/OPENCLAW.md"].replace(
+        "infra/maritime/OPENCLAW.md": repositoryDocuments["infra/maritime/OPENCLAW.md"].replaceAll(
           required,
           "removed recovery boundary"
         )
       })
     ).toContain("Remote-extension operations must document exact-digest signing recovery.");
+  });
+});
+
+describe("Gateway R3 release documentation", () => {
+  const repositoryDocuments = Object.fromEntries(
+    RELEASE_DEPLOYMENT_DOCUMENTS.map((path) => [
+      path,
+      readFileSync(new URL(`../${path}`, import.meta.url), "utf8")
+    ])
+  ) as Record<(typeof RELEASE_DEPLOYMENT_DOCUMENTS)[number], string>;
+
+  it("records immutable identities, the bounded A/B/C matrix, child recovery, and cleanup", () => {
+    expect(findGatewayR3DocumentationViolations(repositoryDocuments)).toEqual([]);
+  });
+
+  it.each([
+    "fifteen-minute terminal",
+    "A — previous release index",
+    "B — current release index",
+    "C — current direct runtime child",
+    "without `--public`",
+    "pairing credential",
+    "zero triggers",
+    "R3_OCI_OUTPUT",
+    "delete the temporary secret",
+    "provider escalation"
+  ])("requires the R3 operations boundary: %s", (required) => {
+    expect(
+      findGatewayR3DocumentationViolations({
+        ...repositoryDocuments,
+        "infra/maritime/OPENCLAW.md": repositoryDocuments["infra/maritime/OPENCLAW.md"].replaceAll(
+          required,
+          "removed R3 boundary"
+        )
+      })
+    ).toEqual(expect.arrayContaining([expect.stringContaining("Gateway R3 operations")]));
   });
 });

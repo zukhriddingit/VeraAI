@@ -204,6 +204,30 @@ The complete post-Prompt-12 application gate ran every static boundary verifier,
   as soon as the recovery run reaches a terminal state. Maritime remains blocked until every
   recovered artifact independently verifies.
 
+### Gateway runtime-child binding and pull compatibility — 2026-07-27
+
+- The release index
+  `sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4`
+  and selected `linux/amd64` runtime child
+  `sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a`
+  are separate immutable identities. Deploying the child does not change its filesystem,
+  configuration, OpenClaw behavior, UID/GID, entrypoint, PATH, ports, or route filter.
+- The public-object validator accepts exactly one runnable `linux/amd64` descriptor, classifies
+  only correctly bound `unknown/unknown` attestation manifests, rejects non-gzip and nonstandard
+  layers, and verifies every selected runtime object by declared length and SHA-256. Tokens,
+  redirect locations, signed object-store URLs, raw headers, and blob bytes are excluded from its
+  output.
+- The manual `.github/workflows/attest-openclaw-gateway-runtime.yml` workflow cannot build or push
+  image content. It verifies merged-source ancestry, original publication evidence, parent-child
+  binding, anonymous pull, runtime layout, immutable source labels, a fresh SPDX SBOM, and zero
+  Trivy `HIGH`/`CRITICAL` findings before registry authentication. Its provenance names the
+  release index, reviewed OpenClaw base, Chainguard runtime base, runtime lock, and original
+  publication run as dependencies of the exact existing child.
+- A Docker-V2 compatibility publication is not a generic workaround. It is reachable only after a
+  bounded A/B/C Maritime matrix proves a concrete current-child manifest, compression, or
+  descriptor incompatibility while public registry verification and local runtime acceptance
+  pass. A common provider/agent/registry failure cannot authorize a replacement image.
+
 ## Browser gateway threats
 
 The current browser bridge correctly models offline nodes as deferred and manual blockers as manual actions, but the shared gateway remains a privileged execution boundary. Tenant checks alone do not make it safe for mutually untrusted users. Until per-user gateways exist, all real browser jobs must pass the founder allowlist independently at web, dispatch, and worker layers.
