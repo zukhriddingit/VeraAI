@@ -47,6 +47,8 @@ export function findGatewayRuntimeAttestationWorkflowViolations(workflow: string
     "expected_lock_hash=",
     "observed_lock_hash=",
     "cmp --",
+    'git rev-parse HEAD | grep -Fx "$GITHUB_SHA"',
+    '"${{ steps.subject.outputs.source_sha }}" HEAD',
     "pnpm inspect:gateway-registry --",
     ".current.runtimeManifestDigest == $child",
     'docker pull "$RUNTIME_IMAGE_REF"',
@@ -90,6 +92,11 @@ export function findGatewayRuntimeAttestationWorkflowViolations(workflow: string
     )
   ) {
     violations.push("Existing-runtime attestation must never build or publish image content.");
+  }
+  if (/git checkout --detach ["']?\$REQUESTED_SOURCE_SHA/iu.test(workflow)) {
+    violations.push(
+      "Existing-runtime attestation must run merged recovery validators while separately binding the older image source."
+    );
   }
   if (
     /\bmaritime\s+(?:create|deploy|restart|stop|delete|env|trigger)\b|\bkubectl\b|\bhelm\b|\bvercel\b/iu.test(
