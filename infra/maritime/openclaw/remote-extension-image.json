@@ -1,11 +1,14 @@
 {
-  "schemaVersion": "1",
+  "schemaVersion": "2",
   "openclawVersion": "2026.7.1",
   "baseImage": "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c",
   "runtimeBaseImage": "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f",
   "runtimeLock": "infra/maritime/openclaw/remote-extension-runtime-lock.json",
-  "publicationState": "pending",
-  "image": null,
+  "publicationState": "published",
+  "releaseIndex": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4",
+  "runtimeManifest": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a",
+  "sourceCommit": "69fee2fcedf7d0474d5a75d64323318b993f7a6a",
+  "runtimeSelectionState": "diagnostic_pending",
   "releaseProfile": "founder_browser_experimental",
   "synthetic": false,
   "deployableBeforeLiveProxyAcceptance": false
