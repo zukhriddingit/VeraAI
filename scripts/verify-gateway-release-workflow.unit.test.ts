@@ -107,6 +107,15 @@ describe("Gateway release workflow verifier", () => {
       "required boundary: buildType"
     ],
     [
+      "mutually exclusive attestation identity flags",
+      (source: string) =>
+        source.replace(
+          '--signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-openclaw-gateway.yml"',
+          '--cert-identity "$CERTIFICATE_IDENTITY" \\\n            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-openclaw-gateway.yml"'
+        ),
+      "must use only the signer-workflow identity selector"
+    ],
+    [
       "deployment command",
       (source: string) => `${source}\n# maritime deploy\n`,
       "must not contain deployment"
@@ -144,6 +153,20 @@ describe("Gateway release workflow verifier", () => {
     ).toEqual(
       expect.arrayContaining([
         expect.stringMatching("must never build or publish another candidate")
+      ])
+    );
+  });
+
+  it("rejects mutually exclusive attestation identity flags in signing resume", () => {
+    const mutatedResume = resumeWorkflow.replace(
+      "            --signer-workflow \\",
+      '            --cert-identity "$CERTIFICATE_IDENTITY" \\\n            --signer-workflow \\'
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must use only the signer-workflow identity selector")
       ])
     );
   });

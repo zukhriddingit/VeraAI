@@ -103,6 +103,11 @@ export function findGatewayReleaseWorkflowViolations(
       "Gateway release must not use the repository token for the existing unlinked package."
     );
   }
+  if (workflow.includes("--cert-identity")) {
+    violations.push(
+      "Gateway attestation verification must use only the signer-workflow identity selector."
+    );
+  }
   requireText(
     workflow,
     "file: infra/maritime/openclaw/remote-extension.Dockerfile",
@@ -278,6 +283,11 @@ export function findGatewayReleaseWorkflowViolations(
     /docker\/build-push-action|docker\s+(?:build|buildx)|\bpush:\s*true\b/iu.test(resumeWorkflow)
   ) {
     violations.push("Gateway signing resume must never build or publish another candidate.");
+  }
+  if (resumeWorkflow.includes("--cert-identity")) {
+    violations.push(
+      "Gateway signing-resume attestation verification must use only the signer-workflow identity selector."
+    );
   }
   if (
     /\bmaritime\s+(?:create|deploy|restart|stop|delete|env|trigger)\b|\bkubectl\b|\bhelm\b|\bvercel\b|gh release|\bdocker service\b/iu.test(

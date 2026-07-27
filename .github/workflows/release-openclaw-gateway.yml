@@ -345,7 +345,6 @@ jobs:
           set -euo pipefail
           gh attestation verify "oci://$GATEWAY_IMAGE_REF" \
             --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "$CERTIFICATE_IDENTITY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-openclaw-gateway.yml" \
             --predicate-type https://slsa.dev/provenance/v1 \
             --format json \
@@ -354,7 +353,6 @@ jobs:
             release-evidence/gateway/provenance-verification.json
           gh attestation verify "oci://$GATEWAY_IMAGE_REF" \
             --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "$CERTIFICATE_IDENTITY" \
             --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release-openclaw-gateway.yml" \
             --predicate-type https://spdx.dev/Document/v2.3 \
             --format json \

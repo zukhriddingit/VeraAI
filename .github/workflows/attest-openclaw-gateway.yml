@@ -269,7 +269,6 @@ jobs:
       - name: Verify exact-source provenance and SBOM attestations
         shell: bash
         env:
-          CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
           GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
           GH_TOKEN: ${{ github.token }}
           RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
@@ -277,7 +276,6 @@ jobs:
           set -euo pipefail
           gh attestation verify "oci://$GATEWAY_IMAGE_REF" \
             --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "$CERTIFICATE_IDENTITY" \
             --signer-workflow \
               "$GITHUB_REPOSITORY/.github/workflows/attest-openclaw-gateway.yml" \
             --predicate-type https://slsa.dev/provenance/v1 \
@@ -287,7 +285,6 @@ jobs:
             release-evidence/gateway/provenance-verification.json
           gh attestation verify "oci://$GATEWAY_IMAGE_REF" \
             --repo "$GITHUB_REPOSITORY" \
-            --cert-identity "$CERTIFICATE_IDENTITY" \
             --signer-workflow \
               "$GITHUB_REPOSITORY/.github/workflows/attest-openclaw-gateway.yml" \
             --predicate-type https://spdx.dev/Document/v2.3 \
