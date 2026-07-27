@@ -153,6 +153,34 @@ describe("Gateway release workflow verifier", () => {
     ).toEqual(expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")]));
   });
 
+  it("rejects published-image inspection before an exact-digest pull", () => {
+    const mutatedRelease = releaseWorkflow.replace(
+      '          docker pull "$GATEWAY_IMAGE_REF"\n',
+      ""
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(mutatedRelease, ciWorkflow, resumeWorkflow)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("pull the immutable digest before published-image inspection")
+      ])
+    );
+  });
+
+  it("rejects an exact-digest pull placed after published-image inspection", () => {
+    const pull = '          docker pull "$GATEWAY_IMAGE_REF"\n';
+    const mutatedRelease = releaseWorkflow
+      .replace(pull, "")
+      .replace("            --simulate-bootstrap\n", `            --simulate-bootstrap\n${pull}`);
+    expect(
+      findGatewayReleaseWorkflowViolations(mutatedRelease, ciWorkflow, resumeWorkflow)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("pull the immutable digest before published-image inspection")
+      ])
+    );
+  });
+
   it("rejects CI that omits the simulated provider bootstrap layout check", () => {
     const mutatedCi = ciWorkflow.replace("            --simulate-bootstrap\n", "");
     expect(
@@ -185,6 +213,87 @@ describe("Gateway release workflow verifier", () => {
       ])
     );
   });
+
+  it.each([
+    [
+      "the reviewed failed-job conclusion",
+      '.conclusion == "failure"',
+      '.conclusion == "cancelled"'
+    ],
+    [
+      "the successful publication step",
+      '"Build and publish the commit-bound Gateway"',
+      '"Unreviewed build step"'
+    ],
+    [
+      "the immutable-reference step",
+      '"Resolve immutable Gateway reference"',
+      '"Unreviewed digest step"'
+    ],
+    [
+      "the failed published-layout step",
+      '"Verify minimal published runtime identity"',
+      '"Unreviewed failed step"'
+    ],
+    [
+      "the skipped evidence-generation step",
+      '"Generate SBOM and vulnerability evidence"',
+      '"Unreviewed evidence step"'
+    ],
+    [
+      "the skipped zero-finding step",
+      '"Enforce zero unresolved critical or high findings"',
+      '"Unreviewed scan step"'
+    ],
+    [
+      "the preserved publication artifact",
+      '"Preserve pre-signing Gateway evidence"',
+      '"Unreviewed artifact step"'
+    ],
+    [
+      "the pinned Trivy installer",
+      "aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567",
+      "aquasecurity/setup-trivy@v0.3.1"
+    ],
+    [
+      "the fresh SPDX evidence",
+      "release-evidence/gateway/gateway.spdx.json",
+      "release-evidence/gateway/gateway.unknown.json"
+    ],
+    [
+      "the fresh vulnerability evidence",
+      "release-evidence/gateway/trivy-vulnerabilities.json",
+      "release-evidence/gateway/trivy-unknown.json"
+    ],
+    [
+      "the complete HIGH/CRITICAL gate",
+      "--severity CRITICAL,HIGH --exit-code 1",
+      "--severity CRITICAL --exit-code 1"
+    ]
+  ])("rejects signing recovery without %s", (_label, before, after) => {
+    const mutatedResume = resumeWorkflow.replaceAll(before, after);
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("independently revalidate the existing digest")
+      ])
+    );
+  });
+
+  it.each(["docker build .", "docker buildx build .", "docker push image"])(
+    "rejects signing recovery command: %s",
+    (command) => {
+      const mutatedResume = `${resumeWorkflow}\n# ${command}\n`;
+      expect(
+        findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+      ).toEqual(
+        expect.arrayContaining([
+          "Gateway signing resume must never build or publish another candidate."
+        ])
+      );
+    }
+  );
 
   it("rejects mutually exclusive attestation identity flags in signing resume", () => {
     const mutatedResume = resumeWorkflow.replace(

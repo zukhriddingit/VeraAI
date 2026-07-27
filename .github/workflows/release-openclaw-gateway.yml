@@ -156,6 +156,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          docker pull "$GATEWAY_IMAGE_REF"
           node scripts/verify-gateway-image-layout.mjs \
             --image-ref "$GATEWAY_IMAGE_REF" \
             --simulate-bootstrap

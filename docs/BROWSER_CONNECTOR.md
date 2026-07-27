@@ -1,8 +1,8 @@
 # Vera Browser Connector
 
-Status: founder connectivity spike; local route-isolation repair awaits image publication
+Status: founder connectivity spike; bootstrap-compatible candidate awaits verified signing recovery
 
-Reviewed: 2026-07-25
+Reviewed: 2026-07-27
 
 Release profile: `founder_browser_experimental`
 
@@ -61,8 +61,18 @@ ea95c6a2a92d12625b3db0d71f45823cf7c28b8e
 
 R2 Test A retained that identity only as evidence of the failed baseline. The artifact accepts the
 authenticated extension route, but its generic OpenClaw Gateway WebSocket also upgrades an
-unrelated path. Do not deploy it. The route-isolation repair has no published replacement image;
-`remote-extension-image.json` therefore remains `pending` with `image: null`.
+unrelated path. Do not deploy it.
+
+The bootstrap-compatible candidate is published but is not deployable:
+
+```text
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
+source revision: 69fee2fcedf7d0474d5a75d64323318b993f7a6a
+```
+
+Its push-only publication did not pull the digest before local Docker inspection, so the workflow
+stopped before its GitHub attestations and Cosign signature. `remote-extension-image.json` remains
+`pending` with `image: null` until exact-digest recovery independently passes.
 
 The repaired container exposes an exact-path filter on public port `18789`. The general OpenClaw
 Gateway binds only to loopback port `18790`; the filter forwards raw upgrade bytes only for exact

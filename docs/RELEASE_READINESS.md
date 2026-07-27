@@ -23,9 +23,22 @@ exposes only an exact filter on port `18789`, moves the general Gateway to loopb
 uses derived browser-control port `18792`, has zero Trivy `HIGH` or `CRITICAL` findings, and passes
 signature, provenance, SBOM, and attestation verification. Its first disposable Maritime run
 failed before entrypoint because the provider bootstrap expected `/usr/local/bin` to exist. The
-next candidate adds only that empty root-owned directory, keeps it outside PATH, and must repeat all
-publication and live gates. This does not affect `founder_core`; it remains a code/artifact blocker
-for browser experimental.
+bootstrap-compatible candidate was published from merged source
+`69fee2fcedf7d0474d5a75d64323318b993f7a6a` as immutable digest
+`sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4`. It adds only that
+empty root-owned directory, keeps it outside PATH, passes an independent anonymous pull, layout
+simulation, and zero-finding scan, but is not deployable: its push-only workflow inspected the
+digest before pulling it into job-local Docker and therefore skipped GitHub attestation and Cosign
+signing. This does not affect `founder_core`; it remains an artifact blocker for browser
+experimental.
+
+The approved recovery uses the exact existing digest, source commit, and publication run. It
+performs no rebuild and no replacement publication. Before any registry write it downloads the
+bound publication artifact, anonymously pulls the digest, verifies immutable labels and layout,
+regenerates an SPDX SBOM, and runs an independent zero-finding scan with pinned Trivy. Only then may
+it create GitHub provenance/SBOM attestations and a Cosign signature. The temporary
+`GHCR_PUBLISH_TOKEN` must be deleted immediately after the recovery workflow reaches a terminal
+state. Maritime remains out of scope until all recovered evidence verifies.
 
 For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
 external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A

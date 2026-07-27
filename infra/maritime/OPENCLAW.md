@@ -22,9 +22,9 @@ ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952
 
 R2 Test A proved that the artifact's intended extension route authenticates and upgrades locally,
 but its generic OpenClaw Gateway WebSocket also accepts an unrelated route. It is retained only as
-baseline evidence and must not be deployed. The route-isolation repair's replacement image has not
-been published, so `remote-extension-image.json` is `pending` with `image: null` and
-`deployableBeforeLiveProxyAcceptance: false`.
+baseline evidence and must not be deployed. The bootstrap-compatible candidate described below is
+published but is not deployable, so `remote-extension-image.json` remains `pending` with
+`image: null` and `deployableBeforeLiveProxyAcceptance: false`.
 
 A later public route-filter candidate was also rejected:
 
@@ -85,7 +85,7 @@ pairing occurred.
 
 ## Maritime bootstrap filesystem boundary
 
-The next replacement adds only an empty `/usr/local/bin` directory through final-stage Docker
+The bootstrap-compatible candidate adds only an empty `/usr/local/bin` directory through final-stage Docker
 metadata. In the immutable image it must be a real root-owned directory with mode `0755`, contain
 no file or symlink, and remain outside the application PATH. Vera's application PATH is exactly
 `/usr/bin`; the immutable executable inventory remains exactly `/usr/bin/node`. Vera does not ship
@@ -108,6 +108,29 @@ material broadening of the UID `1000` application execution surface is
 `founder_browser_experimental=no_go`. The manual publication workflow may run only from an exact
 commit already merged into `main`; it must reproduce zero findings and verify the runtime layout,
 lock hash, signature, source provenance, SBOM, and attestations before one disposable acceptance.
+
+The candidate was published exactly once from source
+`69fee2fcedf7d0474d5a75d64323318b993f7a6a`:
+
+```text
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
+```
+
+Its publication used Buildx `push: true` and then attempted job-local Docker inspection without
+first pulling the immutable digest. Publication therefore stopped before GitHub attestation and
+Cosign signing. Anonymous amd64 pull, the shared layout/bootstrap verifier, immutable labels, and
+an independent Trivy zero-finding scan pass, but those results do not authorize deployment.
+
+The one permitted recovery accepts the exact existing digest, source commit, and publication run.
+It performs no rebuild and no replacement publication. Before registry authentication, it
+revalidates the retained runtime lock, anonymously pulls the digest, reruns image identity and
+bootstrap checks, generates a fresh SPDX SBOM, and enforces an independent zero-finding scan with
+pinned Trivy `0.72.0`. Only then may it create GitHub provenance and SBOM attestations and sign the
+same digest with Cosign. `GHCR_PUBLISH_TOKEN` exists only for that terminal workflow run; delete the
+temporary secret immediately afterward. A failed recovery does not permit another publication or a
+Maritime deployment.
+
+Always delete the temporary secret.
 
 The preserved non-browser RentCast analysis path remains pinned to:
 

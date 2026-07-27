@@ -1,8 +1,9 @@
 # Vera Founder-Release Security Review
 
-Date: 2026-07-26
+Date: 2026-07-27
 
-Review status: Remote-extension controls and zero-finding replacement verified locally; live proxy, Gateway audit, signed publication, and release evidence pending
+Review status: Bootstrap-compatible remote-extension candidate published; verified signing
+recovery, live proxy, Gateway audit, and release evidence pending
 
 Initial release outcome: **no-go** because no complete, current private evidence bundle exists. Vera
 is **not approved for multi-user beta**. The `founder_core` profile may become
@@ -70,8 +71,8 @@ The review used source inspection, targeted searches, schema and migration inspe
 | ID | Boundary / threat | Severity | Evidence | Exploit or failure path | Required fix | Owner | Release blocker | Status |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | SEC-001 | Non-founder browser execution | High | `packages/domain/src/founder-browser-access.ts`; creation, dispatch, and worker tests listed below | Ordinary tenant ownership is enforced, but an authenticated user can reach the single founder gateway whenever browser controls are enabled because there is no independent founder UUID allowlist. | Enforce one server-only founder UUID allowlist at job creation, dispatch, and immediately before worker provider invocation. Missing or malformed configuration must deny. | Application | Yes | Resolved |
-| SEC-002 | OpenClaw capability and ingress | High | ADR 0013, R2 local TLS matrix, OpenClaw 2026.7.1 config/plugin/route-filter verifier | The R1 image accepts unrelated WebSocket paths through OpenClaw's generic Gateway fallback; moving the general Gateway behind the filter also changes OpenClaw's derived browser-control port; a connected extension starts only the in-process relay unless the loopback HTTP service is explicitly started; Maritime does not document WSS upgrades, subprotocol preservation, payload limits, idle timeouts, or stability. | Reject the R1 digest; publish only the tested exact-route filter with the general Gateway and eagerly started derived browser-control service on loopback, then require the complete remote-extension phase matrix, private proxy evidence, plain/deep audits, per-user isolation, and route-only exposure. | Infrastructure | No for core; yes for browser experimental | Exact-route zero-finding repair passes local container acceptance on public `18789`, internal Gateway `18790`, and eager loopback browser control `18792`; signed publication and live acceptance remain open |
-| SEC-003 | Mutable release identity | High | immutable OpenClaw and Chainguard digests, locked dependency repairs, SHA-pinned CI actions, secretless PR image gate, local zero-finding evidence | The local candidate is identified and inventoried, but a replacement registry digest, verified provenance/signature/SBOM attestations, and rollback worker digest are not yet recorded. | Merge the CI-gated repair, publish exactly one replacement from merged `main`, verify every signed artifact, and deploy only by accepted digest. | Release | Yes | Local zero-finding gate passed; promotion evidence open |
+| SEC-002 | OpenClaw capability and ingress | High | ADR 0013, R2 local TLS matrix, OpenClaw 2026.7.1 config/plugin/route-filter verifier | The R1 image accepts unrelated WebSocket paths through OpenClaw's generic Gateway fallback; moving the general Gateway behind the filter also changes OpenClaw's derived browser-control port; a connected extension starts only the in-process relay unless the loopback HTTP service is explicitly started; Maritime does not document WSS upgrades, subprotocol preservation, payload limits, idle timeouts, or stability. | Reject the R1 digest; accept only the tested exact-route filter with the general Gateway and eagerly started derived browser-control service on loopback after complete signed supply-chain and live remote-extension evidence. | Infrastructure | No for core; yes for browser experimental | Bootstrap-compatible digest published; verified signing recovery and live acceptance remain open |
+| SEC-003 | Mutable release identity | High | immutable OpenClaw and Chainguard digests, locked dependency repairs, SHA-pinned CI actions, secretless PR image gate, exact registry digest, independent zero-finding evidence | The one replacement digest exists, but its push-only publication stopped before required GitHub attestations and Cosign signature. | Recover only the exact existing digest without rebuild or replacement publication; independently revalidate it before signing and deploy only after every artifact verifies. | Release | Yes | Exact digest recorded; verified signing recovery and promotion evidence open |
 | SEC-004 | Public worker ingress | Medium | runbook requires agent-local worker port; read-only Maritime inventory found no Vera worker deployment | A worker that needs only Maritime wake/status and PostgreSQL claims must not expose a public application URL. Maritime may still provide a secret invoke webhook, which is not a Vera authorization surface. | Deploy one worker by immutable digest without public application ingress and verify its readiness/diagnostic boundary. | Infrastructure | Yes | Desired state fixed; deployment evidence open |
 | SEC-005 | Mutation exhaustion and CSRF inconsistency | Medium | `apps/web/lib/server/request-security.ts`; `scripts/verify-web-mutation-boundaries.ts`; route and parser tests listed below | An unauthenticated or cross-origin request can be buffered before rejection, and inconsistent parsing can bypass the intended body-size/content-type policy. | Authenticate, require the exact configured same origin, stream a bounded JSON body in UTF-8 bytes, then schema-validate in every mutation route. Add a static regression gate. | Web | Yes | Resolved |
 | SEC-006 | Gmail capability regression | High | `scripts/verify-gmail-boundaries.ts`; `packages/connectors/src/gmail-client.ts`; verifier/client tests listed below | A later dependency, scope, adapter method, or route could silently introduce compose, send, modify, label, delete, or broad mailbox access. | Add a CI verifier rejecting broad/compose/modify scopes and all draft/send/mailbox-mutation methods while allowing only bounded read-only alert ingestion. | Integrations | Yes | Resolved |
@@ -187,10 +188,21 @@ The complete post-Prompt-12 application gate ran every static boundary verifier,
   transport tests, a real loopback container test, and Trivy 0.72.0 with exactly zero
   `CRITICAL,HIGH` findings including fixed and unfixed vulnerabilities. Its scan record remains in
   a mode-`0700` gitignored private evidence directory with mode-`0600` files.
-- This is local evidence only. The replacement manifest remains `pending`; no replacement has been
-  published, signed, attested, or deployed. The merged-main manual workflow must reproduce the
-  identity and zero-finding result, preserve the runtime-lock hash, and verify signing, provenance,
-  and SBOM attestations before Maritime is in scope.
+- The bootstrap-compatible candidate was published exactly once from source
+  `69fee2fcedf7d0474d5a75d64323318b993f7a6a` at digest
+  `sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4`.
+  Anonymous `linux/amd64` pull, immutable labels, image layout, simulated bootstrap, and a fresh
+  Trivy 0.72.0 scan with zero `CRITICAL,HIGH` findings pass.
+- The push-only publication did not load the image into job-local Docker before inspection. The
+  workflow failed at that read-only boundary and skipped its GitHub attestations and Cosign
+  signature. BuildKit SPDX and SLSA predicates are present in the OCI index but are not substitutes
+  for the missing reviewed release verification.
+- The recovery workflow binds the exact existing digest, source commit, and publication run,
+  performs no rebuild and no replacement publication, regenerates an SPDX SBOM, and runs an
+  independent zero-finding scan before registry authentication. It may then sign and attest the
+  same digest. `GHCR_PUBLISH_TOKEN` is temporary and the operator must delete the temporary secret
+  as soon as the recovery run reaches a terminal state. Maritime remains blocked until every
+  recovered artifact independently verifies.
 
 ## Browser gateway threats
 
