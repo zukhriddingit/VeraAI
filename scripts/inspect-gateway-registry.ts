@@ -47,11 +47,12 @@ export function parseGatewayRegistryArguments(
     readonly allowedOutputDirectory?: string;
   } = {}
 ): GatewayRegistryArguments {
+  const normalizedArguments = argv[0] === "--" ? argv.slice(1) : argv;
   const values = new Map<string, string>();
   const allowed = new Set(["--current-index", "--previous-index", "--output"]);
-  for (let index = 0; index < argv.length; index += 2) {
-    const option = argv[index];
-    const value = argv[index + 1];
+  for (let index = 0; index < normalizedArguments.length; index += 2) {
+    const option = normalizedArguments[index];
+    const value = normalizedArguments[index + 1];
     if (!option || !allowed.has(option) || !value || value.startsWith("--")) {
       throw new Error("Gateway registry inspection arguments are invalid.");
     }
@@ -60,7 +61,7 @@ export function parseGatewayRegistryArguments(
     }
     values.set(option, value);
   }
-  if (values.size !== 3 || argv.length !== 6) {
+  if (values.size !== 3 || normalizedArguments.length !== 6) {
     throw new Error("Current index, previous index, and output are required.");
   }
   const currentIndex = values.get("--current-index") as string;

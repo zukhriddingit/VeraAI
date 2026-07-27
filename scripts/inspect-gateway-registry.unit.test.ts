@@ -16,6 +16,7 @@ describe("Gateway registry inspection arguments", () => {
     expect(
       parseGatewayRegistryArguments(
         [
+          "--",
           "--current-index",
           CURRENT,
           "--previous-index",
