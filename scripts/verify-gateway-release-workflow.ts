@@ -122,6 +122,12 @@ export function findGatewayReleaseWorkflowViolations(
       violations
     );
   }
+  requireText(
+    workflow,
+    "name: Verify minimal published runtime identity",
+    "Gateway release must verify the published runtime identity before scanning.",
+    violations
+  );
   for (const verifier of [
     "pnpm verify:gateway-runtime-supply-chain",
     "pnpm verify:remote-extension-config"
@@ -187,7 +193,7 @@ export function findGatewayReleaseWorkflowViolations(
     "load: true",
     "push: false",
     "tags: vera-openclaw-gateway:ci",
-    '\'{"uid":1000,"gid":1000,"shell":false,"npm":false,"corepack":false}\'',
+    '\'{"uid":1000,"gid":1000,"executables":["node"],"shell":false,"npm":false,"npmLibrary":false,"corepack":false,"pnpm":false}\'',
     "version: v0.72.0",
     "--scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 1",
     "vera-openclaw-gateway:ci"

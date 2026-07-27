@@ -82,15 +82,24 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
   ]) {
     requireText(finalStage, required, finalBoundaryMessage, violations);
   }
+  const runLines = finalStage.match(/^\s*RUN\b.*$/gmu) ?? [];
+  const hasExactToolPrune =
+    runLines.length === 1 &&
+    runLines[0]?.includes('RUN ["/usr/bin/node", "-e"') === true &&
+    runLines[0]?.includes("fs.readdirSync('/usr/bin')") === true &&
+    runLines[0]?.includes("name !== 'node'") === true &&
+    runLines[0]?.includes("fs.rmSync('/usr/lib/node_modules',{recursive:true,force:true})") ===
+      true;
   if (
     finalMarkers.length !== 2 ||
-    /^\s*RUN\b/mu.test(finalStage) ||
+    !hasExactToolPrune ||
     /\b(?:npm|pnpm|corepack|apt|apk)\b/iu.test(finalStage) ||
     /(?:^|\s)\/bin\/sh(?:\s|$|["'])/mu.test(finalStage) ||
     /COPY\s+--from=(?:openclaw-runtime|vera-layout)[^\n]*(?:\/usr\/local|\/bin|\/usr\/bin)/iu.test(
       finalStage
     ) ||
-    /COPY\s+--from=(?:openclaw-runtime|vera-layout)\s+\/\s+\//iu.test(finalStage)
+    /COPY\s+--from=(?:openclaw-runtime|vera-layout)\s+\/\s+\//iu.test(finalStage) ||
+    !/USER 0:0[\s\S]*USER 1000:1000[\s\S]*ENTRYPOINT/u.test(finalStage)
   ) {
     violations.push(finalBoundaryMessage);
   }

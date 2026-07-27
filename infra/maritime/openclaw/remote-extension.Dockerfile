@@ -51,6 +51,9 @@ COPY --from=openclaw-runtime --chown=1000:1000 /app /app
 COPY --from=vera-layout --chown=1000:1000 /opt/vera /opt/vera
 COPY --from=vera-layout --chown=1000:1000 /data /data
 
+USER 0:0
+RUN ["/usr/bin/node", "-e", "const fs=require('node:fs'); for (const name of fs.readdirSync('/usr/bin')) { if (name !== 'node') fs.rmSync('/usr/bin/'+name,{recursive:true,force:true}); } fs.rmSync('/usr/lib/node_modules',{recursive:true,force:true});"]
+
 ENV HOME=/data \
   OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json \
   OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1 \

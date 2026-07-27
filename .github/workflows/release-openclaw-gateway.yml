@@ -152,6 +152,15 @@ jobs:
           version: v0.72.0
           cache: false
 
+      - name: Verify minimal published runtime identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          observed="$(docker run --rm --entrypoint /usr/bin/node \
+            "$GATEWAY_IMAGE_REF" \
+            -e 'const fs=require("node:fs"); process.stdout.write(JSON.stringify({uid:process.getuid(),gid:process.getgid(),executables:fs.readdirSync("/usr/bin").sort(),shell:fs.existsSync("/bin/sh"),npm:fs.existsSync("/usr/bin/npm"),npmLibrary:fs.existsSync("/usr/lib/node_modules"),corepack:fs.existsSync("/usr/bin/corepack"),pnpm:fs.existsSync("/usr/bin/pnpm")}));')"
+          test "$observed" = '{"uid":1000,"gid":1000,"executables":["node"],"shell":false,"npm":false,"npmLibrary":false,"corepack":false,"pnpm":false}'
+
       - name: Generate SBOM and vulnerability evidence
         shell: bash
         run: |

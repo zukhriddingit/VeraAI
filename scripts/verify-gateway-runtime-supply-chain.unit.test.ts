@@ -63,6 +63,15 @@ describe("Gateway runtime supply-chain verifier", () => {
       }
     ],
     [
+      "missing final tool prune",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace(
+          /^RUN \["\/usr\/bin\/node", "-e", "const fs=.*\n/mu,
+          ""
+        );
+      }
+    ],
+    [
       "unexpected repair",
       (input: ReturnType<typeof fixture>) => {
         const lock = input.runtimeLock as {

@@ -60,6 +60,12 @@ describe("Gateway runtime dependency sanitizer", () => {
         repairs: [...lock.repairs, { ...lock.repairs[0], name: "unexpected" }]
       })
     ).toContain("Runtime repair lock must contain exactly the five approved packages.");
+    expect(
+      findRuntimeLockViolations({
+        ...lock,
+        allowedFinalExecutables: ["/usr/bin/node", "/bin/sh"]
+      })
+    ).toContain("Runtime repair lock must allow only the Node executable in the final image.");
   });
 
   it("rejects package name, version, and dependency-surface drift", () => {

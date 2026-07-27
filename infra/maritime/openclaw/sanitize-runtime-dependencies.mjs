@@ -87,13 +87,20 @@ const APPROVED_REPAIRS = Object.freeze([
 ]);
 const FORBIDDEN_FINAL_PATHS = Object.freeze([
   "/bin/sh",
+  "/usr/bin/sh",
+  "/usr/bin/busybox",
   "/usr/bin/npm",
+  "/usr/bin/npx",
+  "/usr/bin/node-gyp",
+  "/usr/bin/corepack",
   "/usr/bin/pnpm",
+  "/usr/lib/node_modules",
   "/usr/local/bin/npm",
   "/usr/local/bin/pnpm",
   "/usr/local/lib/node_modules/npm",
   "/usr/local/share/corepack"
 ]);
+const ALLOWED_FINAL_EXECUTABLES = Object.freeze(["/usr/bin/node"]);
 
 function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -171,6 +178,9 @@ export function findRuntimeLockViolations(lock) {
   }
   if (!sameStringArray(lock.forbiddenFinalPaths, FORBIDDEN_FINAL_PATHS)) {
     violations.push("Runtime repair lock must forbid package managers and a final-image shell.");
+  }
+  if (!sameStringArray(lock.allowedFinalExecutables, ALLOWED_FINAL_EXECUTABLES)) {
+    violations.push("Runtime repair lock must allow only the Node executable in the final image.");
   }
   return violations;
 }
