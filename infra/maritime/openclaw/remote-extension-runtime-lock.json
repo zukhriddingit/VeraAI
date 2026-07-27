@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "1",
+  "openclaw": {
+    "version": "2026.7.1",
+    "sourceCommit": "2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4",
+    "image": "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
+  },
+  "finalRuntime": {
+    "imageIndex": "cgr.dev/chainguard/node@sha256:9cb13df6c9cf12a80967d16cc85687d4d70f5a6fd76001a9764aa08a34e6d2f5",
+    "linuxAmd64Image": "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f",
+    "observedNodeVersion": "26.5.0",
+    "uid": 1000,
+    "gid": 1000,
+    "entrypoint": ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]
+  },
+  "scanner": {
+    "name": "trivy",
+    "version": "0.72.0",
+    "severities": ["CRITICAL", "HIGH"],
+    "ignoreUnfixed": false
+  },
+  "repairs": [
+    {
+      "name": "@opentelemetry/propagator-jaeger",
+      "path": "node_modules/@opentelemetry/propagator-jaeger",
+      "fromVersion": "2.8.0",
+      "toVersion": "2.9.0",
+      "tarball": "https://registry.npmjs.org/@opentelemetry/propagator-jaeger/-/propagator-jaeger-2.9.0.tgz",
+      "integrity": "sha512-4mYGty27rYvSM0jtp1ZUOqd3LfVRCYg9H5G9OFzSx5HViYToU21MFhWfco7x1HwXr7ER8yGOiCIHZUwjPksc0Q==",
+      "dependencyNames": ["@opentelemetry/core"]
+    },
+    {
+      "name": "@vitest/browser",
+      "path": "node_modules/@vitest/browser",
+      "fromVersion": "4.1.9",
+      "toVersion": "4.1.10",
+      "tarball": "https://registry.npmjs.org/@vitest/browser/-/browser-4.1.10.tgz",
+      "integrity": "sha512-UDwuWGwXj646CBx/bQHOaJSX7np0I8JL/UKQYa1e4QrVHH8VdWtx8eaOuf8sy0ShwDgR6NjJAsp5eF6vjF6qng==",
+      "dependencyNames": [
+        "@blazediff/core",
+        "@vitest/mocker",
+        "@vitest/utils",
+        "magic-string",
+        "pngjs",
+        "sirv",
+        "tinyrainbow",
+        "ws"
+      ]
+    },
+    {
+      "name": "brace-expansion",
+      "path": "node_modules/brace-expansion",
+      "fromVersion": "5.0.7",
+      "toVersion": "5.0.8",
+      "tarball": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-5.0.8.tgz",
+      "integrity": "sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==",
+      "dependencyNames": ["balanced-match"]
+    },
+    {
+      "name": "fast-uri",
+      "path": "node_modules/fast-uri",
+      "fromVersion": "3.1.2",
+      "toVersion": "3.1.4",
+      "tarball": "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.4.tgz",
+      "integrity": "sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==",
+      "dependencyNames": []
+    },
+    {
+      "name": "postcss",
+      "path": "node_modules/postcss",
+      "fromVersion": "8.5.16",
+      "toVersion": "8.5.18",
+      "tarball": "https://registry.npmjs.org/postcss/-/postcss-8.5.18.tgz",
+      "integrity": "sha512-xdB1oSLHbz1vRWgCDalrCqEFTWzFlhqFC5tIHLMOSUIjhm3XXQ1qrFy8S/ESr1JYRRXqM3c1QFiMZUJdUTqyMQ==",
+      "dependencyNames": ["nanoid", "picocolors", "source-map-js"]
+    }
+  ],
+  "forbiddenFinalPaths": [
+    "/bin/sh",
+    "/usr/bin/npm",
+    "/usr/bin/pnpm",
+    "/usr/local/bin/npm",
+    "/usr/local/bin/pnpm",
+    "/usr/local/lib/node_modules/npm",
+    "/usr/local/share/corepack"
+  ]
+}
