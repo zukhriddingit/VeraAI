@@ -24,7 +24,7 @@ function fixture() {
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
-    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8"),
+    supervisorSource: readFileSync(resolve(directory, "remote-extension-supervisor.mjs"), "utf8"),
     diagnosticSource: readFileSync(
       resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
       "utf8"
@@ -113,29 +113,32 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
-  it("rejects an entrypoint that does not drop provider-overridden root", () => {
+  it("rejects a supervisor that accepts a provider-overridden root identity", () => {
     const input = fixture();
-    input.entrypointSource = input.entrypointSource.replace(
-      'exec setpriv --reuid=1000 --regid=1000 --clear-groups "$@"',
-      'exec "$@"'
+    input.supervisorSource = input.supervisorSource.replace(
+      "uid !== 1000 || gid !== 1000",
+      "uid !== 0 || gid !== 0"
     );
     expect(findRemoteExtensionConfigViolations(input)).toContain(
-      "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
+      "Gateway supervisor must constrain state repair and spawn only the fixed route-filter child."
     );
   });
 
-  it("rejects state ownership repair that could dereference provider symlinks", () => {
+  it("rejects state preparation that permits symbolic links", () => {
     const input = fixture();
-    input.entrypointSource = input.entrypointSource.replace("chown -R -h", "chown -R");
+    input.supervisorSource = input.supervisorSource.replace(
+      "if (entryStat.isSymbolicLink())",
+      "if (false)"
+    );
     expect(findRemoteExtensionConfigViolations(input)).toContain(
-      "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
+      "Gateway supervisor must constrain state repair and spawn only the fixed route-filter child."
     );
   });
 
-  it("rejects an entrypoint override without an explicit Gateway command", () => {
+  it("rejects an image without the fixed Node supervisor entrypoint", () => {
     const input = fixture();
     input.dockerfile = input.dockerfile.replace(
-      'CMD ["node", "/opt/vera/bin/remote-extension-route-filter.mjs", "node", "openclaw.mjs", "gateway"]',
+      'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]',
       ""
     );
     expect(findRemoteExtensionConfigViolations(input)).toContain(

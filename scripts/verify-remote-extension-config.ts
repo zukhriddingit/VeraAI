@@ -6,6 +6,8 @@ import JSON5 from "json5";
 export const REMOTE_EXTENSION_OPENCLAW_VERSION = "2026.7.1";
 export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
+export const REMOTE_EXTENSION_RUNTIME_BASE_IMAGE =
+  "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
 export const REMOTE_EXTENSION_GATEWAY_IMAGE =
   /^ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:[a-f0-9]{64}$/u;
 export const REMOTE_EXTENSION_SOURCE_COMMIT = /^[a-f0-9]{40}$/u;
@@ -46,7 +48,7 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly pluginSource: string;
   readonly auditDeviceSource: string;
   readonly dockerfile: string;
-  readonly entrypointSource: string;
+  readonly supervisorSource: string;
   readonly diagnosticSource: string;
   readonly routeFilterSource: string;
 }): string[] {
@@ -59,7 +61,7 @@ export function findRemoteExtensionConfigViolations(input: {
     pluginSource,
     auditDeviceSource,
     dockerfile,
-    entrypointSource,
+    supervisorSource,
     diagnosticSource,
     routeFilterSource
   } = input;
@@ -70,6 +72,9 @@ export function findRemoteExtensionConfigViolations(input: {
   if (
     objectAt(imageManifest)?.openclawVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION ||
     objectAt(imageManifest)?.baseImage !== REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE ||
+    objectAt(imageManifest)?.runtimeBaseImage !== REMOTE_EXTENSION_RUNTIME_BASE_IMAGE ||
+    objectAt(imageManifest)?.runtimeLock !==
+      "infra/maritime/openclaw/remote-extension-runtime-lock.json" ||
     !(
       (objectAt(imageManifest)?.publicationState === "pending" &&
         objectAt(imageManifest)?.image === null &&
@@ -89,25 +94,23 @@ export function findRemoteExtensionConfigViolations(input: {
     );
   }
   if (
-    !dockerfile.includes(`FROM ${REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE}`) ||
+    !dockerfile.includes(`FROM ${REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE} AS openclaw-runtime`) ||
+    !dockerfile.includes(`FROM ${REMOTE_EXTENSION_RUNTIME_BASE_IMAGE} AS final`) ||
     !dockerfile.includes("ARG VERA_SOURCE_COMMIT") ||
     !dockerfile.includes('org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}"') ||
     !dockerfile.includes("--chmod=0600") ||
     !dockerfile.includes("--chmod=0500") ||
     !dockerfile.includes("seed-security-audit-device.mjs") ||
     !dockerfile.includes("--chmod=0555") ||
-    !dockerfile.includes("remote-extension-entrypoint.sh") ||
+    !dockerfile.includes("remote-extension-supervisor.mjs") ||
     !dockerfile.includes("remote-extension-route-filter.mjs") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
     !dockerfile.includes("OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
     !dockerfile.includes("EXPOSE 18789") ||
-    !dockerfile.includes("USER node") ||
+    !dockerfile.includes("USER 1000:1000") ||
     !dockerfile.includes(
-      'ENTRYPOINT ["tini", "-s", "--", "/opt/vera/bin/remote-extension-entrypoint.sh"]'
-    ) ||
-    !dockerfile.includes(
-      'CMD ["node", "/opt/vera/bin/remote-extension-route-filter.mjs", "node", "openclaw.mjs", "gateway"]'
+      'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]'
     )
   ) {
     violations.push(
@@ -115,16 +118,27 @@ export function findRemoteExtensionConfigViolations(input: {
     );
   }
   if (
-    !entrypointSource.includes('EXPECTED_STATE_DIR="/data/.openclaw"') ||
-    !entrypointSource.includes('chown -R -h 1000:1000 "$OPENCLAW_STATE_DIR"') ||
-    !entrypointSource.includes("-type d -exec chmod 0700") ||
-    !entrypointSource.includes("-type f -exec chmod 0600") ||
-    !entrypointSource.includes("umask 077") ||
-    !entrypointSource.includes('exec setpriv --reuid=1000 --regid=1000 --clear-groups "$@"') ||
-    entrypointSource.includes("eval ")
+    !supervisorSource.includes('const STATE_DIRECTORY = "/data/.openclaw"') ||
+    !supervisorSource.includes(
+      'const ROUTE_FILTER = "/opt/vera/bin/remote-extension-route-filter.mjs"'
+    ) ||
+    !supervisorSource.includes(
+      'Object.freeze([ROUTE_FILTER, "node", "openclaw.mjs", "gateway"])'
+    ) ||
+    !supervisorSource.includes("uid !== 1000 || gid !== 1000") ||
+    !supervisorSource.includes("entryStat.isSymbolicLink()") ||
+    !supervisorSource.includes("chmodSync(directory, 0o700)") ||
+    !supervisorSource.includes("chmodSync(file, 0o600)") ||
+    !supervisorSource.includes("process.umask(0o077)") ||
+    !supervisorSource.includes("processImplementation.execPath") ||
+    !supervisorSource.includes("GATEWAY_ARGUMENTS") ||
+    supervisorSource.includes("eval(") ||
+    /\bexec(?:File)?\s*\(/u.test(supervisorSource) ||
+    supervisorSource.includes("shell: true") ||
+    supervisorSource.includes("process.argv.slice")
   ) {
     violations.push(
-      "Gateway entrypoint must constrain state repair and drop provider-overridden root before OpenClaw starts."
+      "Gateway supervisor must constrain state repair and spawn only the fixed route-filter child."
     );
   }
   if (
@@ -326,7 +340,7 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
-    entrypointSource: readFileSync(resolve(directory, "remote-extension-entrypoint.sh"), "utf8"),
+    supervisorSource: readFileSync(resolve(directory, "remote-extension-supervisor.mjs"), "utf8"),
     diagnosticSource: readFileSync(
       resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
       "utf8"
