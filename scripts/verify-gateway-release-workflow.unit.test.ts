@@ -174,6 +174,14 @@ describe("Gateway release workflow verifier", () => {
         )
     ],
     [
+      "duplicates the repository in the builder identity",
+      (source: string) =>
+        source.replace(
+          'builder: { id: ($serverUrl + "/" + $workflowRef) }',
+          'builder: { id: ($sourceRepository + "/" + $workflowRef) }'
+        )
+    ],
+    [
       "drops the run-attempt binding",
       (source: string) =>
         source.replace("$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT", "$GITHUB_RUN_ID")
