@@ -164,6 +164,9 @@ function parseArguments(arguments_) {
   let simulateBootstrap = false;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index];
+    if (argument === "--" && index === 0) {
+      continue;
+    }
     if (argument === "--image-ref" && imageRef === undefined) {
       imageRef = arguments_[index + 1];
       index += 1;
