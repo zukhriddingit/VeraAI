@@ -166,40 +166,63 @@ jobs:
         shell: bash
         env:
           EVIDENCE_RUN_ID: ${{ steps.subject.outputs.evidence_run_id }}
+          GATEWAY_IMAGE_DIGEST: ${{ steps.subject.outputs.image_digest }}
           RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
         run: |
           set -euo pipefail
           jq -n \
+            --arg attestationInvocationId \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
+            --arg eventName "$GITHUB_EVENT_NAME" \
+            --arg evidenceRunId "$EVIDENCE_RUN_ID" \
+            --arg imageDigest "$GATEWAY_IMAGE_DIGEST" \
+            --arg publicationInvocationId \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID" \
+            --arg repositoryId "$GITHUB_REPOSITORY_ID" \
+            --arg repositoryOwnerId "$GITHUB_REPOSITORY_OWNER_ID" \
+            --arg runnerEnvironment "$RUNNER_ENVIRONMENT" \
             --arg sourceCommit "$RELEASE_SOURCE_SHA" \
-            --arg sourceRepository "https://github.com/$GITHUB_REPOSITORY" \
-            --arg invocationId \
-              "https://github.com/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID" \
+            --arg sourceRepository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
+            --arg workflowCommit "$GITHUB_SHA" \
+            --arg workflowRef "$GITHUB_WORKFLOW_REF" \
             '{
               buildDefinition: {
                 buildType: "https://actions.github.io/buildtypes/workflow/v1",
                 externalParameters: {
                   workflow: {
-                    path: ".github/workflows/release-openclaw-gateway.yml",
+                    path: ".github/workflows/attest-openclaw-gateway.yml",
                     ref: "refs/heads/main",
                     repository: $sourceRepository
                   },
                   sourceCommit: $sourceCommit,
-                  dockerfile: "infra/maritime/openclaw/remote-extension.Dockerfile"
+                  imageDigest: $imageDigest,
+                  dockerfile: "infra/maritime/openclaw/remote-extension.Dockerfile",
+                  publicationEvidence: {
+                    workflow: {
+                      path: ".github/workflows/release-openclaw-gateway.yml",
+                      ref: "refs/heads/main",
+                      repository: $sourceRepository
+                    },
+                    runId: $evidenceRunId,
+                    invocationId: $publicationInvocationId
+                  }
                 },
-                internalParameters: {},
+                internalParameters: {
+                  github: {
+                    event_name: $eventName,
+                    repository_id: $repositoryId,
+                    repository_owner_id: $repositoryOwnerId,
+                    runner_environment: $runnerEnvironment
+                  }
+                },
                 resolvedDependencies: [{
                   uri: ("git+" + $sourceRepository + "@refs/heads/main"),
-                  digest: { gitCommit: $sourceCommit }
+                  digest: { gitCommit: $workflowCommit }
                 }]
               },
               runDetails: {
-                builder: {
-                  id: (
-                    $sourceRepository +
-                    "/.github/workflows/release-openclaw-gateway.yml@refs/heads/main"
-                  )
-                },
-                metadata: { invocationId: $invocationId }
+                builder: { id: ($sourceRepository + "/" + $workflowRef) },
+                metadata: { invocationId: $attestationInvocationId }
               }
             }' > release-evidence/gateway/source-provenance-predicate.json
 
