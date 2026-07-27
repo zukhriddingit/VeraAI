@@ -1,0 +1,65 @@
+name: Verify public Gateway registry objects
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/verify-openclaw-gateway-registry.yml"
+      - "infra/maritime/openclaw/remote-extension-image.json"
+      - "scripts/gateway-registry-*.ts"
+      - "scripts/gateway-runtime-binding*.ts"
+      - "scripts/inspect-gateway-registry*.ts"
+      - "scripts/verify-gateway-registry-workflow*.ts"
+      - "package.json"
+      - "pnpm-lock.yaml"
+
+permissions:
+  contents: read
+
+env:
+  CURRENT_RELEASE_INDEX: ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
+  PREVIOUS_RELEASE_INDEX: ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3
+  VERA_GATEWAY_REGISTRY_OUTPUT_DIRECTORY: release-evidence/gateway-registry
+
+jobs:
+  verify_registry:
+    name: Verify public Gateway registry objects
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
+        with:
+          version: 11.14.0
+          run_install: false
+
+      - name: Install Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install exact dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify every public runtime object
+        shell: bash
+        run: |
+          set -euo pipefail
+          pnpm inspect:gateway-registry -- \
+            --current-index "$CURRENT_RELEASE_INDEX" \
+            --previous-index "$PREVIOUS_RELEASE_INDEX" \
+            --output release-evidence/gateway-registry/inspection.json
+
+      - name: Preserve sanitized registry inspection
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vera-openclaw-gateway-registry-r3
+          path: release-evidence/gateway-registry/inspection.json
+          if-no-files-found: error
+          retention-days: 30
