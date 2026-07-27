@@ -147,4 +147,53 @@ describe("Gateway release workflow verifier", () => {
       ])
     );
   });
+
+  it.each([
+    [
+      "claims the publication workflow as the signer",
+      (source: string) =>
+        source.replace(
+          'path: ".github/workflows/attest-openclaw-gateway.yml"',
+          'path: ".github/workflows/release-openclaw-gateway.yml"'
+        )
+    ],
+    [
+      "uses the subject source as the workflow commit",
+      (source: string) =>
+        source.replace(
+          '--arg workflowCommit "$GITHUB_SHA"',
+          '--arg workflowCommit "$RELEASE_SOURCE_SHA"'
+        )
+    ],
+    [
+      "uses a fabricated builder identity",
+      (source: string) =>
+        source.replace(
+          '--arg workflowRef "$GITHUB_WORKFLOW_REF"',
+          '--arg workflowRef "owner/repo/.github/workflows/fake.yml@refs/heads/main"'
+        )
+    ],
+    [
+      "drops the run-attempt binding",
+      (source: string) =>
+        source.replace("$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT", "$GITHUB_RUN_ID")
+    ],
+    [
+      "drops the original publication evidence",
+      (source: string) => source.replace("publicationEvidence:", "removedPublicationEvidence:")
+    ],
+    [
+      "drops the exact subject source binding",
+      (source: string) =>
+        source.replace("sourceCommit: $sourceCommit", "removedSourceCommit: $sourceCommit")
+    ]
+  ])("rejects a signing resume predicate that %s", (_label, mutate) => {
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutate(resumeWorkflow))
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must bind the existing zero-finding digest and evidence")
+      ])
+    );
+  });
 });
