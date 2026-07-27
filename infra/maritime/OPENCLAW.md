@@ -26,6 +26,56 @@ baseline evidence and must not be deployed. The route-isolation repair's replace
 been published, so `remote-extension-image.json` is `pending` with `image: null` and
 `deployableBeforeLiveProxyAcceptance: false`.
 
+A later public route-filter candidate was also rejected:
+
+```text
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5d1f6d2d097bb8e53f2e2dd6c1e6f8499d6daf34dff8a61b9b0c187fd9e1ec6b
+```
+
+Trivy found 23 critical and 98 high vulnerabilities in that candidate. Signing and deployment
+correctly did not occur. It must never be used as the Gateway replacement.
+
+## Zero-finding replacement boundary
+
+The pending replacement preserves the reviewed OpenClaw 2026.7.1 application from the immutable
+source image above, including source commit
+`2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. It sanitizes exactly five vulnerable application
+package instances, each from a fixed npm tarball with a locked SHA-512 integrity:
+
+- `@opentelemetry/propagator-jaeger` 2.8.0 to 2.9.0;
+- `@vitest/browser` 4.1.9 to 4.1.10;
+- `brace-expansion` 5.0.7 to 5.0.8;
+- `fast-uri` 3.1.2 to 3.1.4; and
+- `postcss` 8.5.16 to 8.5.18.
+
+The repaired `/app` tree is transplanted into the immutable `linux/amd64` Chainguard Node runtime:
+
+```text
+cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f
+```
+
+The final layer deletes the Chainguard package-manager library and every executable except
+`/usr/bin/node`. The image therefore has no shell, npm, npx, node-gyp, Corepack, pnpm, or BusyBox
+runtime. A fixed Node supervisor replaces the old shell entrypoint, requires UID/GID `1000:1000`,
+repairs only the fixed private state tree, rejects symlinks, and starts only Vera's fixed
+route-filter child.
+
+`pnpm verify:gateway-runtime-supply-chain` validates the immutable source, runtime, dependency
+lock, three-stage copy boundary, tool pruning, final identity, and entrypoint. PR CI independently
+builds the `linux/amd64` image without secrets or publication, checks the executable inventory, and
+runs Trivy 0.72.0 with fixed and unfixed `CRITICAL,HIGH` findings enabled.
+
+The 2026-07-26 local candidate passed that identity check, a Trivy 0.72.0 finding count of zero, all
+focused transport tests, and a real loopback startup check: only port `18789` was publicly bound,
+the exact extension route returned `426`, and unrelated HTTP routes returned `404`. This local
+result is stored only as restricted gitignored evidence and is not a registry, signature,
+attestation, proxy, or Maritime acceptance result.
+
+The replacement remains `pending`. The manual publication workflow may run only from an exact
+commit already merged into `main`; it must reproduce zero findings, preserve and verify the runtime
+lock hash, sign the immutable digest, and verify source provenance and SBOM attestations. No
+Maritime deployment is permitted until every publication gate passes.
+
 The preserved non-browser RentCast analysis path remains pinned to:
 
 ```text
@@ -48,10 +98,10 @@ replace, reuse credentials from, or silently migrate the existing RentCast analy
   returns only bounded data plus hashes.
 - `pnpm verify:remote-extension-config` verifies the immutable image, effective static boundary,
   separate browser-Gateway credential names, and absence of browser mutation operations.
-- Maritime currently starts custom containers as root even when the image declares `USER node`.
-  The hardened entrypoint accepts only `/data/.openclaw`, rejects symlinked state, normalizes
-  directories to `0700` and files to `0600`, then drops permanently to UID/GID `1000` before
-  OpenClaw starts.
+- The image declares UID/GID `1000:1000`. The Node supervisor refuses root or any other identity,
+  accepts only `/data/.openclaw`, rejects symlinked state, and normalizes directories to `0700` and
+  files to `0600`. A provider that overrides the image user therefore fails closed and cannot pass
+  live acceptance.
 - `remote-extension-route-filter.mjs` listens on public container port `18789`, forwards raw
   upgrades only for exact `/browser/extension`, and denies queries and unrelated routes. The
   general OpenClaw Gateway listens only on loopback port `18790`.
@@ -101,8 +151,8 @@ R2 local differential testing corrected the earlier provider-only attribution. W
 the correct route returned `101` with the expected protocol and authentication failures returned
 the expected `401`/`403`, but an unrelated path also received `101` through OpenClaw's generic
 Gateway fallback. The R1 artifact therefore fails route isolation before Maritime is evaluated.
-The local exact-route repair passes focused tests, but its replacement image has not been
-published. Tests B through D remain blocked.
+The exact-route and zero-finding runtime repair passes focused tests and local container
+acceptance, but its replacement image has not been published. Tests B through D remain blocked.
 
 An operator may repeat the opt-in private probe only after the repaired image is explicitly
 approved, published by immutable digest, and passes local Test A:
