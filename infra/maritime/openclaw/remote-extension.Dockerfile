@@ -36,25 +36,28 @@ COPY --chown=1000:1000 --chmod=0444 \
 
 FROM cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f AS final
 
+USER 0:0
+WORKDIR /usr/local/bin
+WORKDIR /app
+
 ARG VERA_SOURCE_COMMIT
 LABEL org.opencontainers.image.title="Vera OpenClaw Browser Gateway" \
   org.opencontainers.image.description="Hardened founder-only OpenClaw direct-extension Gateway" \
   org.opencontainers.image.source="https://github.com/zukhriddingit/VeraAI" \
   org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}" \
-  org.opencontainers.image.version="2026.7.1-vera.2" \
+  org.opencontainers.image.version="2026.7.1-vera.3" \
   org.opencontainers.image.base.name="cgr.dev/chainguard/node" \
   org.opencontainers.image.base.digest="sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f" \
   io.vera.openclaw.image.digest="sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
 
-WORKDIR /app
 COPY --from=openclaw-runtime --chown=1000:1000 /app /app
 COPY --from=vera-layout --chown=1000:1000 /opt/vera /opt/vera
 COPY --from=vera-layout --chown=1000:1000 /data /data
 
-USER 0:0
 RUN ["/usr/bin/node", "-e", "const fs=require('node:fs'); for (const name of fs.readdirSync('/usr/bin')) { if (name !== 'node') fs.rmSync('/usr/bin/'+name,{recursive:true,force:true}); } fs.rmSync('/usr/lib/node_modules',{recursive:true,force:true});"]
 
-ENV HOME=/data \
+ENV PATH=/usr/bin \
+  HOME=/data \
   OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json \
   OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1 \
   OPENCLAW_HEADLESS=true \

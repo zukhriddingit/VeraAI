@@ -13,6 +13,9 @@ const RUNTIME_IMAGE =
 const FINAL_STAGE = `FROM ${RUNTIME_IMAGE} AS final`;
 const FIXED_ENTRYPOINT =
   'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]';
+const PROVIDER_BOOTSTRAP_DIRECTORY = "WORKDIR /usr/local/bin";
+const APPLICATION_WORKDIR = "WORKDIR /app";
+const CONSTRAINED_PATH = "PATH=/usr/bin";
 
 type JsonObject = Record<string, unknown>;
 
@@ -76,6 +79,9 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
     "COPY --from=openclaw-runtime --chown=1000:1000 /app /app",
     "COPY --from=vera-layout --chown=1000:1000 /opt/vera /opt/vera",
     "COPY --from=vera-layout --chown=1000:1000 /data /data",
+    PROVIDER_BOOTSTRAP_DIRECTORY,
+    APPLICATION_WORKDIR,
+    CONSTRAINED_PATH,
     "OPENCLAW_STATE_DIR=/data/.openclaw",
     "USER 1000:1000",
     FIXED_ENTRYPOINT
@@ -90,6 +96,16 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
     runLines[0]?.includes("name !== 'node'") === true &&
     runLines[0]?.includes("fs.rmSync('/usr/lib/node_modules',{recursive:true,force:true})") ===
       true;
+  const providerLayoutPattern =
+    /USER 0:0\s+WORKDIR \/usr\/local\/bin\s+WORKDIR \/app[\s\S]*ENV PATH=\/usr\/bin\b/u;
+  const providerLayoutViolation =
+    !providerLayoutPattern.test(finalStage) ||
+    /(?:COPY|ADD|RUN)[^\n]*\/usr\/local\/bin/iu.test(finalStage);
+  if (providerLayoutViolation) {
+    violations.push(
+      "Final Gateway runtime must create one empty provider bootstrap directory through root-owned Docker metadata and exclude it from PATH."
+    );
+  }
   if (
     finalMarkers.length !== 2 ||
     !hasExactToolPrune ||

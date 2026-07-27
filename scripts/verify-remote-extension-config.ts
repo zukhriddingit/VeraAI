@@ -118,6 +118,15 @@ export function findRemoteExtensionConfigViolations(input: {
     );
   }
   if (
+    !dockerfile.includes("USER 0:0\nWORKDIR /usr/local/bin\nWORKDIR /app") ||
+    !dockerfile.includes("ENV PATH=/usr/bin") ||
+    !dockerfile.includes("USER 1000:1000")
+  ) {
+    violations.push(
+      "Hardened Gateway image must preserve the provider-compatible filesystem and constrained runtime."
+    );
+  }
+  if (
     !supervisorSource.includes('const STATE_DIRECTORY = "/data/.openclaw"') ||
     !supervisorSource.includes(
       'const ROUTE_FILTER = "/opt/vera/bin/remote-extension-route-filter.mjs"'

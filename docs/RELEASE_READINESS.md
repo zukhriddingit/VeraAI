@@ -1,6 +1,6 @@
 # Vera Founder Release Readiness
 
-Date: 2026-07-25
+Date: 2026-07-27
 
 Current decision: **no-go for founder staging release**. Local application, PostgreSQL, policy,
 build, image, offline staging gates, and read-only Maritime inventory pass, but no private live
@@ -16,12 +16,16 @@ phases pass. ADR 0013 supersedes ADR 0012 for `founder_browser_experimental`, bu
 security audit has accepted private evidence.
 
 R2 local transport testing found that the published R1 browser image accepts an unrelated
-WebSocket path through OpenClaw's generic Gateway fallback. That digest is rejected. A focused
-route-isolation repair passes locally by exposing only an exact filter on port `18789` and moving
-the general Gateway to loopback port `18790`; its browser-control client uses the derived loopback
-port `18792`, which the image starts through OpenClaw's eager browser-control lifecycle flag. The
-replacement image has not been published. This does not affect `founder_core`; it remains a
-code/artifact blocker for browser experimental.
+WebSocket path through OpenClaw's generic Gateway fallback. That digest is rejected. The focused
+route-isolation and zero-finding replacement at immutable digest
+`sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3`
+exposes only an exact filter on port `18789`, moves the general Gateway to loopback port `18790`,
+uses derived browser-control port `18792`, has zero Trivy `HIGH` or `CRITICAL` findings, and passes
+signature, provenance, SBOM, and attestation verification. Its first disposable Maritime run
+failed before entrypoint because the provider bootstrap expected `/usr/local/bin` to exist. The
+next candidate adds only that empty root-owned directory, keeps it outside PATH, and must repeat all
+publication and live gates. This does not affect `founder_core`; it remains a code/artifact blocker
+for browser experimental.
 
 For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
 external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A

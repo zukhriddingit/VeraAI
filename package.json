@@ -17,6 +17,7 @@
     "verify:db-boundaries": "tsx scripts/verify-database-boundaries.ts",
     "verify:browser-boundaries": "tsx scripts/verify-browser-boundaries.ts",
     "verify:remote-extension-config": "tsx scripts/verify-remote-extension-config.ts",
+    "verify:gateway-image-layout": "node scripts/verify-gateway-image-layout.mjs",
     "verify:gateway-runtime-supply-chain": "tsx scripts/verify-gateway-runtime-supply-chain.ts",
     "verify:gmail-boundaries": "tsx scripts/verify-gmail-boundaries.ts",
     "verify:web-mutation-boundaries": "tsx scripts/verify-web-mutation-boundaries.ts",

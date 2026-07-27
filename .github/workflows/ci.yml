@@ -126,10 +126,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          observed="$(docker run --rm --entrypoint /usr/bin/node \
-            vera-openclaw-gateway:ci \
-            -e 'const fs=require("node:fs"); process.stdout.write(JSON.stringify({uid:process.getuid(),gid:process.getgid(),executables:fs.readdirSync("/usr/bin").sort(),shell:fs.existsSync("/bin/sh"),npm:fs.existsSync("/usr/bin/npm"),npmLibrary:fs.existsSync("/usr/lib/node_modules"),corepack:fs.existsSync("/usr/bin/corepack"),pnpm:fs.existsSync("/usr/bin/pnpm")}));')"
-          test "$observed" = '{"uid":1000,"gid":1000,"executables":["node"],"shell":false,"npm":false,"npmLibrary":false,"corepack":false,"pnpm":false}'
+          node scripts/verify-gateway-image-layout.mjs \
+            --image-ref vera-openclaw-gateway:ci \
+            --simulate-bootstrap
 
       - name: Install pinned Trivy
         uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
