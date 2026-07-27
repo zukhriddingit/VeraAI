@@ -266,6 +266,9 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
+            --arg attestationInvocationId \
+              "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/attempts/$GITHUB_RUN_ATTEMPT" \
+            --arg eventName "$GITHUB_EVENT_NAME" \
             --arg sourceCommit "$RELEASE_SOURCE_SHA" \
             --arg runtimeDigest "$RUNTIME_MANIFEST_DIGEST" \
             --arg releaseIndexDigest "$RELEASE_INDEX_DIGEST" \
@@ -273,8 +276,12 @@ jobs:
             --arg openclawBase "$OPENCLAW_BASE" \
             --arg runtimeBase "$RUNTIME_BASE" \
             --arg runtimeLockSha256 "$RUNTIME_LOCK_SHA256" \
+            --arg repositoryId "$GITHUB_REPOSITORY_ID" \
+            --arg repositoryOwnerId "$GITHUB_REPOSITORY_OWNER_ID" \
+            --arg runnerEnvironment "$RUNNER_ENVIRONMENT" \
             --arg sourceRepository "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
             --arg workflowRef "$GITHUB_WORKFLOW_REF" \
+            --arg workflowCommit "$GITHUB_SHA" \
             --arg serverUrl "$GITHUB_SERVER_URL" \
             '{
               buildDefinition: {
@@ -290,11 +297,21 @@ jobs:
                   originalPublicationRunId: $evidenceRunId
                 },
                 internalParameters: {
-                  recoveryMode: "attest-existing-runtime-without-rebuild"
+                  recoveryMode: "attest-existing-runtime-without-rebuild",
+                  github: {
+                    event_name: $eventName,
+                    repository_id: $repositoryId,
+                    repository_owner_id: $repositoryOwnerId,
+                    runner_environment: $runnerEnvironment
+                  }
                 },
                 resolvedDependencies: [
                   {
                     uri: ("git+" + $sourceRepository + "@refs/heads/main"),
+                    digest: { gitCommit: $workflowCommit }
+                  },
+                  {
+                    uri: ("git+" + $sourceRepository + "@" + $sourceCommit),
                     digest: { gitCommit: $sourceCommit }
                   },
                   {
@@ -321,11 +338,7 @@ jobs:
               runDetails: {
                 builder: { id: ($serverUrl + "/" + $workflowRef) },
                 metadata: {
-                  invocationId: (
-                    $serverUrl + "/" + env.GITHUB_REPOSITORY +
-                    "/actions/runs/" + env.GITHUB_RUN_ID +
-                    "/attempts/" + env.GITHUB_RUN_ATTEMPT
-                  )
+                  invocationId: $attestationInvocationId
                 }
               }
             }' > release-evidence/gateway-runtime/source-provenance-predicate.json

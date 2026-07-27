@@ -81,6 +81,29 @@ describe("existing Gateway runtime attestation workflow verifier", () => {
       /merged recovery validators/u
     ],
     [
+      "missing GitHub provenance persistence metadata",
+      (source: string) => source.replace("github: {", "provider: {"),
+      /bind and revalidate/u
+    ],
+    [
+      "binding the merged validator dependency to the older image source",
+      (source: string) =>
+        source.replace(
+          "digest: { gitCommit: $workflowCommit }",
+          "digest: { gitCommit: $sourceCommit }"
+        ),
+      /bind and revalidate/u
+    ],
+    [
+      "omitting the separate immutable image-source dependency",
+      (source: string) =>
+        source.replace(
+          'uri: ("git+" + $sourceRepository + "@" + $sourceCommit)',
+          'uri: ("git+" + $sourceRepository + "@refs/heads/main")'
+        ),
+      /bind and revalidate/u
+    ],
+    [
       "weakened scan",
       (source: string) =>
         source.replace(
