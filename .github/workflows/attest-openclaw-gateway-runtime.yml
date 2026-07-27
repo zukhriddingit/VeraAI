@@ -97,7 +97,6 @@ jobs:
           test "$(jq -r '.event' <<< "$run_json")" = "workflow_dispatch"
           test "$(jq -r '.head_branch' <<< "$run_json")" = "$TRUSTED_SOURCE_BRANCH"
           test "$(jq -r '.conclusion' <<< "$run_json")" = "success"
-          git checkout --detach "$REQUESTED_SOURCE_SHA"
           openclaw_base="$(jq -r '.baseImage' \
             infra/maritime/openclaw/remote-extension-image.json)"
           runtime_base="$(jq -r '.runtimeBaseImage' \
@@ -170,7 +169,9 @@ jobs:
       - name: Verify exact-source boundaries
         run: |
           set -euo pipefail
-          git rev-parse HEAD | grep -Fx "${{ steps.subject.outputs.source_sha }}"
+          git rev-parse HEAD | grep -Fx "$GITHUB_SHA"
+          git merge-base --is-ancestor \
+            "${{ steps.subject.outputs.source_sha }}" HEAD
           git diff --exit-code -- .
           git diff --cached --exit-code -- .
           pnpm verify:gateway-runtime-supply-chain

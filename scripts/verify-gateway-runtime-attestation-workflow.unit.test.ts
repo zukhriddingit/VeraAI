@@ -72,6 +72,15 @@ describe("existing Gateway runtime attestation workflow verifier", () => {
     ["a Docker build", (source: string) => `${source}\n# docker build .\n`, /never build/u],
     ["an image push", (source: string) => `${source}\n# docker push image\n`, /never build/u],
     [
+      "checking out the older image source before running merged recovery validators",
+      (source: string) =>
+        source.replace(
+          'git rev-parse HEAD | grep -Fx "$GITHUB_SHA"',
+          'git checkout --detach "$REQUESTED_SOURCE_SHA"'
+        ),
+      /merged recovery validators/u
+    ],
+    [
       "weakened scan",
       (source: string) =>
         source.replace(
