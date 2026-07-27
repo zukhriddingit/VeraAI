@@ -15,6 +15,14 @@ const ACTIONS = new Map([
   ["actions/attest", { commit: "f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6", count: 2 }],
   ["sigstore/cosign-installer", { commit: "6f9f17788090df1f26f669e9d70d6ae9567deba6", count: 1 }]
 ]);
+const RESUME_ACTIONS = new Map([
+  ["actions/checkout", { commit: "de0fac2e4500dabe0009e67214ff5f5447ce83dd", count: 1 }],
+  ["actions/download-artifact", { commit: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", count: 1 }],
+  ["docker/login-action", { commit: "b45d80f862d83dbcd57f89517bcf500b2ab88fb2", count: 1 }],
+  ["actions/attest", { commit: "f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6", count: 2 }],
+  ["sigstore/cosign-installer", { commit: "6f9f17788090df1f26f669e9d70d6ae9567deba6", count: 1 }],
+  ["actions/upload-artifact", { commit: "ea165f8d65b6e75b540449e92b4886f43607fa02", count: 1 }]
+]);
 
 function requireText(
   workflow: string,
@@ -27,7 +35,8 @@ function requireText(
 
 export function findGatewayReleaseWorkflowViolations(
   workflow: string,
-  ciWorkflow: string
+  ciWorkflow: string,
+  resumeWorkflow: string
 ): string[] {
   const violations: string[] = [];
 
@@ -112,6 +121,7 @@ export function findGatewayReleaseWorkflowViolations(
     "cosign sign --yes",
     "cosign verify",
     "predicate-type: https://slsa.dev/provenance/v1",
+    'buildType: "https://actions.github.io/buildtypes/workflow/v1"',
     "sbom-path: release-evidence/gateway/gateway.spdx.json",
     "Published immutable Gateway:"
   ]) {
@@ -211,6 +221,70 @@ export function findGatewayReleaseWorkflowViolations(
     violations.push(ciBoundaryMessage);
   }
 
+  const resumeBoundaryMessage =
+    "Gateway signing resume must bind the existing zero-finding digest and evidence.";
+  for (const required of [
+    "  workflow_dispatch:",
+    "source_sha:",
+    "image_digest:",
+    "evidence_run_id:",
+    '[[ "$REQUESTED_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]',
+    '[[ "$REQUESTED_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]',
+    '[[ "$REQUESTED_EVIDENCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]',
+    "TRUSTED_SOURCE_BRANCH: main",
+    "github.ref == 'refs/heads/main'",
+    "IMAGE_REPOSITORY: ghcr.io/zukhriddingit/vera-openclaw-gateway",
+    '.name == "Build and scan Gateway candidate"',
+    '.conclusion == "success"',
+    "run-id: ${{ steps.subject.outputs.evidence_run_id }}",
+    "vera-openclaw-gateway-scan-${{ steps.subject.outputs.source_sha }}",
+    "trivy-vulnerabilities.json",
+    "[.Results[]?.Vulnerabilities[]?] | length",
+    "remote-extension-runtime-lock.sha256",
+    "cmp --",
+    'docker pull "$GATEWAY_IMAGE_REF"',
+    "org.opencontainers.image.revision",
+    "io.vera.openclaw.image.digest",
+    "org.opencontainers.image.base.digest",
+    "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
+    'buildType: "https://actions.github.io/buildtypes/workflow/v1"',
+    "predicate-type: https://slsa.dev/provenance/v1",
+    "sbom-path: release-evidence/gateway/gateway.spdx.json",
+    "cosign sign --yes",
+    "cosign verify",
+    "attest-openclaw-gateway.yml",
+    "if-no-files-found: error"
+  ]) {
+    requireText(resumeWorkflow, required, resumeBoundaryMessage, violations);
+  }
+  if (
+    /^\s{2}(?:push|pull_request|schedule|repository_dispatch|workflow_run):/mu.test(
+      resumeWorkflow
+    ) ||
+    /docker\/build-push-action|docker\s+(?:build|buildx)|\bpush:\s*true\b/iu.test(resumeWorkflow)
+  ) {
+    violations.push("Gateway signing resume must never build or publish another candidate.");
+  }
+  if (
+    /\bmaritime\s+(?:create|deploy|restart|stop|delete|env|trigger)\b|\bkubectl\b|\bhelm\b|\bvercel\b|gh release|\bdocker service\b/iu.test(
+      resumeWorkflow
+    )
+  ) {
+    violations.push("Gateway signing resume must not contain deployment or release side effects.");
+  }
+  if (
+    resumeWorkflow.indexOf("Revalidate retained zero-finding evidence") >
+      resumeWorkflow.indexOf("Sign in to GitHub Container Registry") ||
+    resumeWorkflow.indexOf("Verify anonymous image pull and immutable runtime") >
+      resumeWorkflow.indexOf("Sign in to GitHub Container Registry") ||
+    resumeWorkflow.indexOf("Sign in to GitHub Container Registry") >
+      resumeWorkflow.indexOf("Attest exact-source provenance")
+  ) {
+    violations.push(
+      "Gateway signing resume must revalidate prior zero-finding evidence before registry writes."
+    );
+  }
+
   const actionMatches = [
     ...workflow.matchAll(/^\s*-?\s*uses:\s*([^\s@]+)@([^\s#]+)(?:\s+#.*)?$/gmu)
   ];
@@ -233,6 +307,28 @@ export function findGatewayReleaseWorkflowViolations(
     }
   }
 
+  const resumeActionMatches = [
+    ...resumeWorkflow.matchAll(/^\s*-?\s*uses:\s*([^\s@]+)@([^\s#]+)(?:\s+#.*)?$/gmu)
+  ];
+  for (const match of resumeActionMatches) {
+    const action = match[1];
+    const commit = match[2];
+    const expected = action ? RESUME_ACTIONS.get(action) : undefined;
+    if (!action || !expected || commit !== expected.commit) {
+      violations.push(
+        `Gateway signing-resume action ${action ?? "unknown"} is not pinned to its reviewed commit.`
+      );
+    }
+  }
+  for (const [action, expected] of RESUME_ACTIONS) {
+    const count = resumeActionMatches.filter((match) => match[1] === action).length;
+    if (count !== expected.count) {
+      violations.push(
+        `Gateway signing-resume action ${action} must appear exactly ${expected.count} time(s).`
+      );
+    }
+  }
+
   return violations;
 }
 
@@ -242,7 +338,11 @@ export function verifyGatewayReleaseWorkflow(root = resolve(import.meta.dirname,
     "utf8"
   );
   const ciWorkflow = readFileSync(resolve(root, ".github/workflows/ci.yml"), "utf8");
-  const violations = findGatewayReleaseWorkflowViolations(workflow, ciWorkflow);
+  const resumeWorkflow = readFileSync(
+    resolve(root, ".github/workflows/attest-openclaw-gateway.yml"),
+    "utf8"
+  );
+  const violations = findGatewayReleaseWorkflowViolations(workflow, ciWorkflow, resumeWorkflow);
   if (violations.length > 0) throw new Error(violations.join("\n"));
 }
 

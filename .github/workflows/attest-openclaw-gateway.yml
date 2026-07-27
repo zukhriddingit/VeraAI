@@ -1,0 +1,293 @@
+name: Attest existing zero-finding Vera OpenClaw Gateway
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_sha:
+        description: Exact merged main commit used to build the existing Gateway.
+        required: true
+        type: string
+      image_digest:
+        description: Existing zero-finding Gateway sha256 digest.
+        required: true
+        type: string
+      evidence_run_id:
+        description: Failed signing run whose build-and-scan job succeeded.
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: attest-existing-openclaw-gateway-${{ inputs.image_digest }}
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPOSITORY: ghcr.io/zukhriddingit/vera-openclaw-gateway
+  TRUSTED_SOURCE_BRANCH: main
+
+jobs:
+  sign_existing:
+    name: Sign and attest existing verified Gateway
+    if: github.repository == 'zukhriddingit/VeraAI' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      attestations: write
+      contents: read
+      id-token: write
+      packages: write
+
+    steps:
+      - name: Check out merged main
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Resolve exact existing subject
+        id: subject
+        shell: bash
+        env:
+          REQUESTED_SOURCE_SHA: ${{ inputs.source_sha }}
+          REQUESTED_IMAGE_DIGEST: ${{ inputs.image_digest }}
+          REQUESTED_EVIDENCE_RUN_ID: ${{ inputs.evidence_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = "zukhriddingit/VeraAI"
+          test "$GITHUB_REF" = "refs/heads/main"
+          [[ "$REQUESTED_SOURCE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ "$REQUESTED_IMAGE_DIGEST" =~ ^sha256:[a-f0-9]{64}$ ]]
+          [[ "$REQUESTED_EVIDENCE_RUN_ID" =~ ^[1-9][0-9]*$ ]]
+          git fetch --no-tags origin \
+            "+refs/heads/$TRUSTED_SOURCE_BRANCH:refs/remotes/origin/$TRUSTED_SOURCE_BRANCH"
+          git cat-file -e "$REQUESTED_SOURCE_SHA^{commit}"
+          git merge-base --is-ancestor \
+            "$REQUESTED_SOURCE_SHA" "origin/$TRUSTED_SOURCE_BRANCH"
+          git checkout --detach "$REQUESTED_SOURCE_SHA"
+          git rev-parse HEAD | grep -Fx "$REQUESTED_SOURCE_SHA"
+          image_ref="$IMAGE_REPOSITORY@$REQUESTED_IMAGE_DIGEST"
+          printf 'source_sha=%s\n' "$REQUESTED_SOURCE_SHA" >> "$GITHUB_OUTPUT"
+          printf 'image_digest=%s\n' "$REQUESTED_IMAGE_DIGEST" >> "$GITHUB_OUTPUT"
+          printf 'digest_hex=%s\n' "${REQUESTED_IMAGE_DIGEST#sha256:}" >> "$GITHUB_OUTPUT"
+          printf 'image_ref=%s\n' "$image_ref" >> "$GITHUB_OUTPUT"
+          printf 'evidence_run_id=%s\n' "$REQUESTED_EVIDENCE_RUN_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Verify source scan run succeeded
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVIDENCE_RUN_ID: ${{ steps.subject.outputs.evidence_run_id }}
+          RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          run_metadata="$(gh run view "$EVIDENCE_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json event,headSha,workflowName)"
+          test "$(jq -r '.event' <<< "$run_metadata")" = "workflow_dispatch"
+          test "$(jq -r '.headSha' <<< "$run_metadata")" = "$RELEASE_SOURCE_SHA"
+          test "$(jq -r '.workflowName' <<< "$run_metadata")" = \
+            "Release immutable Vera OpenClaw Gateway"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID/jobs" \
+            | jq -e '
+                [.jobs[] |
+                  select(
+                    .name == "Build and scan Gateway candidate" and
+                    .conclusion == "success"
+                  )
+                ] | length == 1
+              '
+
+      - name: Restore successful scan evidence
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.subject.outputs.evidence_run_id }}
+          name: vera-openclaw-gateway-scan-${{ steps.subject.outputs.source_sha }}
+          path: release-evidence/gateway
+
+      - name: Revalidate retained zero-finding evidence
+        shell: bash
+        env:
+          GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
+          RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          grep -Fx "$GATEWAY_IMAGE_REF" release-evidence/gateway/image-reference.txt
+          grep -Fx "$RELEASE_SOURCE_SHA" release-evidence/gateway/source-commit.txt
+          test -s release-evidence/gateway/gateway.spdx.json
+          test -s release-evidence/gateway/trivy-vulnerabilities.json
+          test "$(jq '[.Results[]?.Vulnerabilities[]?] | length' \
+            release-evidence/gateway/trivy-vulnerabilities.json)" = "0"
+          expected_lock_hash="$(cut -d ' ' -f1 \
+            release-evidence/gateway/remote-extension-runtime-lock.sha256)"
+          observed_lock_hash="$(sha256sum \
+            release-evidence/gateway/remote-extension-runtime-lock.json \
+            | cut -d ' ' -f1)"
+          test "$expected_lock_hash" = "$observed_lock_hash"
+          cmp -- \
+            infra/maritime/openclaw/remote-extension-runtime-lock.json \
+            release-evidence/gateway/remote-extension-runtime-lock.json
+
+      - name: Verify anonymous image pull and immutable runtime
+        shell: bash
+        env:
+          GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
+          RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          docker pull "$GATEWAY_IMAGE_REF"
+          test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = \
+            "$RELEASE_SOURCE_SHA"
+          test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
+            --format '{{ index .Config.Labels "io.vera.openclaw.image.digest" }}')" = \
+            "sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
+          test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
+            --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}')" = \
+            "sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f"
+          observed="$(docker run --rm --entrypoint /usr/bin/node \
+            "$GATEWAY_IMAGE_REF" \
+            -e 'const fs=require("node:fs"); process.stdout.write(JSON.stringify({uid:process.getuid(),gid:process.getgid(),executables:fs.readdirSync("/usr/bin").sort(),shell:fs.existsSync("/bin/sh"),npm:fs.existsSync("/usr/bin/npm"),npmLibrary:fs.existsSync("/usr/lib/node_modules"),corepack:fs.existsSync("/usr/bin/corepack"),pnpm:fs.existsSync("/usr/bin/pnpm")}));')"
+          test "$observed" = '{"uid":1000,"gid":1000,"executables":["node"],"shell":false,"npm":false,"npmLibrary":false,"corepack":false,"pnpm":false}'
+
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GHCR_PUBLISH_TOKEN }}
+
+      - name: Write exact-source provenance predicate
+        shell: bash
+        env:
+          EVIDENCE_RUN_ID: ${{ steps.subject.outputs.evidence_run_id }}
+          RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg sourceCommit "$RELEASE_SOURCE_SHA" \
+            --arg sourceRepository "https://github.com/$GITHUB_REPOSITORY" \
+            --arg invocationId \
+              "https://github.com/$GITHUB_REPOSITORY/actions/runs/$EVIDENCE_RUN_ID" \
+            '{
+              buildDefinition: {
+                buildType: "https://actions.github.io/buildtypes/workflow/v1",
+                externalParameters: {
+                  workflow: {
+                    path: ".github/workflows/release-openclaw-gateway.yml",
+                    ref: "refs/heads/main",
+                    repository: $sourceRepository
+                  },
+                  sourceCommit: $sourceCommit,
+                  dockerfile: "infra/maritime/openclaw/remote-extension.Dockerfile"
+                },
+                internalParameters: {},
+                resolvedDependencies: [{
+                  uri: ("git+" + $sourceRepository + "@refs/heads/main"),
+                  digest: { gitCommit: $sourceCommit }
+                }]
+              },
+              runDetails: {
+                builder: {
+                  id: (
+                    $sourceRepository +
+                    "/.github/workflows/release-openclaw-gateway.yml@refs/heads/main"
+                  )
+                },
+                metadata: { invocationId: $invocationId }
+              }
+            }' > release-evidence/gateway/source-provenance-predicate.json
+
+      - name: Attest exact-source provenance
+        id: provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.IMAGE_REPOSITORY }}
+          subject-digest: ${{ steps.subject.outputs.image_digest }}
+          predicate-type: https://slsa.dev/provenance/v1
+          predicate-path: release-evidence/gateway/source-provenance-predicate.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Attest Gateway SBOM
+        id: sbom
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-name: ${{ env.IMAGE_REPOSITORY }}
+          subject-digest: ${{ steps.subject.outputs.image_digest }}
+          sbom-path: release-evidence/gateway/gateway.spdx.json
+          push-to-registry: true
+          create-storage-record: false
+
+      - name: Install pinned Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+
+      - name: Sign and verify existing Gateway digest
+        shell: bash
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+          GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          cosign sign --yes "$GATEWAY_IMAGE_REF"
+          cosign verify "$GATEWAY_IMAGE_REF" \
+            --certificate-identity "$CERTIFICATE_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            > release-evidence/gateway/cosign-verification.json
+
+      - name: Verify exact-source provenance and SBOM attestations
+        shell: bash
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+          GATEWAY_IMAGE_REF: ${{ steps.subject.outputs.image_ref }}
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SOURCE_SHA: ${{ steps.subject.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          gh attestation verify "oci://$GATEWAY_IMAGE_REF" \
+            --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "$CERTIFICATE_IDENTITY" \
+            --signer-workflow \
+              "$GITHUB_REPOSITORY/.github/workflows/attest-openclaw-gateway.yml" \
+            --predicate-type https://slsa.dev/provenance/v1 \
+            --format json \
+            > release-evidence/gateway/provenance-verification.json
+          grep -F "$RELEASE_SOURCE_SHA" \
+            release-evidence/gateway/provenance-verification.json
+          gh attestation verify "oci://$GATEWAY_IMAGE_REF" \
+            --repo "$GITHUB_REPOSITORY" \
+            --cert-identity "$CERTIFICATE_IDENTITY" \
+            --signer-workflow \
+              "$GITHUB_REPOSITORY/.github/workflows/attest-openclaw-gateway.yml" \
+            --predicate-type https://spdx.dev/Document/v2.3 \
+            --format json \
+            > release-evidence/gateway/sbom-verification.json
+
+      - name: Preserve signed attestation bundles
+        shell: bash
+        env:
+          PROVENANCE_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+          SBOM_BUNDLE: ${{ steps.sbom.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          test -s "$PROVENANCE_BUNDLE"
+          test -s "$SBOM_BUNDLE"
+          cp -- "$PROVENANCE_BUNDLE" \
+            release-evidence/gateway/provenance-bundle.json
+          cp -- "$SBOM_BUNDLE" release-evidence/gateway/sbom-bundle.json
+
+      - name: Upload signing-resume evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: vera-openclaw-gateway-attestation-${{ steps.subject.outputs.digest_hex }}
+          path: release-evidence/gateway/
+          if-no-files-found: error
+          retention-days: 30
