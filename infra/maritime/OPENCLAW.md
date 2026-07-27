@@ -71,10 +71,43 @@ the exact extension route returned `426`, and unrelated HTTP routes returned `40
 result is stored only as restricted gitignored evidence and is not a registry, signature,
 attestation, proxy, or Maritime acceptance result.
 
-The replacement remains `pending`. The manual publication workflow may run only from an exact
-commit already merged into `main`; it must reproduce zero findings, preserve and verify the runtime
-lock hash, sign the immutable digest, and verify source provenance and SBOM attestations. No
-Maritime deployment is permitted until every publication gate passes.
+The zero-finding replacement was published and independently verified at:
+
+```text
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3
+source revision: 83b65bf4e60f4d1bbef7d022cfe217a94f7a24e5
+```
+
+Its first disposable Maritime run stopped before the container entrypoint: Maritime's privileged
+`fc-manager` bootstrap attempted to place a provider helper under `/usr/local/bin`, but that parent
+directory was absent from the minimal image. The agent and credential were deleted, and no Chrome
+pairing occurred.
+
+## Maritime bootstrap filesystem boundary
+
+The next replacement adds only an empty `/usr/local/bin` directory through final-stage Docker
+metadata. In the immutable image it must be a real root-owned directory with mode `0755`, contain
+no file or symlink, and remain outside the application PATH. Vera's application PATH is exactly
+`/usr/bin`; the immutable executable inventory remains exactly `/usr/bin/node`. Vera does not ship
+BusyBox, a shell, or a provider helper.
+
+`pnpm verify:gateway-image-layout -- --image-ref IMAGE --simulate-bootstrap` validates the
+directory, ownership, mode, emptiness, PATH, runtime UID/GID, working directory, entrypoint,
+executable allowlist, and banned tool paths. Its simulation creates one fixed harmless helper in an
+ephemeral container writable layer as root, inspects only metadata, removes it, and proves the
+directory is empty again. The helper is never included in an image or retained as evidence.
+
+During the next live run, Maritime may inject its expected bootstrap helper at runtime. That
+provider artifact is distinct from executables shipped in the immutable Vera image. Live evidence
+may retain only an opaque helper identifier, SHA-256, owner, group, mode, persistence, PATH
+membership, UID `1000` invocation result, and counts of extra executables or symlinks. The helper
+bytes must not be copied or retained.
+
+Any unexpected runtime executable, shell or package-manager tool, symlink, PATH expansion, or
+material broadening of the UID `1000` application execution surface is
+`founder_browser_experimental=no_go`. The manual publication workflow may run only from an exact
+commit already merged into `main`; it must reproduce zero findings and verify the runtime layout,
+lock hash, signature, source provenance, SBOM, and attestations before one disposable acceptance.
 
 The preserved non-browser RentCast analysis path remains pinned to:
 
@@ -102,6 +135,9 @@ replace, reuse credentials from, or silently migrate the existing RentCast analy
   accepts only `/data/.openclaw`, rejects symlinked state, and normalizes directories to `0700` and
   files to `0600`. A provider that overrides the image user therefore fails closed and cannot pass
   live acceptance.
+- The immutable image contains an empty root-owned mode-`0755` `/usr/local/bin` solely for
+  Maritime's privileged pre-entrypoint bootstrap. It is outside application PATH, contains no Vera
+  executable, and does not authorize the Node application to invoke provider tooling.
 - `remote-extension-route-filter.mjs` listens on public container port `18789`, forwards raw
   upgrades only for exact `/browser/extension`, and denies queries and unrelated routes. The
   general OpenClaw Gateway listens only on loopback port `18790`.

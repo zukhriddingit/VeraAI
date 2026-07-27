@@ -79,6 +79,37 @@ describe("Gateway runtime supply-chain verifier", () => {
         };
         lock.repairs.push({ ...lock.repairs[0], name: "unexpected" });
       }
+    ],
+    [
+      "missing provider bootstrap directory",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace("WORKDIR /usr/local/bin\n", "");
+      }
+    ],
+    [
+      "provider bootstrap directory created as runtime user",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace(
+          "USER 0:0\nWORKDIR /usr/local/bin",
+          "USER 1000:1000\nWORKDIR /usr/local/bin"
+        );
+      }
+    ],
+    [
+      "provider bootstrap directory added to PATH",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace(
+          "PATH=/usr/bin",
+          "PATH=/usr/local/bin:/usr/bin"
+        );
+      }
+    ],
+    [
+      "provider helper copied into immutable image",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile +=
+          "\nCOPY --from=vera-layout /opt/provider-helper /usr/local/bin/provider-helper\n";
+      }
     ]
   ])("rejects %s", (_label, mutate) => {
     const input = fixture();

@@ -78,6 +78,17 @@ describe("Gateway release workflow verifier", () => {
       "zero-finding scan must include both CRITICAL and HIGH"
     ],
     [
+      "missing published image layout verification",
+      (source: string) =>
+        source.replace("node scripts/verify-gateway-image-layout.mjs", "node -e 'true'"),
+      "missing required boundary: node scripts/verify-gateway-image-layout.mjs"
+    ],
+    [
+      "missing simulated provider bootstrap",
+      (source: string) => source.replace("            --simulate-bootstrap\n", ""),
+      "missing required boundary: --simulate-bootstrap"
+    ],
+    [
       "missing runtime-lock artifact",
       (source: string) =>
         source
@@ -142,6 +153,13 @@ describe("Gateway release workflow verifier", () => {
     ).toEqual(expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")]));
   });
 
+  it("rejects CI that omits the simulated provider bootstrap layout check", () => {
+    const mutatedCi = ciWorkflow.replace("            --simulate-bootstrap\n", "");
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, mutatedCi, resumeWorkflow)
+    ).toEqual(expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")]));
+  });
+
   it("rejects a signing resume path that can build or publish another image", () => {
     const mutatedResume = `${resumeWorkflow}
       - uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf
@@ -153,6 +171,17 @@ describe("Gateway release workflow verifier", () => {
     ).toEqual(
       expect.arrayContaining([
         expect.stringMatching("must never build or publish another candidate")
+      ])
+    );
+  });
+
+  it("rejects signing resume that omits the simulated provider bootstrap layout check", () => {
+    const mutatedResume = resumeWorkflow.replace("            --simulate-bootstrap\n", "");
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must bind the existing zero-finding digest and evidence")
       ])
     );
   });

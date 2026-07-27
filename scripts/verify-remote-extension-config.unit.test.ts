@@ -146,6 +146,18 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it.each([
+    ["missing bootstrap directory", "WORKDIR /usr/local/bin\n", ""],
+    ["wrong runtime path", "PATH=/usr/bin", "PATH=/usr/local/bin:/usr/bin"],
+    ["wrong application workdir", "WORKDIR /app", "WORKDIR /srv"]
+  ])("rejects an image with %s", (_label, before, after) => {
+    const input = fixture();
+    input.dockerfile = input.dockerfile.replace(before, after);
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Hardened Gateway image must preserve the provider-compatible filesystem and constrained runtime."
+    );
+  });
+
   it("rejects an image that leaves the loopback browser-control server unstarted", () => {
     const input = fixture();
     input.dockerfile = input.dockerfile.replace("OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1", "");
