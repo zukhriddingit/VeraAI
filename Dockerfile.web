@@ -1,0 +1,47 @@
+# syntax=docker/dockerfile:1.7
+FROM node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f AS build
+
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+ENV NODE_OPTIONS=--max-old-space-size=4096
+WORKDIR /workspace
+
+RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY packages/ai/package.json packages/ai/package.json
+COPY packages/calendar/package.json packages/calendar/package.json
+COPY packages/connectors/package.json packages/connectors/package.json
+COPY packages/db/package.json packages/db/package.json
+COPY packages/domain/package.json packages/domain/package.json
+COPY packages/notifications/package.json packages/notifications/package.json
+COPY packages/policy/package.json packages/policy/package.json
+COPY packages/scoring/package.json packages/scoring/package.json
+COPY packages/testing/package.json packages/testing/package.json
+RUN pnpm install --frozen-lockfile
+
+COPY apps/web apps/web
+COPY packages packages
+RUN pnpm --filter @vera/web build
+RUN pnpm --filter @vera/web deploy --legacy --prod /opt/vera-web \
+  && rm -rf /opt/vera-web/.next /opt/vera-web/public \
+  && cp -R apps/web/.next /opt/vera-web/.next \
+  && cp -R apps/web/public /opt/vera-web/public
+
+FROM node:24.13.0-bookworm-slim@sha256:4660b1ca8b28d6d1906fd644abe34b2ed81d15434d26d845ef0aced307cf4b6f AS runtime
+
+ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
+ENV PORT=3000
+WORKDIR /app
+
+RUN groupadd --system --gid 10001 vera \
+  && useradd --system --uid 10001 --gid vera --home-dir /app vera
+
+COPY --from=build --chown=vera:vera /opt/vera-web ./
+
+USER vera
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD ["node", "-e", "const port=process.env.PORT??'3000';fetch('http://127.0.0.1:'+port+'/api/ready').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+CMD ["node", "node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0"]
