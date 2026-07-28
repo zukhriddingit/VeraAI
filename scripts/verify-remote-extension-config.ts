@@ -177,7 +177,7 @@ export function findRemoteExtensionConfigViolations(input: {
       'Object.freeze([ROUTE_FILTER, "node", "openclaw.mjs", "gateway"])'
     ) ||
     !supervisorSource.includes("uid !== 1000 || gid !== 1000") ||
-    !supervisorSource.includes("entryStat.isSymbolicLink()") ||
+    !supervisorSource.includes("if (entryStat.isSymbolicLink()) {") ||
     !supervisorSource.includes("chmodSync(directory, 0o700)") ||
     !supervisorSource.includes("chmodSync(file, 0o600)") ||
     !supervisorSource.includes("process.umask(0o077)") ||
@@ -190,6 +190,37 @@ export function findRemoteExtensionConfigViolations(input: {
   ) {
     violations.push(
       "Gateway supervisor must constrain state repair and spawn only the fixed route-filter child."
+    );
+  }
+  if (
+    !supervisorSource.includes(
+      'EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME = "OPENCLAW_EXTENSION_PAIRING_SEED"'
+    ) ||
+    !supervisorSource.includes(
+      'EXTENSION_PAIRING_SECRET_FILENAME = "browser-extension-relay.secret"'
+    ) ||
+    !supervisorSource.includes("const EXTENSION_PAIRING_SEED_PATTERN = /^[0-9a-f]{64}$/u;") ||
+    !supervisorSource.includes("constants.O_EXCL") ||
+    (supervisorSource.match(/constants\.O_NOFOLLOW/gu)?.length ?? 0) !== 2 ||
+    !supervisorSource.includes("fchmodSync(descriptor, 0o600)") ||
+    !supervisorSource.includes("timingSafeEqual(leftBytes, rightBytes)") ||
+    !supervisorSource.includes(
+      "delete processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];"
+    ) ||
+    !supervisorSource.includes("const childEnvironment = { ...processImplementation.env };") ||
+    !supervisorSource.includes(
+      "delete childEnvironment[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];"
+    ) ||
+    !supervisorSource.includes(
+      "pairingInstallerImplementation({\n      stateDirectory: STATE_DIRECTORY,\n      seed: pairingSeed\n    });"
+    ) ||
+    !supervisorSource.includes("env: childEnvironment") ||
+    /(?:console\.(?:log|error|warn)|process\.(?:stdout|stderr)\.write)\s*\([\s\S]{0,200}\bpairingSeed\b/iu.test(
+      supervisorSource
+    )
+  ) {
+    violations.push(
+      "Gateway supervisor must atomically bootstrap and isolate the extension pairing credential."
     );
   }
   if (
