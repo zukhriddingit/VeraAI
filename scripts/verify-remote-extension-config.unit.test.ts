@@ -141,6 +141,85 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it.each([
+    [
+      "the dedicated seed environment name",
+      (source: string) =>
+        source.replace('"OPENCLAW_EXTENSION_PAIRING_SEED"', '"OPENCLAW_GATEWAY_TOKEN"')
+    ],
+    [
+      "the fixed relay filename",
+      (source: string) =>
+        source.replace('"browser-extension-relay.secret"', '"provider-controlled.secret"')
+    ],
+    ["exclusive creation", (source: string) => source.replace("constants.O_EXCL", "0")],
+    ["symlink-safe opens", (source: string) => source.replaceAll("constants.O_NOFOLLOW", "0")],
+    [
+      "private file mode",
+      (source: string) =>
+        source.replace("fchmodSync(descriptor, 0o600)", "fchmodSync(descriptor, 0o644)")
+    ],
+    [
+      "constant-time equality",
+      (source: string) => source.replace("timingSafeEqual(leftBytes, rightBytes)", "left === right")
+    ],
+    [
+      "parent-environment deletion",
+      (source: string) =>
+        source.replace(
+          "delete processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];",
+          ""
+        )
+    ],
+    [
+      "the strict seed format",
+      (source: string) => source.replace("/^[0-9a-f]{64}$/u", "/^[A-Za-z0-9]{32,128}$/u")
+    ],
+    [
+      "the sanitized child environment",
+      (source: string) =>
+        source.replace(
+          "const childEnvironment = { ...processImplementation.env };",
+          "const childEnvironment = processImplementation.env;"
+        )
+    ],
+    [
+      "child-environment deletion",
+      (source: string) =>
+        source.replace("delete childEnvironment[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];", "")
+    ],
+    [
+      "sanitized child spawn",
+      (source: string) => source.replace("env: childEnvironment", "env: processImplementation.env")
+    ],
+    [
+      "the fixed-state installer call",
+      (source: string) =>
+        source.replace(
+          "stateDirectory: STATE_DIRECTORY,\n      seed: pairingSeed",
+          "stateDirectory: processImplementation.env.OPENCLAW_STATE_DIR,\n      seed: pairingSeed"
+        )
+    ],
+    [
+      "the supervisor-local reference clearing",
+      (source: string) => source.replace("pairingSeed = undefined;", "")
+    ]
+  ])("rejects pairing bootstrap without %s", (_label, mutate) => {
+    const input = fixture();
+    input.supervisorSource = mutate(input.supervisorSource);
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Gateway supervisor must atomically bootstrap and isolate the extension pairing credential."
+    );
+  });
+
+  it("rejects pairing-seed logging", () => {
+    const input = fixture();
+    input.supervisorSource += '\nconsole.log(Buffer.from(pairingSeed).toString("hex"));\n';
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Gateway supervisor must atomically bootstrap and isolate the extension pairing credential."
+    );
+  });
+
   it("rejects an image without the fixed Node supervisor entrypoint", () => {
     const input = fixture();
     input.dockerfile = input.dockerfile.replace(

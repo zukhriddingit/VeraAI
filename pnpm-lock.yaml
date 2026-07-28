@@ -73,6 +73,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@vera/ai':
+        specifier: workspace:*
+        version: link:../../packages/ai
       '@vera/calendar':
         specifier: workspace:*
         version: link:../../packages/calendar

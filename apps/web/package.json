@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vera/ai": "workspace:*",
     "@vera/calendar": "workspace:*",
     "@vera/connectors": "workspace:*",
     "@vera/db": "workspace:*",

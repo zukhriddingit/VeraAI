@@ -78,6 +78,9 @@ The initial source portfolio is deliberately narrow:
 
 The dashboard is answer-first:
 
+- The renter may describe a housing search in natural language or enter strict filters manually. Natural-language interpretation creates only an unsaved, editable draft; Vera never runs a provider from the description alone.
+- The renter reviews every field before saving. Saving creates an immutable search-profile version and does not start acquisition.
+- Live provider usage is a separate action: the renter selects a saved profile, acknowledges external API capacity, and presses **Search now**. Hard constraints remain deterministic and unknown values stay unknown.
 - New and strong matches appear before analytics.
 - Observed time, source-posted time when known, and discovery-to-alert latency are visible.
 - Unknown and stale fields are visibly different from negative values.

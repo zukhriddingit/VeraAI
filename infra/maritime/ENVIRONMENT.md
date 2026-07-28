@@ -51,7 +51,7 @@ set per Vera user; do not share one Gateway across unrelated renters.
 | `OPENCLAW_HEADLESS`                                 | no     | Enables official headless Gateway mode.                         |
 | `OPENCLAW_CONFIG_PATH`                              | no     | Exact reviewed remote-extension configuration path.             |
 | `OPENCLAW_GATEWAY_TOKEN`                            | yes    | Protects non-extension Gateway authentication surfaces.         |
-| `OPENCLAW_EXTENSION_PAIRING_SECRET`                 | yes    | Pinned OpenClaw 2026.7.1 64-character lowercase hex secret.     |
+| `OPENCLAW_EXTENSION_PAIRING_SEED`                   | yes    | Optional managed-runtime bootstrap seed; private and per-user.  |
 | `MARITIME_BROWSER_GATEWAY_API_KEY`                  | yes    | Dedicated Vera server key for this user's browser Gateway only. |
 | `MARITIME_BROWSER_GATEWAY_AGENT_ID`                 | no     | Dedicated browser Gateway agent ID for this user.               |
 | `VERA_BROWSER_GATEWAY_FOUNDER_USER_ID`              | no     | Exact Vera founder UUID bound to this Gateway.                  |

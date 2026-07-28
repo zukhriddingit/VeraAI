@@ -5,3 +5,4 @@ export * from "./evidence-validator.ts";
 export * from "./mock-provider.ts";
 export * from "./openai-provider.ts";
 export * from "./prompt.ts";
+export * from "./search-intent-provider.ts";

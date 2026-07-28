@@ -1,11 +1,29 @@
 import { spawn } from "node:child_process";
-import { chmodSync, lstatSync, mkdirSync, readdirSync } from "node:fs";
+import { timingSafeEqual } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  fchmodSync,
+  fstatSync,
+  fsyncSync,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const DATA_DIRECTORY = "/data";
 const STATE_DIRECTORY = "/data/.openclaw";
 const ROUTE_FILTER = "/opt/vera/bin/remote-extension-route-filter.mjs";
+export const EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME = "OPENCLAW_EXTENSION_PAIRING_SEED";
+export const EXTENSION_PAIRING_SECRET_FILENAME = "browser-extension-relay.secret";
+const EXTENSION_PAIRING_SEED_PATTERN = /^[0-9a-f]{64}$/u;
+const PAIRING_BOOTSTRAP_ERROR = "Extension pairing credential bootstrap failed.";
 export const GATEWAY_ARGUMENTS = Object.freeze([ROUTE_FILTER, "node", "openclaw.mjs", "gateway"]);
 
 function lstatIfPresent(path) {
@@ -86,11 +104,87 @@ export function prepareRuntimeState({ dataDirectory, stateDirectory, uid, gid })
   }
 }
 
+function pairingSecretsMatch(left, right) {
+  const leftBytes = Buffer.from(left, "utf8");
+  const rightBytes = Buffer.from(right, "utf8");
+  return leftBytes.length === rightBytes.length && timingSafeEqual(leftBytes, rightBytes);
+}
+
+function installExtensionPairingSecretUnsafe({ stateDirectory, seed }) {
+  if (!EXTENSION_PAIRING_SEED_PATTERN.test(seed)) {
+    throw new Error("Invalid extension pairing credential.");
+  }
+
+  const credentialsDirectory = join(stateDirectory, "credentials");
+  const credentialPath = join(credentialsDirectory, EXTENSION_PAIRING_SECRET_FILENAME);
+  const credentialsStat = lstatSync(credentialsDirectory);
+  if (credentialsStat.isSymbolicLink() || !credentialsStat.isDirectory()) {
+    throw new Error("Invalid extension pairing credential boundary.");
+  }
+
+  let descriptor;
+  try {
+    descriptor = openSync(
+      credentialPath,
+      constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY | constants.O_NOFOLLOW,
+      0o600
+    );
+    writeFileSync(descriptor, seed, "utf8");
+    fchmodSync(descriptor, 0o600);
+    fsyncSync(descriptor);
+    const createdStat = fstatSync(descriptor);
+    if (!createdStat.isFile() || (createdStat.mode & 0o777) !== 0o600) {
+      throw new Error("Invalid extension pairing credential file.");
+    }
+    return;
+  } catch (error) {
+    if (descriptor !== undefined || error?.code !== "EEXIST") {
+      throw error;
+    }
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+
+  const entryStat = lstatSync(credentialPath);
+  if (entryStat.isSymbolicLink() || !entryStat.isFile()) {
+    throw new Error("Invalid extension pairing credential entry.");
+  }
+  const existingDescriptor = openSync(credentialPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const openedStat = fstatSync(existingDescriptor);
+    const existing = readFileSync(existingDescriptor, "utf8");
+    if (
+      !openedStat.isFile() ||
+      (openedStat.mode & 0o777) !== 0o600 ||
+      !EXTENSION_PAIRING_SEED_PATTERN.test(existing) ||
+      !pairingSecretsMatch(existing, seed)
+    ) {
+      throw new Error("Invalid extension pairing credential state.");
+    }
+  } finally {
+    closeSync(existingDescriptor);
+  }
+}
+
+export function installExtensionPairingSecret(input) {
+  try {
+    installExtensionPairingSecretUnsafe(input);
+  } catch {
+    throw new Error(PAIRING_BOOTSTRAP_ERROR);
+  }
+}
+
 export async function runGatewaySupervisor({
   spawnImplementation = spawn,
   prepareImplementation = prepareRuntimeState,
+  pairingInstallerImplementation = installExtensionPairingSecret,
   processImplementation = process
 } = {}) {
+  let pairingSeed = processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+  delete processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+  const childEnvironment = { ...processImplementation.env };
+  delete childEnvironment[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+
   if (processImplementation.env.OPENCLAW_STATE_DIR !== STATE_DIRECTORY) {
     throw new Error("Gateway state directory environment is not the fixed boundary.");
   }
@@ -102,10 +196,17 @@ export async function runGatewaySupervisor({
     uid,
     gid
   });
+  if (pairingSeed !== undefined) {
+    pairingInstallerImplementation({
+      stateDirectory: STATE_DIRECTORY,
+      seed: pairingSeed
+    });
+  }
+  pairingSeed = undefined;
 
   const child = spawnImplementation(processImplementation.execPath, GATEWAY_ARGUMENTS, {
     cwd: "/app",
-    env: processImplementation.env,
+    env: childEnvironment,
     stdio: "inherit"
   });
   let stopping = false;
