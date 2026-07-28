@@ -188,7 +188,7 @@ jobs:
             "sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
           test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
             --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}')" = \
-            "sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f"
+            "sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09"
           node scripts/verify-gateway-image-layout.mjs \
             --image-ref "$GATEWAY_IMAGE_REF" \
             --simulate-bootstrap

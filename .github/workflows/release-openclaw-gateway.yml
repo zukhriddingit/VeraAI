@@ -267,6 +267,10 @@ jobs:
         run: |
           set -euo pipefail
           jq -n \
+            --arg eventName "$GITHUB_EVENT_NAME" \
+            --arg repositoryId "$GITHUB_REPOSITORY_ID" \
+            --arg repositoryOwnerId "$GITHUB_REPOSITORY_OWNER_ID" \
+            --arg runnerEnvironment "$RUNNER_ENVIRONMENT" \
             --arg sourceCommit "$RELEASE_SOURCE_SHA" \
             --arg sourceRepository "https://github.com/$GITHUB_REPOSITORY" \
             --arg workflowRef "$GITHUB_WORKFLOW_REF" \
@@ -282,7 +286,14 @@ jobs:
                   sourceCommit: $sourceCommit,
                   dockerfile: "infra/maritime/openclaw/remote-extension.Dockerfile"
                 },
-                internalParameters: {},
+                internalParameters: {
+                  github: {
+                    event_name: $eventName,
+                    repository_id: $repositoryId,
+                    repository_owner_id: $repositoryOwnerId,
+                    runner_environment: $runnerEnvironment
+                  }
+                },
                 resolvedDependencies: [{
                   uri: ("git+" + $sourceRepository + "@refs/heads/main"),
                   digest: { gitCommit: $sourceCommit }

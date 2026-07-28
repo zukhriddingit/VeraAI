@@ -118,6 +118,15 @@ describe("Gateway release workflow verifier", () => {
       "required boundary: buildType"
     ],
     [
+      "missing GitHub provenance context",
+      (source: string) =>
+        source.replace(
+          /                internalParameters: \{\n                  github: \{[\s\S]*?                  \}\n                \},\n/u,
+          "                internalParameters: {},\n"
+        ),
+      "required boundary: github:"
+    ],
+    [
       "mutually exclusive attestation identity flags",
       (source: string) =>
         source.replace(
@@ -205,6 +214,20 @@ describe("Gateway release workflow verifier", () => {
 
   it("rejects signing resume that omits the simulated provider bootstrap layout check", () => {
     const mutatedResume = resumeWorkflow.replace("            --simulate-bootstrap\n", "");
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must bind the existing zero-finding digest and evidence")
+      ])
+    );
+  });
+
+  it("rejects signing resume for a different runtime base digest", () => {
+    const mutatedResume = resumeWorkflow.replace(
+      "sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09",
+      "sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f"
+    );
     expect(
       findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
     ).toEqual(
