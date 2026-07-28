@@ -76,26 +76,27 @@ a fallback for that token, and the Gateway token is not a fallback for the pairi
 The existing Node supervisor will perform this sequence before spawning the fixed route-filter
 child:
 
-1. Require the fixed `OPENCLAW_STATE_DIR=/data/.openclaw` boundary and runtime identity
+1. Read `OPENCLAW_EXTENSION_PAIRING_SEED`, immediately remove the setting from the supervisor
+   environment, and construct a separate child environment that also omits it. This happens
+   before state validation or filesystem I/O so every later failure preserves the
+   non-inheritance guarantee.
+2. Require the fixed `OPENCLAW_STATE_DIR=/data/.openclaw` boundary and runtime identity
    `1000:1000`.
-2. Prepare and validate the existing state tree with directories mode `0700`, files mode
+3. Prepare and validate the existing state tree with directories mode `0700`, files mode
    `0600`, and no symbolic links or unsupported entries.
-3. Read `OPENCLAW_EXTENSION_PAIRING_SEED` from the supervisor environment.
-4. Immediately remove the setting from the supervisor environment and construct a separate
-   child environment that also omits it.
-5. If no seed was supplied, preserve the current behavior and do not create or modify the
+4. If no seed was supplied, preserve the current behavior and do not create or modify the
    relay credential. This keeps providers with an existing interactive or persistent pairing
    mechanism compatible.
-6. If a seed was supplied, validate its exact format before any child process is started.
-7. Resolve only the fixed credential path beneath the fixed state boundary. No environment
+5. If a seed was supplied, validate its exact format before any child process is started.
+6. Resolve only the fixed credential path beneath the fixed state boundary. No environment
    variable, argument, configuration field, or filesystem link may redirect it.
-8. If the credential file does not exist, create it atomically with exclusive-create
+7. If the credential file does not exist, create it atomically with exclusive-create
    semantics and mode `0600`, write only the validated value, and verify the resulting entry
    is a regular non-symbolic-link file with the expected mode.
-9. If the credential file already exists, require it to be a regular non-symbolic-link file
+8. If the credential file already exists, require it to be a regular non-symbolic-link file
    containing a valid relay credential identical to the supplied value. An identical value is
    an idempotent success; any mismatch or malformed content fails closed.
-10. Spawn the unchanged fixed route-filter command with the sanitized child environment.
+9. Spawn the unchanged fixed route-filter command with the sanitized child environment.
 
 The implementation must use Node standard-library primitives only. Secret equality must be
 checked in constant time after fixed-length validation. The seed must not appear in thrown
