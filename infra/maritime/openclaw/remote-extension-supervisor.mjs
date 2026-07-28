@@ -180,7 +180,7 @@ export async function runGatewaySupervisor({
   pairingInstallerImplementation = installExtensionPairingSecret,
   processImplementation = process
 } = {}) {
-  const pairingSeed = processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+  let pairingSeed = processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
   delete processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
   const childEnvironment = { ...processImplementation.env };
   delete childEnvironment[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
@@ -202,6 +202,7 @@ export async function runGatewaySupervisor({
       seed: pairingSeed
     });
   }
+  pairingSeed = undefined;
 
   const child = spawnImplementation(processImplementation.execPath, GATEWAY_ARGUMENTS, {
     cwd: "/app",

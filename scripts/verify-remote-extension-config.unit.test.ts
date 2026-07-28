@@ -199,6 +199,10 @@ describe("remote extension configuration verifier", () => {
           "stateDirectory: STATE_DIRECTORY,\n      seed: pairingSeed",
           "stateDirectory: processImplementation.env.OPENCLAW_STATE_DIR,\n      seed: pairingSeed"
         )
+    ],
+    [
+      "the supervisor-local reference clearing",
+      (source: string) => source.replace("pairingSeed = undefined;", "")
     ]
   ])("rejects pairing bootstrap without %s", (_label, mutate) => {
     const input = fixture();

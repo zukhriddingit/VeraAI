@@ -214,6 +214,7 @@ export function findRemoteExtensionConfigViolations(input: {
     !supervisorSource.includes(
       "pairingInstallerImplementation({\n      stateDirectory: STATE_DIRECTORY,\n      seed: pairingSeed\n    });"
     ) ||
+    !supervisorSource.includes("pairingSeed = undefined;") ||
     !supervisorSource.includes("env: childEnvironment") ||
     /(?:console\.(?:log|error|warn)|process\.(?:stdout|stderr)\.write)\s*\([\s\S]{0,200}\bpairingSeed\b/iu.test(
       supervisorSource
