@@ -24,6 +24,7 @@ export * from "./operations-api.ts";
 export * from "./primitives.ts";
 export * from "./readiness.ts";
 export * from "./remote-extension-snapshot.ts";
+export * from "./search-intent.ts";
 export * from "./search-profile.ts";
 export * from "./source-policy.ts";
 export * from "./source-orchestration.ts";

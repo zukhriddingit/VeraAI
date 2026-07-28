@@ -156,7 +156,7 @@ function requestId(error: unknown): string | null {
   return error instanceof APIError ? (error.requestID ?? null) : null;
 }
 
-function mapProviderError(
+export function mapOpenAIProviderError(
   error: unknown,
   context: { readonly providerId: string; readonly model: string }
 ): LLMError {
@@ -265,7 +265,7 @@ export class OpenAIResponsesProvider implements LLMProvider {
           prompt = buildListingExtractionRepairPrompt(parsedRequest, structuralIssue());
           continue;
         }
-        throw mapProviderError(error, context);
+        throw mapOpenAIProviderError(error, context);
       }
 
       usage = addUsage(usage, response.usage);
