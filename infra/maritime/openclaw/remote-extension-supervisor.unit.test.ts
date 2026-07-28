@@ -59,6 +59,25 @@ function preparePrivateState(boundary: ReturnType<typeof runtimeBoundary>): void
 
 const validPairingSeed = "a".repeat(64);
 
+function supervisorHarness(env: NodeJS.ProcessEnv = { OPENCLAW_STATE_DIR: "/data/.openclaw" }) {
+  const child = new EventEmitter() as EventEmitter & {
+    kill: (signal: NodeJS.Signals) => boolean;
+  };
+  child.kill = () => true;
+  const fakeProcess = new EventEmitter() as EventEmitter & {
+    env: NodeJS.ProcessEnv;
+    execPath: string;
+    exitCode?: number;
+    pid: number;
+    kill: (pid: number, signal: NodeJS.Signals) => boolean;
+  };
+  fakeProcess.env = { ...env };
+  fakeProcess.execPath = "/usr/bin/node";
+  fakeProcess.pid = 42;
+  fakeProcess.kill = () => true;
+  return { child, fakeProcess };
+}
+
 describe("extension pairing credential bootstrap", () => {
   it.each([
     ["empty", ""],
@@ -302,9 +321,132 @@ describe("remote extension Gateway supervisor", () => {
       "gateway"
     ]);
     expect(calls).toEqual([
-      ["/usr/bin/node", GATEWAY_ARGUMENTS, { cwd: "/app", env: fakeProcess.env, stdio: "inherit" }]
+      [
+        "/usr/bin/node",
+        GATEWAY_ARGUMENTS,
+        {
+          cwd: "/app",
+          env: { OPENCLAW_STATE_DIR: "/data/.openclaw" },
+          stdio: "inherit"
+        }
+      ]
     ]);
+    expect((calls[0]?.[2] as { env: NodeJS.ProcessEnv }).env).not.toBe(fakeProcess.env);
     expect(killedSignals).toEqual(["SIGTERM"]);
     expect(propagatedSignals).toEqual(["SIGTERM"]);
+  });
+
+  it("removes the pairing seed before preparation and child spawn", async () => {
+    const seed = "a".repeat(64);
+    const order: string[] = [];
+    const { child, fakeProcess } = supervisorHarness({
+      OPENCLAW_STATE_DIR: "/data/.openclaw",
+      OPENCLAW_EXTENSION_PAIRING_SEED: seed
+    });
+
+    const running = runGatewaySupervisor({
+      prepareImplementation: () => {
+        order.push("prepare");
+        expect(fakeProcess.env.OPENCLAW_EXTENSION_PAIRING_SEED).toBeUndefined();
+        return 0o022;
+      },
+      pairingInstallerImplementation: ({
+        stateDirectory,
+        seed: received
+      }: {
+        stateDirectory: string;
+        seed: string;
+      }) => {
+        order.push("install");
+        expect(stateDirectory).toBe("/data/.openclaw");
+        expect(received).toBe(seed);
+      },
+      spawnImplementation: (
+        _command: string,
+        _arguments: readonly string[],
+        options: { env: NodeJS.ProcessEnv }
+      ) => {
+        order.push("spawn");
+        expect(options.env.OPENCLAW_EXTENSION_PAIRING_SEED).toBeUndefined();
+        return child;
+      },
+      processImplementation: fakeProcess
+    });
+
+    child.emit("exit", 0, null);
+    await running;
+    expect(order).toEqual(["prepare", "install", "spawn"]);
+  });
+
+  it.each([
+    [
+      "fixed state validation",
+      {
+        OPENCLAW_STATE_DIR: "/tmp/unsafe",
+        OPENCLAW_EXTENSION_PAIRING_SEED: "a".repeat(64)
+      },
+      () => 0o022,
+      () => undefined
+    ],
+    [
+      "state preparation",
+      {
+        OPENCLAW_STATE_DIR: "/data/.openclaw",
+        OPENCLAW_EXTENSION_PAIRING_SEED: "a".repeat(64)
+      },
+      () => {
+        throw new Error("synthetic preparation failure");
+      },
+      () => undefined
+    ],
+    [
+      "pairing installation",
+      {
+        OPENCLAW_STATE_DIR: "/data/.openclaw",
+        OPENCLAW_EXTENSION_PAIRING_SEED: "a".repeat(64)
+      },
+      () => 0o022,
+      () => {
+        throw new Error("Extension pairing credential bootstrap failed.");
+      }
+    ]
+  ])(
+    "removes the seed and does not spawn after %s failure",
+    async (_label, env, prepareImplementation, pairingInstallerImplementation) => {
+      const { fakeProcess } = supervisorHarness(env);
+      let spawnCalled = false;
+
+      await expect(
+        runGatewaySupervisor({
+          prepareImplementation,
+          pairingInstallerImplementation,
+          spawnImplementation: () => {
+            spawnCalled = true;
+            throw new Error("must not spawn");
+          },
+          processImplementation: fakeProcess
+        })
+      ).rejects.toThrow();
+
+      expect(fakeProcess.env.OPENCLAW_EXTENSION_PAIRING_SEED).toBeUndefined();
+      expect(spawnCalled).toBe(false);
+    }
+  );
+
+  it("preserves absent-seed compatibility without invoking the installer", async () => {
+    const { child, fakeProcess } = supervisorHarness();
+    let installerCalled = false;
+    const running = runGatewaySupervisor({
+      prepareImplementation: () => 0o022,
+      pairingInstallerImplementation: () => {
+        installerCalled = true;
+      },
+      spawnImplementation: () => child,
+      processImplementation: fakeProcess
+    });
+
+    child.emit("exit", 0, null);
+    await running;
+    expect(installerCalled).toBe(false);
   });
 });

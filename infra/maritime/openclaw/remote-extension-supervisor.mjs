@@ -177,8 +177,14 @@ export function installExtensionPairingSecret(input) {
 export async function runGatewaySupervisor({
   spawnImplementation = spawn,
   prepareImplementation = prepareRuntimeState,
+  pairingInstallerImplementation = installExtensionPairingSecret,
   processImplementation = process
 } = {}) {
+  const pairingSeed = processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+  delete processImplementation.env[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+  const childEnvironment = { ...processImplementation.env };
+  delete childEnvironment[EXTENSION_PAIRING_SEED_ENVIRONMENT_NAME];
+
   if (processImplementation.env.OPENCLAW_STATE_DIR !== STATE_DIRECTORY) {
     throw new Error("Gateway state directory environment is not the fixed boundary.");
   }
@@ -190,10 +196,16 @@ export async function runGatewaySupervisor({
     uid,
     gid
   });
+  if (pairingSeed !== undefined) {
+    pairingInstallerImplementation({
+      stateDirectory: STATE_DIRECTORY,
+      seed: pairingSeed
+    });
+  }
 
   const child = spawnImplementation(processImplementation.execPath, GATEWAY_ARGUMENTS, {
     cwd: "/app",
-    env: processImplementation.env,
+    env: childEnvironment,
     stdio: "inherit"
   });
   let stopping = false;
