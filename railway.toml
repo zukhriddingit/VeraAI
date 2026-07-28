@@ -1,9 +1,9 @@
 [build]
-builder = "RAILPACK"
-buildCommand = "pnpm build"
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile.web"
 
 [deploy]
-startCommand = "pnpm --filter @vera/web start:hosted"
+startCommand = "node node_modules/next/dist/bin/next start --hostname 0.0.0.0"
 healthcheckPath = "/api/ready"
 healthcheckTimeout = 300
 restartPolicyType = "ON_FAILURE"
