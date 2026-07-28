@@ -343,6 +343,30 @@ OPENCLAW_EXTENSION_PAIRING_SECRET='<private-64-character-lowercase-hex-secret>' 
 pnpm test:staging:remote-extension-proxy
 ```
 
+### Managed pairing bootstrap
+
+The official in-Gateway pairing command remains preferred when the provider offers a safe exec
+channel. If a managed provider has no such channel, generate one independent per-user
+64-character lowercase hexadecimal value in restricted tooling and inject it only through the
+provider's private server setting:
+
+```text
+OPENCLAW_EXTENSION_PAIRING_SEED
+```
+
+This value must differ from `OPENCLAW_GATEWAY_TOKEN`. The fixed Node supervisor removes the setting
+from its own environment before state validation, never passes it to the route-filter or OpenClaw
+child, and atomically creates
+`/data/.openclaw/credentials/browser-extension-relay.secret` with mode `0600`. A restart is
+idempotent only when the existing credential is a regular non-symbolic-link file containing the
+same valid value. Malformed input, a mismatching file, an unsafe entry, or a permission failure
+prevents Gateway startup.
+
+Do not type the seed into shell history, print it, place it in an image layer, reuse it across Vera
+users, or include it in Git or release evidence. The smoke probe shown above intentionally uses a
+different variable, `OPENCLAW_EXTENSION_PAIRING_SECRET`, in the restricted operator environment;
+that probe variable is not a Gateway container setting.
+
 The probe checks unrelated-route denial, wrong-secret denial, the exact WSS upgrade, selected relay
 subprotocol, a bounded stable connection, and client close behavior. Its output contains no host or
 secret. It intentionally reports Maritime payload and idle-timeout limits as requiring separate

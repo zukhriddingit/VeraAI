@@ -112,8 +112,9 @@ target/profile identifier, or unrelated-tab metadata.
 
 ## Pairing
 
-An authorized operator creates the dedicated Gateway credential in protected server tooling. The
-operator runs the official OpenClaw pairing command inside that user's Gateway:
+An authorized operator creates the dedicated Gateway credential in protected server tooling. When
+the provider offers a safe exec channel, the operator uses the official OpenClaw pairing command
+inside that user's Gateway:
 
 ```sh
 maritime exec <dedicated-browser-agent> \
@@ -126,6 +127,19 @@ The command emits
 `wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension#<secret>`. The fragment must be handed
 directly to the correct founder through an approved secret channel. Do not paste it into Codex,
 GitHub, logs, analytics, screenshots, tickets, ordinary release evidence, or a query string.
+
+When a managed provider exposes no safe exec channel, inject one independently generated
+64-character lowercase hexadecimal value through its private server setting as
+`OPENCLAW_EXTENSION_PAIRING_SEED`. Vera's fixed supervisor installs it at
+`/data/.openclaw/credentials/browser-extension-relay.secret` before OpenClaw starts, removes the
+setting from both supervisor and child environments, and fails closed on malformed input, a
+symbolic link, a non-regular entry, or an existing mismatch. Never set it to
+`OPENCLAW_GATEWAY_TOKEN`.
+
+Restricted operator tooling may assemble the founder's connection string from the exact WSS route
+and the private seed without printing either value. Deliver it only through the approved secret
+channel. The seed remains a Gateway bootstrap setting; the repository's opt-in proxy probe reads
+the distinct local operator variable `OPENCLAW_EXTENSION_PAIRING_SECRET`.
 
 The founder:
 
