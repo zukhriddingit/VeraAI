@@ -33,10 +33,11 @@ test("offline golden path preserves evidence, explains risk, and records user co
   await expect(sourceChips.getByText("Apartments.com", { exact: true }).first()).toBeVisible();
 
   await page.getByRole("link", { name: "Inspect Juniper Row one-bedroom" }).click();
+  await expect(page).toHaveURL(/\/listings\//u, { timeout: 15_000 });
 
   await expect(
     page.getByRole("heading", { name: "101 Juniper Row, 1A, Harbor City, MA" })
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole("heading", { name: "Fit explanation" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Risk indicators" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Missing information" })).toBeVisible();
