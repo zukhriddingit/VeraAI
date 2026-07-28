@@ -141,7 +141,7 @@ export function findRemoteExtensionDocumentationViolations(
     "ea95c6a2a92d12625b3db0d71f45823cf7c28b8e",
     "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:a19542d467b81b7f1ae3bafb48952e3fdf9ddc6c324c97820680bd39be2a3b1c",
     "rejected R1 artifact",
-    "bootstrap-compatible candidate is published but is not deployable",
+    "bootstrap-compatible replacement is published but is not deployable",
     "loopback port `18790`"
   ] as const;
   for (const phrase of browserConnectorRequired) {
@@ -176,9 +176,9 @@ export function findGatewayR3DocumentationViolations(
   const requiredCombined = [
     "release index identity",
     "runtime child identity",
-    "sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4",
+    "sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec",
     "sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3",
-    "sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a",
+    "sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8",
     "attest-openclaw-gateway-runtime.yml",
     "compatibility publication",
     "provider/agent/registry incident"

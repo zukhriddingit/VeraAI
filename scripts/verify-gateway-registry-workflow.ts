@@ -9,9 +9,9 @@ const PINNED_ACTIONS = [
   "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02"
 ] as const;
 const CURRENT =
-  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4";
+  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec";
 const PREVIOUS =
-  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3";
+  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4";
 
 export function findGatewayRegistryWorkflowViolations(workflow: string): string[] {
   const violations: string[] = [];

@@ -63,16 +63,22 @@ R2 Test A retained that identity only as evidence of the failed baseline. The ar
 authenticated extension route, but its generic OpenClaw Gateway WebSocket also upgrades an
 unrelated path. Do not deploy it.
 
-The bootstrap-compatible candidate is published but is not deployable:
+The current `/sbin` bootstrap-compatible replacement is published but is not deployable:
 
 ```text
-ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
-source revision: 69fee2fcedf7d0474d5a75d64323318b993f7a6a
+release index:
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec
+linux/amd64 runtime child:
+ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8
+source revision:
+01bc0adc02808dbaf01089d1464ee8db5fe90593
 ```
 
-Its push-only publication did not pull the digest before local Docker inspection, so the workflow
-stopped before its GitHub attestations and Cosign signature. `remote-extension-image.json` remains
-`pending` with `image: null` until exact-digest recovery independently passes.
+The release index independently passes anonymous pull, the immutable layout and simulated
+`/sbin/maritime-init` bootstrap check, a Trivy 0.72.0 zero-finding scan, Cosign verification, SLSA
+provenance, and SPDX SBOM verification. `remote-extension-image.json` records the index and child
+separately and keeps `deployableBeforeLiveProxyAcceptance: false`. The child must receive its own
+verified signature and attestations before the one disposable Maritime acceptance.
 
 The repaired container exposes an exact-path filter on public port `18789`. The general OpenClaw
 Gateway binds only to loopback port `18790`; the filter forwards raw upgrade bytes only for exact
