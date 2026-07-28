@@ -21,9 +21,9 @@ import { z } from "zod";
 import {
   GoogleIntegrationOAuthError,
   GoogleOAuthProviderError,
-  createOfficialGoogleOAuthTransport,
   type GoogleOAuthTransport
-} from "./google-integration-oauth.ts";
+} from "./google-integration-contracts.ts";
+import { createOfficialGoogleOAuthTransport } from "./google-integration-oauth.ts";
 import type { GoogleIntegrationEnvironment } from "./integration-config.ts";
 
 const STATE_SCHEMA = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);

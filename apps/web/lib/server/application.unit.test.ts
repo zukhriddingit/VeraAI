@@ -1,6 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { installHostedApplicationShutdown, type ShutdownTarget } from "./application.ts";
+import {
+  composeHostedGoogleIntegrations,
+  installHostedApplicationShutdown,
+  type ShutdownTarget
+} from "./application.ts";
+
+const googleConfiguration = {
+  clientId: "synthetic-client-id",
+  clientSecret: "synthetic-client-secret",
+  redirectUri: "https://vera.example.test/api/integrations/google/calendar/callback",
+  gmailRedirectUri: "https://vera.example.test/api/integrations/google/gmail/callback",
+  publicBaseUrl: "https://vera.example.test",
+  oauthStateTtlMilliseconds: 600_000,
+  providerTimeoutMilliseconds: 5_000,
+  credentialKeyProvider: {} as never
+} as const;
 
 function createShutdownTarget() {
   const listeners = new Map<string, () => void>();
@@ -42,5 +57,46 @@ describe("hosted application shutdown", () => {
     await vi.waitFor(() => expect(exit).toHaveBeenCalledWith(1));
 
     expect(close).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("hosted Google integration composition", () => {
+  it("uses the lightweight fail-closed adapter without constructing configured bindings", () => {
+    const createBindings = vi.fn();
+
+    const result = composeHostedGoogleIntegrations({
+      configuration: null,
+      repositoryProvider: {} as never,
+      createBindings
+    });
+
+    expect(result.calendar).toMatchObject({
+      configurationState: "unconfigured",
+      oauth: null
+    });
+    expect(result.gmailOAuth).toBeNull();
+    expect(createBindings).not.toHaveBeenCalled();
+  });
+
+  it("uses the Calendar and Gmail facades from one configured binding", () => {
+    const bindings = {
+      calendar: { configurationState: "configured", oauth: {}, createClient: vi.fn() },
+      gmailOAuth: { createAuthorization: vi.fn() }
+    } as never;
+    const createBindings = vi.fn(() => bindings);
+    const repositoryProvider = {} as never;
+
+    const result = composeHostedGoogleIntegrations({
+      configuration: googleConfiguration,
+      repositoryProvider,
+      createBindings
+    });
+
+    expect(result).toBe(bindings);
+    expect(createBindings).toHaveBeenCalledOnce();
+    expect(createBindings).toHaveBeenCalledWith({
+      configuration: googleConfiguration,
+      repositoryProvider
+    });
   });
 });

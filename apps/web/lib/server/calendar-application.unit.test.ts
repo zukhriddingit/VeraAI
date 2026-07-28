@@ -1,22 +1,13 @@
-import { CalendarProviderError, MockCalendarClient } from "@vera/calendar";
+import { MockCalendarClient } from "@vera/calendar";
 import { describe, expect, it, vi } from "vitest";
 
-import {
-  createHostedCalendarApplication,
-  createUnconfiguredCalendarApplication
-} from "./calendar-application.ts";
+import { createHostedCalendarApplication } from "./calendar-application.ts";
 import { createDemoCalendarApplication } from "./demo-calendar-application.ts";
 
 const userId = "018f9f64-7b5a-7c91-a12e-111111111111";
 const freeBusyScope = "https://www.googleapis.com/auth/calendar.freebusy" as const;
 
 describe("Calendar application composition", () => {
-  it("fails closed when hosted integration OAuth is unconfigured", async () => {
-    await expect(
-      createUnconfiguredCalendarApplication().createClient(userId, freeBusyScope)
-    ).rejects.toEqual(new CalendarProviderError("calendar_disconnected", false, 409));
-  });
-
   it("resolves a scoped access token before constructing a hosted client", async () => {
     const client = new MockCalendarClient();
     const refreshAccessToken = vi.fn(async () => "synthetic-access-token");
