@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
+const CURRENT_RUNTIME_BASE_DIGEST =
+  "sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
+
 const ACTIONS = new Map([
   ["actions/checkout", { commit: "de0fac2e4500dabe0009e67214ff5f5447ce83dd", count: 2 }],
   ["pnpm/action-setup", { commit: "b906affcce14559ad1aafd4ab0e942779e9f58b1", count: 1 }],
@@ -130,6 +133,16 @@ export function findGatewayReleaseWorkflowViolations(
     "cosign verify",
     "predicate-type: https://slsa.dev/provenance/v1",
     'buildType: "https://actions.github.io/buildtypes/workflow/v1"',
+    '--arg eventName "$GITHUB_EVENT_NAME"',
+    '--arg repositoryId "$GITHUB_REPOSITORY_ID"',
+    '--arg repositoryOwnerId "$GITHUB_REPOSITORY_OWNER_ID"',
+    '--arg runnerEnvironment "$RUNNER_ENVIRONMENT"',
+    "internalParameters: {",
+    "github: {",
+    "event_name: $eventName",
+    "repository_id: $repositoryId",
+    "repository_owner_id: $repositoryOwnerId",
+    "runner_environment: $runnerEnvironment",
     "sbom-path: release-evidence/gateway/gateway.spdx.json",
     "Published immutable Gateway:"
   ]) {
@@ -275,6 +288,7 @@ export function findGatewayReleaseWorkflowViolations(
     "org.opencontainers.image.revision",
     "io.vera.openclaw.image.digest",
     "org.opencontainers.image.base.digest",
+    CURRENT_RUNTIME_BASE_DIGEST,
     "node scripts/verify-gateway-image-layout.mjs",
     '--image-ref "$GATEWAY_IMAGE_REF"',
     "--simulate-bootstrap",
