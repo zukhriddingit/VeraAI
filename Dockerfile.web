@@ -23,6 +23,7 @@ RUN pnpm install --frozen-lockfile
 COPY apps/web apps/web
 COPY packages packages
 RUN pnpm --filter @vera/web build
+RUN ! grep -R -q -E 'pg-[0-9a-f]{16}' apps/web/.next/server
 RUN pnpm --filter @vera/web deploy --legacy --prod /opt/vera-web \
   && rm -rf /opt/vera-web/.next /opt/vera-web/public \
   && cp -R apps/web/.next /opt/vera-web/.next \
@@ -39,6 +40,8 @@ RUN groupadd --system --gid 10001 vera \
   && useradd --system --uid 10001 --gid vera --home-dir /app vera
 
 COPY --from=build --chown=vera:vera /opt/vera-web ./
+COPY --from=build /workspace/packages/db/drizzle /packages/db/drizzle
+RUN test -f /packages/db/drizzle/meta/_journal.json
 
 USER vera
 EXPOSE 3000

@@ -26,6 +26,17 @@ export function findWebImageBoundaryViolations(input: {
   ) {
     violations.push("The image must build and package only the production web workspace.");
   }
+  if (!input.dockerfile.includes("grep -R -q -E 'pg-[0-9a-f]{16}' apps/web/.next/server")) {
+    violations.push("The web image must reject unresolved Turbopack pg package identities.");
+  }
+  if (
+    !input.dockerfile.includes(
+      "COPY --from=build /workspace/packages/db/drizzle /packages/db/drizzle"
+    ) ||
+    !input.dockerfile.includes("test -f /packages/db/drizzle/meta/_journal.json")
+  ) {
+    violations.push("The web image must package the PostgreSQL migration journal.");
+  }
   if (/@vera\/worker|openclaw|demo-start|VERA_DEMO_MODE/iu.test(input.dockerfile)) {
     violations.push("The Railway web image must not build or start worker, browser, or demo code.");
   }
