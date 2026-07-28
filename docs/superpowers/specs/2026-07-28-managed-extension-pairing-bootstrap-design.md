@@ -1,6 +1,6 @@
 # Managed Browser-Extension Pairing Bootstrap
 
-**Status:** Approved in principle on 2026-07-28; written specification awaiting review
+**Status:** Approved for implementation on 2026-07-28
 
 ## Goal
 
