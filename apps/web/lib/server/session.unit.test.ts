@@ -2,7 +2,7 @@ import type { UserRepositories, UserRepositoryProvider } from "@vera/db";
 import { describe, expect, it, vi } from "vitest";
 
 import type { VeraApplication } from "./application-registry.ts";
-import { createUnconfiguredCalendarApplication } from "./calendar-application.ts";
+import { createUnconfiguredCalendarApplication } from "./unconfigured-calendar-application.ts";
 import { AuthenticationRequiredError, requireVeraSession } from "./session.ts";
 
 const userId = "018f9f64-7b5a-7c91-a12e-111111111111";

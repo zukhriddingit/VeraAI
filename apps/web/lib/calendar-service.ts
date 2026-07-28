@@ -25,7 +25,7 @@ import {
 import { sha256Text, type UserRepositories } from "@vera/db";
 
 import type { CalendarApplicationDependencies } from "./server/calendar-application.ts";
-import { GoogleIntegrationOAuthError } from "./server/google-integration-oauth.ts";
+import { GoogleIntegrationOAuthError } from "./server/google-integration-contracts.ts";
 
 const FREE_BUSY_SCOPE = "https://www.googleapis.com/auth/calendar.freebusy" as const;
 const HOLD_SCOPE = "https://www.googleapis.com/auth/calendar.events.owned" as const;

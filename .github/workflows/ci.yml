@@ -69,6 +69,9 @@ jobs:
       - name: Verify web mutation boundaries
         run: pnpm verify:web-mutation-boundaries
 
+      - name: Verify web runtime boundaries
+        run: pnpm verify:web-runtime-boundaries
+
       - name: Verify Maritime boundaries and deployment assets
         run: pnpm verify:maritime-boundaries && pnpm maritime:validate
 

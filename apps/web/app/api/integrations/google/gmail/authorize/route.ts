@@ -1,7 +1,7 @@
 import { GmailAuthorizationRequestSchema, GmailAuthorizationResponseSchema } from "@vera/domain";
 
 import { getHostedApplication } from "../../../../../../lib/server/application.ts";
-import { GoogleIntegrationOAuthError } from "../../../../../../lib/server/google-integration-oauth.ts";
+import { GoogleIntegrationOAuthError } from "../../../../../../lib/server/google-integration-contracts.ts";
 import {
   assertSameOriginMutation,
   CrossOriginMutationError,

@@ -6,7 +6,7 @@ import {
   registerApplication,
   type VeraApplication
 } from "../../../lib/server/application-registry.ts";
-import { createUnconfiguredCalendarApplication } from "../../../lib/server/calendar-application.ts";
+import { createUnconfiguredCalendarApplication } from "../../../lib/server/unconfigured-calendar-application.ts";
 import { GET } from "./route.ts";
 
 afterEach(clearApplicationForTesting);

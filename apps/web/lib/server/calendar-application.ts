@@ -1,4 +1,4 @@
-import { CalendarProviderError, GoogleCalendarClient, type CalendarClient } from "@vera/calendar";
+import { GoogleCalendarClient, type CalendarClient } from "@vera/calendar";
 import {
   CalendarGoogleScopeSchema,
   VeraUserIdSchema,
@@ -6,10 +6,8 @@ import {
   type VeraUserId
 } from "@vera/domain";
 
-import {
-  createGoogleCalendarAuth,
-  type GoogleIntegrationOAuth
-} from "./google-integration-oauth.ts";
+import { createGoogleCalendarAuth } from "./google-integration-oauth.ts";
+import type { GoogleIntegrationOAuth } from "./google-integration-contracts.ts";
 import type { GoogleIntegrationEnvironment } from "./integration-config.ts";
 
 export interface CalendarApplicationDependencies {
@@ -20,16 +18,6 @@ export interface CalendarApplicationDependencies {
     requiredScope: CalendarGoogleScope,
     signal?: AbortSignal
   ): Promise<CalendarClient>;
-}
-
-export function createUnconfiguredCalendarApplication(): CalendarApplicationDependencies {
-  return {
-    configurationState: "unconfigured",
-    oauth: null,
-    async createClient() {
-      throw new CalendarProviderError("calendar_disconnected", false, 409);
-    }
-  };
 }
 
 export function createHostedCalendarApplication(input: {
