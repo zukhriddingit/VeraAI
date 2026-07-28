@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 env:
-  CURRENT_RELEASE_INDEX: ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
-  PREVIOUS_RELEASE_INDEX: ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3
+  CURRENT_RELEASE_INDEX: ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec
+  PREVIOUS_RELEASE_INDEX: ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
   VERA_GATEWAY_REGISTRY_OUTPUT_DIRECTORY: release-evidence/gateway-registry
 
 jobs:

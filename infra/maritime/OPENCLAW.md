@@ -110,7 +110,7 @@ material broadening of the UID `1000` application execution surface is
 commit already merged into `main`; it must reproduce zero findings and verify the runtime layout,
 lock hash, signature, source provenance, SBOM, and attestations before one disposable acceptance.
 
-The candidate was published exactly once from source
+The first bootstrap-compatible candidate was published exactly once from source
 `69fee2fcedf7d0474d5a75d64323318b993f7a6a`:
 
 ```text
@@ -133,6 +133,12 @@ Maritime deployment.
 
 Always delete the temporary secret.
 
+Maritime later proved that both that index and its direct child pulled and unpacked, then failed at
+the requested `/sbin/maritime-init` path before Vera's entrypoint. The approved repair restored a
+real empty root-owned `/usr/sbin` with `/sbin -> usr/sbin`, embedded no helper, and produced the
+current release identity below. The current index passes exact-digest signing and attestation; the
+child still requires the no-rebuild direct-child workflow before deployment.
+
 ## R3 release-index and runtime-child pull procedure
 
 R3 treats the signed release index identity and selected runtime child identity as different
@@ -140,15 +146,15 @@ objects:
 
 ```text
 release index identity:
-  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
+  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec
 runtime child identity:
-  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a
+  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8
 previous comparison index:
-  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3
+  ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4
 ```
 
 Create
-`release-evidence/private/m13a-r3-maritime-image-pull-20260727-01/` at mode `0700`; every
+`release-evidence/private/m13a-r3-sbin-bootstrap-20260727-01/` at mode `0700`; every
 evidence file is mode `0600`. Never store raw agent IDs, endpoint paths, credentials, signed blob
 URLs, provider helper bytes, or raw logs in the sanitized bundle.
 
@@ -156,10 +162,10 @@ Inspect all public runtime objects before any Maritime mutation:
 
 ```bash
 pnpm inspect:gateway-registry -- \
-  --current-index ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 \
-  --previous-index ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3 \
-  --output release-evidence/private/m13a-r3-maritime-image-pull-20260727-01/registry-inspection.json
-chmod 0600 release-evidence/private/m13a-r3-maritime-image-pull-20260727-01/registry-inspection.json
+  --current-index ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec \
+  --previous-index ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 \
+  --output release-evidence/private/m13a-r3-sbin-bootstrap-20260727-01/registry-inspection.json
+chmod 0600 release-evidence/private/m13a-r3-sbin-bootstrap-20260727-01/registry-inspection.json
 ```
 
 For an independent child copy, set `R3_OCI_OUTPUT` to a newly created mode-`0700` temporary
@@ -173,7 +179,7 @@ docker run --rm \
   copy \
   --override-os linux \
   --override-arch amd64 \
-  docker://ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a \
+  docker://ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8 \
   oci:/var/lib/vera-output/runtime:accepted
 ```
 
@@ -182,10 +188,10 @@ subject, use the direct-child supply-chain workflow only after its CI-gated merg
 
 ```bash
 gh workflow run attest-openclaw-gateway-runtime.yml --ref main \
-  -f source_sha=69fee2fcedf7d0474d5a75d64323318b993f7a6a \
-  -f release_index_digest=sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 \
-  -f runtime_manifest_digest=sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a \
-  -f evidence_run_id=30298185379
+  -f source_sha=01bc0adc02808dbaf01089d1464ee8db5fe90593 \
+  -f release_index_digest=sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec \
+  -f runtime_manifest_digest=sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8 \
+  -f evidence_run_id=30318064338
 ```
 
 This workflow performs an anonymous child pull, image-layout check, and independent zero-finding
@@ -207,11 +213,11 @@ terminal state, and hashes of opaque provider references after each case:
 
 ```bash
 # A — previous release index
-maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:69ee4537790f06221487bb0c39c4da91c25dbdbb63fad56be16a1a6de093b7d3 --wait
-# B — current release index
 maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4 --wait
+# B — current release index
+maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec --wait
 # C — current direct runtime child
-maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a --wait
+maritime deploy <private-r3-diagnostic-agent> --source docker --image ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8 --wait
 ```
 
 | A/B/C observation                                                  | Required decision                                                                   |

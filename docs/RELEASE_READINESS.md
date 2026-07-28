@@ -41,7 +41,7 @@ it create GitHub provenance/SBOM attestations and a Cosign signature. The tempor
 state. Maritime remains out of scope until all recovered evidence verifies.
 
 R3 distinguishes the signed release index identity from the pull-critical runtime child identity.
-The current release index is
+The first R3 release index was
 `ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4`;
 its only runnable `linux/amd64` runtime child is
 `ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a`.
@@ -59,6 +59,20 @@ child that reaches `fc-manager` or runtime is selected without publishing anothe
 three hang, the result is a provider/agent/registry incident. A compatibility publication is
 permitted only after verified public blobs and a concrete direct-child media-type, compression, or
 descriptor failure; otherwise it is unreachable.
+
+Maritime subsequently proved that both that OCI index and its direct child pull and unpack
+successfully. Both then failed before Vera's entrypoint because the hardened Chainguard filesystem
+used merged-`/usr` symlinks while Maritime requested its provider-injected init at
+`/sbin/maritime-init`. PR #17 restored a real empty root-owned `/usr/sbin` and
+`/sbin -> usr/sbin` without embedding a provider helper or changing OpenClaw behavior. The current
+replacement is release index
+`ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec`,
+with one runnable `linux/amd64` child
+`ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8`,
+from source `01bc0adc02808dbaf01089d1464ee8db5fe90593`. The index passes anonymous
+pull, exact layout verification, Trivy zero-finding scans, Cosign verification, SLSA provenance,
+and SPDX SBOM verification. The child remains non-deployable until the exact-child workflow binds
+the same controls directly to it and live Maritime/WSS/Chrome acceptance passes.
 
 For core, all passing phases produce `go_founder_only_core_beta`; passing phases plus only valid
 external configuration blockers produce `conditional_go_founder_only_staging`. Any failure, N/A

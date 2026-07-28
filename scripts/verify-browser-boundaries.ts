@@ -103,7 +103,7 @@ requireText(
 );
 requireText(
   remoteImage,
-  /"publicationState":\s*"published"[\s\S]*"releaseIndex":\s*"ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4"[\s\S]*"runtimeManifest":\s*"ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a"[\s\S]*"runtimeSelectionState":\s*"diagnostic_pending"[\s\S]*"deployableBeforeLiveProxyAcceptance":\s*false/u,
+  /"publicationState":\s*"published"[\s\S]*"releaseIndex":\s*"ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec"[\s\S]*"runtimeManifest":\s*"ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8"[\s\S]*"runtimeSelectionState":\s*"diagnostic_pending"[\s\S]*"deployableBeforeLiveProxyAcceptance":\s*false/u,
   "The published route-isolation index and child must remain blocked pending live acceptance."
 );
 requireText(

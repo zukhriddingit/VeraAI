@@ -9,10 +9,10 @@ export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
 export const REMOTE_EXTENSION_RUNTIME_BASE_IMAGE =
   "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
 export const REMOTE_EXTENSION_RELEASE_INDEX =
-  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:5a7c1b5b92595185816203b39fc725fe6167f58eb0e3f52c9015ed6fbe1173a4";
+  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec";
 export const REMOTE_EXTENSION_RUNTIME_MANIFEST =
-  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:bfc514cf3c0f54def310459b67ea15fb4a1c4ff66ff9ab2d01d9c24445febd0a";
-export const REMOTE_EXTENSION_SOURCE_COMMIT = "69fee2fcedf7d0474d5a75d64323318b993f7a6a";
+  "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8";
+export const REMOTE_EXTENSION_SOURCE_COMMIT = "01bc0adc02808dbaf01089d1464ee8db5fe90593";
 export const REMOTE_EXTENSION_TOOL = "vera_read_shared_tab_snapshot";
 
 type JsonObject = Record<string, unknown>;

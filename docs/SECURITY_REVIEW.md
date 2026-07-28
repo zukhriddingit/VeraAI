@@ -228,6 +228,26 @@ The complete post-Prompt-12 application gate ran every static boundary verifier,
   descriptor incompatibility while public registry verification and local runtime acceptance
   pass. A common provider/agent/registry failure cannot authorize a replacement image.
 
+### Gateway `/sbin` bootstrap replacement — 2026-07-28
+
+- Maritime pulled and unpacked both the prior OCI release index and its direct child, disproving
+  media type, compression, descriptor, layer, and blob retrieval as the remaining boundary. The
+  guest then failed before Vera's entrypoint because `/sbin/maritime-init` did not resolve through
+  the Chainguard merged-`/usr` filesystem.
+- PR #17 created a real empty root-owned `0755` `/usr/sbin` and relative
+  `/sbin -> usr/sbin` at build time. The immutable image contains no `maritime-init`, shell,
+  package manager, or additional executable; UID/GID `1000:1000`, `PATH=/usr/bin`, the fixed Node
+  supervisor, OpenClaw, route filter, and ports remain unchanged.
+- The current signed release index is
+  `sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec`;
+  its only runnable `linux/amd64` child is
+  `sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8`,
+  built from `01bc0adc02808dbaf01089d1464ee8db5fe90593`. The index passes independent
+  signature, provenance, SBOM, anonymous pull, layout, and zero-finding verification.
+- The exact child must pass the no-rebuild child attestation workflow before deployment. The
+  browser profile remains `no_go` until the child then starts on Maritime and every public WSS,
+  audit, one-tab consent, revocation, evidence, and cleanup check passes.
+
 ## Browser gateway threats
 
 The current browser bridge correctly models offline nodes as deferred and manual blockers as manual actions, but the shared gateway remains a privileged execution boundary. Tenant checks alone do not make it safe for mutually untrusted users. Until per-user gateways exist, all real browser jobs must pass the founder allowlist independently at web, dispatch, and worker layers.
