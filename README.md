@@ -104,6 +104,12 @@ may host the authenticated web application only; the already deployed
 - worker: deploy the immutable root `Dockerfile` image to Maritime and run `serve`;
 - browser: keep `VERA_BROWSER_DISABLED=1` and gateway variables absent.
 
+Railway is bound through `railway.toml` to `Dockerfile.web`, which builds and
+starts only `@vera/web`. The repository-root `Dockerfile` remains the Maritime
+worker image. Do not point the Railway web service at the root Dockerfile and do
+not run `pnpm worker:start`, demo bootstrap, or OpenClaw in the public web
+container.
+
 Run `pnpm db:migrate` as a controlled release step and `pnpm db:seed` after the first migration.
 Configure the supported five-minute non-browser reconciliation trigger in the Maritime dashboard
 and validate it with `maritime triggers list vera-worker --json`. The separate

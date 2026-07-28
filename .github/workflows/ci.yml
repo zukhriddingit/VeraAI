@@ -72,6 +72,9 @@ jobs:
       - name: Verify web runtime boundaries
         run: pnpm verify:web-runtime-boundaries
 
+      - name: Verify Railway web image boundaries
+        run: pnpm verify:web-image-boundaries
+
       - name: Verify Maritime boundaries and deployment assets
         run: pnpm verify:maritime-boundaries && pnpm maritime:validate
 
@@ -97,6 +100,40 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+  web_image:
+    name: Build Railway web image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    permissions:
+      contents: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Configure Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Build Railway web image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile.web
+          pull: true
+          load: true
+          push: false
+          tags: vera-web:ci
+
+      - name: Verify web-only runtime metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect vera-web:ci --format '{{.Config.User}}')" = "vera"
+          docker image inspect vera-web:ci --format '{{json .Config.Cmd}}' |
+            grep -F 'node_modules/next/dist/bin/next'
+          docker image inspect vera-web:ci --format '{{json .Config.Healthcheck.Test}}' |
+            grep -F '/api/ready'
 
   gateway_image:
     name: Build and zero-scan Gateway image

@@ -52,8 +52,14 @@ package instances, each from a fixed npm tarball with a locked SHA-512 integrity
 The repaired `/app` tree is transplanted into the immutable `linux/amd64` Chainguard Node runtime:
 
 ```text
-cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f
+cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09
 ```
+
+`remote-extension-candidate.json` records this zero-finding security replacement as pending without
+claiming that it has been published. `remote-extension-image.json` continues to record the exact
+previously published Gateway identity and its original runtime base. The pending candidate cannot
+be deployed; publication, signing, provenance, SBOM, attestations, and a follow-up immutable release
+binding remain separate gated work.
 
 The final layer deletes the Chainguard package-manager library and every executable except
 `/usr/bin/node`. The image therefore has no shell, npm, npx, node-gyp, Corepack, pnpm, or BusyBox

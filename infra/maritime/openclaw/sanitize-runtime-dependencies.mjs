@@ -20,9 +20,9 @@ const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const CHAINGUARD_INDEX =
-  "cgr.dev/chainguard/node@sha256:9cb13df6c9cf12a80967d16cc85687d4d70f5a6fd76001a9764aa08a34e6d2f5";
+  "cgr.dev/chainguard/node@sha256:2b9627fec21321fad828adf6c5ceb91c6f377b772b48a738533a1225c0145a90";
 const CHAINGUARD_AMD64 =
-  "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
+  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
 const APPROVED_REPAIRS = Object.freeze([
   {
     name: "@opentelemetry/propagator-jaeger",

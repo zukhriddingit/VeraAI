@@ -168,6 +168,12 @@ the dedicated OpenClaw Gateway image remains blocked until remote-extension live
 receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled
 release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus
 the PostgreSQL runbook for deploy, backup, restore, and rollback.
+
+The image boundary is explicit: Railway uses `Dockerfile.web` for the public
+Next.js process, while Maritime uses the root `Dockerfile` for the private
+worker. Browser execution and the dedicated Gateway remain absent from the
+founder-core web image.
+
 ## Founder-only live official-API search
 
 The opt-in EOD founder path is browserless: an authenticated allowlisted user starts one durable

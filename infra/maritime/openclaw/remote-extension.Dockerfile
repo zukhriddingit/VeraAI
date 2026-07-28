@@ -34,7 +34,7 @@ COPY --chown=1000:1000 --chmod=0444 \
   vera-read-shared-tab/package.json \
   /opt/vera/plugins/vera-read-shared-tab/
 
-FROM cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f AS final
+FROM cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09 AS final
 
 USER 0:0
 WORKDIR /usr/local/bin
@@ -47,7 +47,7 @@ LABEL org.opencontainers.image.title="Vera OpenClaw Browser Gateway" \
   org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}" \
   org.opencontainers.image.version="2026.7.1-vera.4" \
   org.opencontainers.image.base.name="cgr.dev/chainguard/node" \
-  org.opencontainers.image.base.digest="sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f" \
+  org.opencontainers.image.base.digest="sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09" \
   io.vera.openclaw.image.digest="sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
 
 COPY --from=openclaw-runtime --chown=1000:1000 /app /app

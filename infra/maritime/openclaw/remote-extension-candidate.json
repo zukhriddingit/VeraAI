@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1",
+  "openclawVersion": "2026.7.1",
+  "baseImage": "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c",
+  "runtimeBaseImage": "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09",
+  "runtimeLock": "infra/maritime/openclaw/remote-extension-runtime-lock.json",
+  "publicationState": "pending_security_replacement",
+  "image": null,
+  "replacesReleaseIndex": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec",
+  "reasonCode": "base_package_cve_2026_14257",
+  "releaseProfile": "founder_browser_experimental",
+  "synthetic": false,
+  "deployableBeforeLiveProxyAcceptance": false
+}
