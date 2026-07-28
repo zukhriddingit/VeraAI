@@ -7,6 +7,8 @@ export const REMOTE_EXTENSION_OPENCLAW_VERSION = "2026.7.1";
 export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 export const REMOTE_EXTENSION_RUNTIME_BASE_IMAGE =
+  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
+export const REMOTE_EXTENSION_PUBLISHED_RUNTIME_BASE_IMAGE =
   "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
 export const REMOTE_EXTENSION_RELEASE_INDEX =
   "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec";
@@ -100,7 +102,7 @@ export function findRemoteExtensionConfigViolations(input: {
     objectAt(imageManifest)?.schemaVersion !== "2" ||
     objectAt(imageManifest)?.openclawVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION ||
     objectAt(imageManifest)?.baseImage !== REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE ||
-    objectAt(imageManifest)?.runtimeBaseImage !== REMOTE_EXTENSION_RUNTIME_BASE_IMAGE ||
+    objectAt(imageManifest)?.runtimeBaseImage !== REMOTE_EXTENSION_PUBLISHED_RUNTIME_BASE_IMAGE ||
     objectAt(imageManifest)?.runtimeLock !==
       "infra/maritime/openclaw/remote-extension-runtime-lock.json" ||
     objectAt(imageManifest)?.publicationState !== "published" ||

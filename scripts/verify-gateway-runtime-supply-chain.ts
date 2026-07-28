@@ -9,7 +9,7 @@ import { findRuntimeLockViolations } from "../infra/maritime/openclaw/sanitize-r
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const RUNTIME_IMAGE =
-  "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
+  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
 const FINAL_STAGE = `FROM ${RUNTIME_IMAGE} AS final`;
 const FIXED_ENTRYPOINT =
   'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]';
@@ -45,10 +45,10 @@ function requireText(
 export function findGatewayRuntimeSupplyChainViolations(input: {
   readonly dockerfile: string;
   readonly runtimeLock: unknown;
-  readonly imageManifest: unknown;
+  readonly candidateManifest: unknown;
 }): string[] {
   const violations: string[] = [];
-  const { dockerfile, runtimeLock, imageManifest } = input;
+  const { dockerfile, runtimeLock, candidateManifest } = input;
   const lockViolations = findRuntimeLockViolations(runtimeLock) as string[];
   violations.push(
     ...lockViolations.map((violation) => `Gateway runtime lock is invalid: ${violation}`)
@@ -147,15 +147,42 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
     violations.push(finalBoundaryMessage);
   }
 
-  const manifest = object(imageManifest);
+  const manifest = object(candidateManifest);
   if (
+    manifest === null ||
+    JSON.stringify(Object.keys(manifest).sort()) !==
+      JSON.stringify(
+        [
+          "schemaVersion",
+          "openclawVersion",
+          "baseImage",
+          "runtimeBaseImage",
+          "runtimeLock",
+          "publicationState",
+          "image",
+          "replacesReleaseIndex",
+          "reasonCode",
+          "releaseProfile",
+          "synthetic",
+          "deployableBeforeLiveProxyAcceptance"
+        ].sort()
+      ) ||
+    manifest.schemaVersion !== "1" ||
     manifest?.openclawVersion !== "2026.7.1" ||
     manifest.baseImage !== OPENCLAW_IMAGE ||
     manifest.runtimeBaseImage !== RUNTIME_IMAGE ||
-    manifest.runtimeLock !== "infra/maritime/openclaw/remote-extension-runtime-lock.json"
+    manifest.runtimeLock !== "infra/maritime/openclaw/remote-extension-runtime-lock.json" ||
+    manifest.publicationState !== "pending_security_replacement" ||
+    manifest.image !== null ||
+    manifest.replacesReleaseIndex !==
+      "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec" ||
+    manifest.reasonCode !== "base_package_cve_2026_14257" ||
+    manifest.releaseProfile !== "founder_browser_experimental" ||
+    manifest.synthetic !== false ||
+    manifest.deployableBeforeLiveProxyAcceptance !== false
   ) {
     violations.push(
-      "Gateway image manifest must bind the reviewed source and final runtime digests."
+      "Gateway candidate manifest must bind the reviewed source and final runtime digests without claiming publication."
     );
   }
 
@@ -169,8 +196,8 @@ export function verifyGatewayRuntimeSupplyChain(root = resolve(import.meta.dirna
     runtimeLock: JSON.parse(
       readFileSync(resolve(directory, "remote-extension-runtime-lock.json"), "utf8")
     ) as unknown,
-    imageManifest: JSON.parse(
-      readFileSync(resolve(directory, "remote-extension-image.json"), "utf8")
+    candidateManifest: JSON.parse(
+      readFileSync(resolve(directory, "remote-extension-candidate.json"), "utf8")
     ) as unknown
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));

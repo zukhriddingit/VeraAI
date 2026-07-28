@@ -14,8 +14,8 @@ function fixture() {
     runtimeLock: JSON.parse(
       readFileSync(resolve(directory, "remote-extension-runtime-lock.json"), "utf8")
     ) as unknown,
-    imageManifest: JSON.parse(
-      readFileSync(resolve(directory, "remote-extension-image.json"), "utf8")
+    candidateManifest: JSON.parse(
+      readFileSync(resolve(directory, "remote-extension-candidate.json"), "utf8")
     ) as unknown
   };
 }
@@ -30,7 +30,7 @@ describe("Gateway runtime supply-chain verifier", () => {
       "mutable Chainguard base",
       (input: ReturnType<typeof fixture>) => {
         input.dockerfile = input.dockerfile.replace(
-          "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f",
+          "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09",
           "cgr.dev/chainguard/node:latest"
         );
       }
@@ -78,6 +78,21 @@ describe("Gateway runtime supply-chain verifier", () => {
           repairs: Array<Record<string, unknown>>;
         };
         lock.repairs.push({ ...lock.repairs[0], name: "unexpected" });
+      }
+    ],
+    [
+      "candidate claiming publication",
+      (input: ReturnType<typeof fixture>) => {
+        const candidate = input.candidateManifest as Record<string, unknown>;
+        candidate.publicationState = "published";
+        candidate.image = `ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:${"a".repeat(64)}`;
+      }
+    ],
+    [
+      "candidate with arbitrary metadata",
+      (input: ReturnType<typeof fixture>) => {
+        const candidate = input.candidateManifest as Record<string, unknown>;
+        candidate.metadata = "not-allowed";
       }
     ],
     [
