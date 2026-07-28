@@ -306,7 +306,9 @@ jobs:
                     "https://github.com/" +
                     env.GITHUB_REPOSITORY +
                     "/actions/runs/" +
-                    env.GITHUB_RUN_ID
+                    env.GITHUB_RUN_ID +
+                    "/attempts/" +
+                    env.GITHUB_RUN_ATTEMPT
                   )
                 }
               }
