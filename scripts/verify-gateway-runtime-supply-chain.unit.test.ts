@@ -110,6 +110,33 @@ describe("Gateway runtime supply-chain verifier", () => {
         input.dockerfile +=
           "\nCOPY --from=vera-layout /opt/provider-helper /usr/local/bin/provider-helper\n";
       }
+    ],
+    [
+      "missing system sbin normalization",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace("fs.rmSync('/sbin',{force:true}); ", "");
+      }
+    ],
+    [
+      "missing system administration directory creation",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace("fs.mkdirSync('/usr/sbin',{mode:0o755}); ", "");
+      }
+    ],
+    [
+      "wrong system sbin target",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace(
+          "fs.symlinkSync('usr/sbin','/sbin'); ",
+          "fs.symlinkSync('usr/bin','/sbin'); "
+        );
+      }
+    ],
+    [
+      "provider init copied into immutable image",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile += "\nCOPY --from=vera-layout /opt/provider-helper /sbin/maritime-init\n";
+      }
     ]
   ])("rejects %s", (_label, mutate) => {
     const input = fixture();

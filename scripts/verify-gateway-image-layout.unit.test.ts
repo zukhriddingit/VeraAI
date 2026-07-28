@@ -22,6 +22,18 @@ function validLayout() {
       mode: 0o755,
       entries: []
     },
+    systemSbin: {
+      isDirectory: true,
+      isSymbolicLink: false,
+      uid: 0,
+      gid: 0,
+      mode: 0o755,
+      entries: []
+    },
+    sbin: {
+      isSymbolicLink: true,
+      target: "usr/sbin"
+    },
     usrBinEntries: ["node"],
     bannedPathsPresent: [],
     entrypoint: ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]
@@ -31,10 +43,13 @@ function validLayout() {
 function validBootstrap() {
   return {
     created: true,
-    filename: "maritime-bootstrap-layout-probe",
+    filename: "maritime-init",
     uid: 0,
     gid: 0,
     mode: 0o500,
+    helperPath: "/usr/sbin/maritime-init",
+    bootPath: "/sbin/maritime-init",
+    bootPathResolved: true,
     removed: true,
     directoryEmpty: true
   };
@@ -81,6 +96,54 @@ describe("Gateway image-layout verifier", () => {
       "nonempty immutable directory",
       (input: ReturnType<typeof validLayout>) => {
         input.localBin.entries.push("busybox");
+      }
+    ],
+    [
+      "missing system administration directory",
+      (input: ReturnType<typeof validLayout>) => {
+        input.systemSbin.isDirectory = false;
+      }
+    ],
+    [
+      "symbolic-link system administration directory",
+      (input: ReturnType<typeof validLayout>) => {
+        input.systemSbin.isSymbolicLink = true;
+      }
+    ],
+    [
+      "non-root system administration directory owner",
+      (input: ReturnType<typeof validLayout>) => {
+        input.systemSbin.uid = 1000;
+      }
+    ],
+    [
+      "non-root system administration directory group",
+      (input: ReturnType<typeof validLayout>) => {
+        input.systemSbin.gid = 1000;
+      }
+    ],
+    [
+      "writable system administration directory mode",
+      (input: ReturnType<typeof validLayout>) => {
+        input.systemSbin.mode = 0o777;
+      }
+    ],
+    [
+      "nonempty system administration directory",
+      (input: ReturnType<typeof validLayout>) => {
+        input.systemSbin.entries.push("maritime-init");
+      }
+    ],
+    [
+      "real sbin directory",
+      (input: ReturnType<typeof validLayout>) => {
+        input.sbin.isSymbolicLink = false;
+      }
+    ],
+    [
+      "wrong sbin target",
+      (input: ReturnType<typeof validLayout>) => {
+        input.sbin.target = "usr/bin";
       }
     ],
     [
@@ -160,6 +223,24 @@ describe("Gateway image-layout verifier", () => {
       "helper executable by every user",
       (input: ReturnType<typeof validBootstrap>) => {
         input.mode = 0o555;
+      }
+    ],
+    [
+      "helper created outside system administration directory",
+      (input: ReturnType<typeof validBootstrap>) => {
+        input.helperPath = "/usr/local/bin/maritime-init";
+      }
+    ],
+    [
+      "wrong provider boot path",
+      (input: ReturnType<typeof validBootstrap>) => {
+        input.bootPath = "/usr/sbin/maritime-init";
+      }
+    ],
+    [
+      "provider boot path did not resolve",
+      (input: ReturnType<typeof validBootstrap>) => {
+        input.bootPathResolved = false;
       }
     ],
     [
