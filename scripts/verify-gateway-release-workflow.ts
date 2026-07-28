@@ -155,6 +155,12 @@ export function findGatewayReleaseWorkflowViolations(
   }
   requireText(
     workflow,
+    'env.GITHUB_RUN_ID +\n                    "/attempts/" +\n                    env.GITHUB_RUN_ATTEMPT',
+    "Gateway release must bind provenance to the exact workflow run attempt.",
+    violations
+  );
+  requireText(
+    workflow,
     "name: Verify minimal published runtime identity",
     "Gateway release must verify the published runtime identity before scanning.",
     violations

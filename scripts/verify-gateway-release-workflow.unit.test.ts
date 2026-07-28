@@ -190,6 +190,24 @@ describe("Gateway release workflow verifier", () => {
     );
   });
 
+  it("rejects a publication predicate without the exact run-attempt binding", () => {
+    const repairedRelease = releaseWorkflow.replace(
+      "                    env.GITHUB_RUN_ID\n",
+      '                    env.GITHUB_RUN_ID +\n                    "/attempts/" +\n                    env.GITHUB_RUN_ATTEMPT\n'
+    );
+    const mutatedRelease = repairedRelease.replace(
+      '                    env.GITHUB_RUN_ID +\n                    "/attempts/" +\n                    env.GITHUB_RUN_ATTEMPT\n',
+      "                    env.GITHUB_RUN_ID\n"
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(mutatedRelease, ciWorkflow, resumeWorkflow)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("bind provenance to the exact workflow run attempt")
+      ])
+    );
+  });
+
   it("rejects CI that omits the simulated provider bootstrap layout check", () => {
     const mutatedCi = ciWorkflow.replace("            --simulate-bootstrap\n", "");
     expect(
