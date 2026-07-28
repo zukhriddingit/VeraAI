@@ -124,10 +124,7 @@ Safety and interpretation rules:
 - Do not include URLs, HTML, credentials, contact details, or arbitrary metadata.
 - Return only the strict structured draft.`;
 
-function buildPrompt(
-  request: SearchIntentInterpretRequest,
-  repair: boolean
-): SearchIntentPrompt {
+function buildPrompt(request: SearchIntentInterpretRequest, repair: boolean): SearchIntentPrompt {
   return {
     developer: repair
       ? `${DEVELOPER_INSTRUCTIONS}\n\nThis is the single allowed repair attempt. Return a complete replacement object that satisfies the schema. Do not repeat the invalid response.`

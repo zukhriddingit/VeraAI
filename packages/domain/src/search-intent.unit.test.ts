@@ -95,10 +95,7 @@ describe("search intent contracts", () => {
         maximumMonthlyBudgetDollars: 2_900
       }
     ],
-    [
-      "reversed dates",
-      { ...validDraft, moveInEarliest: "2026-10-01", moveInLatest: "2026-09-01" }
-    ],
+    ["reversed dates", { ...validDraft, moveInEarliest: "2026-10-01", moveInLatest: "2026-09-01" }],
     [
       "too many commute anchors",
       {

@@ -10,6 +10,7 @@ import {
 import { useEffect, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
+import { SearchComposer } from "./search-composer";
 
 const terminalStates = new Set<LiveSearchResultState>([
   "provider_unavailable",
@@ -42,13 +43,14 @@ function milliseconds(value: number | null): string {
 }
 
 export function LiveSearchPanel({
-  profiles,
+  profiles: initialProfiles,
   initialListings
 }: {
   profiles: readonly SearchProfile[];
   initialListings: readonly CanonicalListingSummary[];
 }) {
-  const [profileId, setProfileId] = useState(profiles[0]?.id ?? "");
+  const [profiles, setProfiles] = useState<readonly SearchProfile[]>(initialProfiles);
+  const [profileId, setProfileId] = useState(initialProfiles[0]?.id ?? "");
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState<LiveSearchStatus | null>(null);
   const [requestState, setRequestState] = useState<LiveSearchResultState | null>(null);
@@ -59,6 +61,7 @@ export function LiveSearchPanel({
 
   const activeState = status?.state ?? requestState;
   const running = activeState !== null && !terminalStates.has(activeState);
+  const selectedProfile = profiles.find((profile) => profile.id === profileId) ?? null;
 
   useEffect(() => {
     if (!status || terminalStates.has(status.state)) return;
@@ -127,53 +130,55 @@ export function LiveSearchPanel({
 
   return (
     <>
-      <section className="demo-search-card" aria-labelledby="live-search-heading">
-        <div>
-          <p className="eyebrow">Founder-only live inventory</p>
-          <h2 id="live-search-heading">Run live agent search</h2>
-          <p>
-            Retrieves up to ten active RentCast rentals, then sends minimized candidate facts to
-            OpenClaw on Maritime. Vera remains authoritative for hard constraints and scoring.
-          </p>
-          {profiles.length > 0 ? (
-            <label>
-              Active search profile
-              <select
-                value={profileId}
-                disabled={running}
-                onChange={(event) => setProfileId(event.target.value)}
-              >
-                {profiles.map((profile) => (
-                  <option key={profile.id} value={profile.id}>
-                    {profile.name} · {profile.locationText}
-                  </option>
-                ))}
-              </select>
-            </label>
+      <SearchComposer
+        profiles={profiles}
+        selectedProfileId={profileId}
+        disabled={running}
+        onProfileSelected={(nextProfileId) => {
+          setProfileId(nextProfileId);
+          setConfirmed(false);
+        }}
+        onProfileCreated={(profile) => {
+          setProfiles((current) => [...current, profile]);
+          setProfileId(profile.id);
+          setConfirmed(false);
+        }}
+      />
+
+      <section className="live-search-launch" aria-labelledby="live-search-heading">
+        <div className="live-search-launch-copy">
+          <p className="eyebrow">Read-only live inventory</p>
+          <h2 id="live-search-heading">Ready to search?</h2>
+          {selectedProfile ? (
+            <p>
+              Vera will retrieve up to ten active RentCast rentals for{" "}
+              <strong>{selectedProfile.name}</strong>, then ask OpenClaw on Maritime to analyze
+              minimized candidate facts. Deterministic constraints and scoring stay in Vera.
+            </p>
           ) : (
-            <p role="alert">Create a real search profile before running live search.</p>
+            <p>Create and save a search profile before using live providers.</p>
           )}
-          <label>
+          <label className="live-search-confirmation">
             <input
               type="checkbox"
               checked={confirmed}
-              disabled={running}
+              disabled={running || selectedProfile === null}
               onChange={(event) => setConfirmed(event.target.checked)}
-            />{" "}
-            I understand this uses live RentCast and Maritime API capacity.
+            />
+            <span>I understand this uses live RentCast and Maritime API capacity.</span>
           </label>
         </div>
         <button
-          className="primary-button demo-run-button"
+          className="primary-button live-search-button"
           type="button"
-          disabled={running || !confirmed || profileId.length === 0}
+          disabled={running || !confirmed || selectedProfile === null}
           onClick={() => void run()}
         >
           {running && activeState
             ? stateLabels[activeState]
             : retryOf
-              ? "Retry live search once"
-              : "Run live agent search"}
+              ? "Retry search once"
+              : "Search now"}
         </button>
       </section>
 
@@ -190,7 +195,7 @@ export function LiveSearchPanel({
             <p className="eyebrow">Live search status</p>
             <h2>{stateLabels[status.state]}</h2>
             {status.state === "completed" ? (
-              <p>Live results — RentCast inventory analyzed by OpenClaw on Maritime.</p>
+              <p>Live RentCast inventory analyzed by OpenClaw on Maritime.</p>
             ) : null}
           </div>
           <dl className="profile-facts">
@@ -209,7 +214,7 @@ export function LiveSearchPanel({
             <div>
               <dt>Results</dt>
               <dd>
-                {status.retrievedCount} retrieved · {status.importedCount} imported ·{" "}
+                {status.retrievedCount} retrieved, {status.importedCount} imported,{" "}
                 {status.rejectedCount} rejected
               </dd>
             </div>

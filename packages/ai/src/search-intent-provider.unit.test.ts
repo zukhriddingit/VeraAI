@@ -1,7 +1,4 @@
-import type {
-  SearchIntentDraft,
-  SearchIntentInterpretRequest
-} from "@vera/domain";
+import type { SearchIntentDraft, SearchIntentInterpretRequest } from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
 import type { LLMProviderOptions } from "./contracts.ts";

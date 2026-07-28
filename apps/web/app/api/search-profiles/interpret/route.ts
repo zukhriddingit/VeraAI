@@ -1,7 +1,4 @@
-import {
-  DEFAULT_LLM_TIMEOUT_MILLISECONDS,
-  type SearchIntentProvider
-} from "@vera/ai";
+import { DEFAULT_LLM_TIMEOUT_MILLISECONDS, type SearchIntentProvider } from "@vera/ai";
 import {
   SearchIntentInterpretRequestSchema,
   SearchIntentInterpretResponseSchema
@@ -18,10 +15,7 @@ import {
   MutationRequestError,
   readBoundedJson
 } from "../../../../lib/server/request-security";
-import {
-  AuthenticationRequiredError,
-  requireVeraSession
-} from "../../../../lib/server/session";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,8 +47,7 @@ export function createInterpretSearchIntentHandler(
       if (new TextEncoder().encode(input.description).byteLength > 2_000) {
         throw new MutationRequestError("payload_too_large", 413);
       }
-      const providerFactory =
-        dependencies.providerFactory ?? createEnvironmentSearchIntentProvider;
+      const providerFactory = dependencies.providerFactory ?? createEnvironmentSearchIntentProvider;
       const draft = await interpretSearchIntent(input, {
         provider: providerFactory(process.env),
         signal: request.signal,

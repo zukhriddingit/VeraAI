@@ -17,8 +17,7 @@ export const SearchLocationSchema = z
   .min(1)
   .max(120)
   .refine(
-    (value) =>
-      /^\d{5}$/u.test(value) || /^[A-Za-z][A-Za-z .'-]{0,79}, [A-Z]{2}$/u.test(value),
+    (value) => /^\d{5}$/u.test(value) || /^[A-Za-z][A-Za-z .'-]{0,79}, [A-Z]{2}$/u.test(value),
     "Location must be a five-digit ZIP code or City, ST."
   );
 
@@ -174,6 +173,4 @@ export type SearchIntentCommuteAnchor = z.infer<typeof SearchIntentCommuteAnchor
 export type SearchIntentDraft = z.infer<typeof SearchIntentDraftSchema>;
 export type SearchIntentInterpretRequest = z.infer<typeof SearchIntentInterpretRequestSchema>;
 export type CreateSearchProfileRequest = z.infer<typeof CreateSearchProfileRequestSchema>;
-export type SearchProfileMutationErrorCode = z.infer<
-  typeof SearchProfileMutationErrorCodeSchema
->;
+export type SearchProfileMutationErrorCode = z.infer<typeof SearchProfileMutationErrorCodeSchema>;

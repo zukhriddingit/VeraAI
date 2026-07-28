@@ -109,9 +109,7 @@ export interface CreateSearchProfileDependencies {
   readonly createId?: () => string;
 }
 
-function preferredAmenities(
-  draft: SearchIntentDraft
-): SearchProfile["weightedPreferences"] {
+function preferredAmenities(draft: SearchIntentDraft): SearchProfile["weightedPreferences"] {
   const preferred = draft.amenities.filter(({ priority }) => priority === "preferred");
   if (preferred.length === 0) return [];
   const weight = Math.floor(10_000 / preferred.length);

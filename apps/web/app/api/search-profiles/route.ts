@@ -1,7 +1,4 @@
-import {
-  CreateSearchProfileRequestSchema,
-  CreateSearchProfileResponseSchema
-} from "@vera/domain";
+import { CreateSearchProfileRequestSchema, CreateSearchProfileResponseSchema } from "@vera/domain";
 
 import {
   createSearchProfile,
