@@ -9,9 +9,12 @@ const validDockerfile = `FROM ${nodeImage} AS build
 RUN corepack enable && corepack prepare pnpm@11.14.0 --activate
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @vera/web build
+RUN ! grep -R -q -E 'pg-[0-9a-f]{16}' apps/web/.next/server
 RUN pnpm --filter @vera/web deploy --legacy --prod /opt/vera-web
 FROM ${nodeImage} AS runtime
 COPY --from=build --chown=vera:vera /opt/vera-web ./
+COPY --from=build /workspace/packages/db/drizzle /packages/db/drizzle
+RUN test -f /packages/db/drizzle/meta/_journal.json
 USER vera
 EXPOSE 3000
 HEALTHCHECK CMD ["node", "-e", "const port=process.env.PORT??'3000';fetch('http://127.0.0.1:'+port+'/api/ready')"]
@@ -46,6 +49,17 @@ describe("Railway web image boundaries", () => {
     ["demo startup", validDockerfile.replace("next/dist/bin/next", "scripts/demo-start.ts")],
     ["root runtime", validDockerfile.replace("USER vera", "USER root")],
     ["unfrozen install", validDockerfile.replace(" --frozen-lockfile", "")],
+    [
+      "missing pg external guard",
+      validDockerfile.replace("RUN ! grep -R -q -E 'pg-[0-9a-f]{16}' apps/web/.next/server\n", "")
+    ],
+    [
+      "missing PostgreSQL migration journal",
+      validDockerfile.replace(
+        "COPY --from=build /workspace/packages/db/drizzle /packages/db/drizzle",
+        "COPY --from=build /workspace/packages/db/drizzle /packages/db/missing"
+      )
+    ],
     ["missing readiness", validDockerfile.replace("/api/ready", "/api/health")],
     ["environment copy", `${validDockerfile}\nCOPY .env.local /app/.env.local\n`]
   ])("rejects %s", (_name, dockerfile) => {
