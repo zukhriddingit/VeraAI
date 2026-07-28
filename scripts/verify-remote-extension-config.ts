@@ -151,6 +151,22 @@ export function findRemoteExtensionConfigViolations(input: {
     );
   }
   if (
+    [
+      "fs.rmSync('/sbin',{force:true}); ",
+      "fs.rmSync('/usr/sbin',{force:true}); ",
+      "fs.mkdirSync('/usr/sbin',{mode:0o755}); ",
+      "fs.chownSync('/usr/sbin',0,0); ",
+      "fs.chmodSync('/usr/sbin',0o755); ",
+      "fs.symlinkSync('usr/sbin','/sbin'); "
+    ].some((operation) => !dockerfile.includes(operation)) ||
+    /(?:COPY|ADD)[^\n]*(?:\/sbin|\/usr\/sbin)/iu.test(dockerfile) ||
+    dockerfile.includes("maritime-init")
+  ) {
+    violations.push(
+      "Hardened Gateway image must preserve Maritime's empty provider-init filesystem boundary."
+    );
+  }
+  if (
     !supervisorSource.includes('const STATE_DIRECTORY = "/data/.openclaw"') ||
     !supervisorSource.includes(
       'const ROUTE_FILTER = "/opt/vera/bin/remote-extension-route-filter.mjs"'

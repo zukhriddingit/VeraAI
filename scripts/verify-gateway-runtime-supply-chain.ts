@@ -16,6 +16,14 @@ const FIXED_ENTRYPOINT =
 const PROVIDER_BOOTSTRAP_DIRECTORY = "WORKDIR /usr/local/bin";
 const APPLICATION_WORKDIR = "WORKDIR /app";
 const CONSTRAINED_PATH = "PATH=/usr/bin";
+const SYSTEM_SBIN_OPERATIONS = Object.freeze([
+  "fs.rmSync('/sbin',{force:true}); ",
+  "fs.rmSync('/usr/sbin',{force:true}); ",
+  "fs.mkdirSync('/usr/sbin',{mode:0o755}); ",
+  "fs.chownSync('/usr/sbin',0,0); ",
+  "fs.chmodSync('/usr/sbin',0o755); ",
+  "fs.symlinkSync('usr/sbin','/sbin'); "
+]);
 
 type JsonObject = Record<string, unknown>;
 
@@ -104,6 +112,25 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
   if (providerLayoutViolation) {
     violations.push(
       "Final Gateway runtime must create one empty provider bootstrap directory through root-owned Docker metadata and exclude it from PATH."
+    );
+  }
+  const systemSbinOperationIndexes = SYSTEM_SBIN_OPERATIONS.map((operation) =>
+    runLines[0]?.indexOf(operation)
+  );
+  const hasOrderedSystemSbinNormalization =
+    systemSbinOperationIndexes.every((index) => typeof index === "number" && index >= 0) &&
+    systemSbinOperationIndexes.every(
+      (index, position) =>
+        position === 0 ||
+        (index ?? -1) > (systemSbinOperationIndexes[position - 1] ?? Number.MAX_SAFE_INTEGER)
+    );
+  if (
+    !hasOrderedSystemSbinNormalization ||
+    /(?:COPY|ADD)[^\n]*(?:\/sbin|\/usr\/sbin)/iu.test(finalStage) ||
+    finalStage.includes("maritime-init")
+  ) {
+    violations.push(
+      "Final Gateway runtime must preserve Maritime's empty provider-init filesystem boundary without embedding a provider helper."
     );
   }
   if (

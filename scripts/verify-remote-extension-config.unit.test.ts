@@ -164,6 +164,33 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it.each([
+    ["missing sbin removal", "fs.rmSync('/sbin',{force:true}); ", ""],
+    ["missing usr-sbin removal", "fs.rmSync('/usr/sbin',{force:true}); ", ""],
+    ["missing usr-sbin creation", "fs.mkdirSync('/usr/sbin',{mode:0o755}); ", ""],
+    ["missing usr-sbin ownership", "fs.chownSync('/usr/sbin',0,0); ", ""],
+    ["missing usr-sbin mode", "fs.chmodSync('/usr/sbin',0o755); ", ""],
+    [
+      "wrong sbin target",
+      "fs.symlinkSync('usr/sbin','/sbin'); ",
+      "fs.symlinkSync('usr/bin','/sbin'); "
+    ]
+  ])("rejects an image with %s", (_label, before, after) => {
+    const input = fixture();
+    input.dockerfile = input.dockerfile.replace(before, after);
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Hardened Gateway image must preserve Maritime's empty provider-init filesystem boundary."
+    );
+  });
+
+  it("rejects an immutable provider init", () => {
+    const input = fixture();
+    input.dockerfile += "\nCOPY --from=vera-layout /opt/provider-helper /sbin/maritime-init\n";
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Hardened Gateway image must preserve Maritime's empty provider-init filesystem boundary."
+    );
+  });
+
   it("rejects an image that leaves the loopback browser-control server unstarted", () => {
     const input = fixture();
     input.dockerfile = input.dockerfile.replace("OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1", "");
