@@ -1,8 +1,26 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import { DIGITALOCEAN_API_BASE_URL } from "./config.ts";
+import type { ResourceJournalEntry } from "./resource-journal.ts";
 
 export type FetchImplementation = typeof fetch;
+
+export interface DigitalOceanResponseHeaders {
+  contentType?: string;
+  date?: string;
+  rateLimitLimit?: string;
+  rateLimitRemaining?: string;
+  rateLimitReset?: string;
+  providerRequestId?: string;
+}
+
+export interface DigitalOceanResponseObservation {
+  status: number;
+  headers: DigitalOceanResponseHeaders;
+  bodyByteLength: number;
+  bodyTruncated: boolean;
+  parsedBody: unknown | null;
+}
 
 export interface DropletNetwork {
   ip_address: string;
@@ -30,7 +48,52 @@ export interface DigitalOceanSshKey {
   name: string;
 }
 
+export interface DigitalOceanCertificate {
+  id: string;
+  name: string;
+  dnsNames: string[];
+  type: string;
+  state: string;
+  createdAtUtc: string;
+}
+
+export interface DigitalOceanForwardingRule {
+  entryProtocol: string;
+  entryPort: number;
+  targetProtocol: string;
+  targetPort: number;
+  certificateId: string;
+  tlsPassthrough: boolean;
+}
+
+export interface DigitalOceanLoadBalancer {
+  id: string;
+  name: string;
+  ip: string;
+  status: string;
+  type: string;
+  network: string;
+  networkStack: string;
+  createdAtUtc: string;
+  region: string;
+  dropletIds: number[];
+  forwardingRules: DigitalOceanForwardingRule[];
+  healthCheck: {
+    protocol: string;
+    port: number;
+    checkIntervalSeconds: number;
+    responseTimeoutSeconds: number;
+    unhealthyThreshold: number;
+    healthyThreshold: number;
+  };
+  redirectHttpToHttps: boolean;
+  enableProxyProtocol: boolean;
+}
+
 type JsonObject = Record<string, unknown>;
+type DigitalOceanMethod = "GET" | "POST" | "PUT" | "DELETE";
+
+const MAX_OBSERVED_BODY_BYTES = 65_536;
 
 function object(value: unknown, code: string): JsonObject {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -47,6 +110,26 @@ function string(value: unknown, code: string): string {
 function integer(value: unknown, code: string): number {
   if (!Number.isSafeInteger(value) || (value as number) <= 0) throw new Error(code);
   return value as number;
+}
+
+function nonNegativeInteger(value: unknown, code: string): number {
+  if (!Number.isSafeInteger(value) || (value as number) < 0) throw new Error(code);
+  return value as number;
+}
+
+function boolean(value: unknown, code: string): boolean {
+  if (typeof value !== "boolean") throw new Error(code);
+  return value;
+}
+
+function stringArray(value: unknown, code: string): string[] {
+  if (!Array.isArray(value)) throw new Error(code);
+  return value.map((entry) => string(entry, code));
+}
+
+function integerArray(value: unknown, code: string): number[] {
+  if (!Array.isArray(value)) throw new Error(code);
+  return value.map((entry) => integer(entry, code));
 }
 
 function parseDroplet(value: unknown): DigitalOceanDroplet {
@@ -81,12 +164,212 @@ export class DigitalOceanApiError extends Error {
   }
 }
 
+export class DigitalOceanTransportError extends Error {
+  readonly code = "digitalocean_transport_failed";
+
+  constructor() {
+    super("digitalocean_transport_failed");
+    this.name = "DigitalOceanTransportError";
+  }
+}
+
+export class DigitalOceanProviderError extends Error {
+  constructor(
+    readonly code: string,
+    readonly status: number
+  ) {
+    super(code);
+    this.name = "DigitalOceanProviderError";
+  }
+}
+
+function providerErrorCode(status: number): string {
+  if (status === 401) return "digitalocean_authentication_failed";
+  if (status === 403) return "digitalocean_authorization_failed";
+  if (status === 422) return "digitalocean_validation_failed";
+  if (status === 429) return "digitalocean_rate_limit_failed";
+  return "digitalocean_provider_failed";
+}
+
+function responseHeaders(headers: Headers): DigitalOceanResponseHeaders {
+  const allowlisted: DigitalOceanResponseHeaders = {};
+  const assign = (key: keyof DigitalOceanResponseHeaders, ...headerNames: string[]): void => {
+    for (const headerName of headerNames) {
+      const value = headers.get(headerName);
+      if (value !== null) {
+        allowlisted[key] = value;
+        return;
+      }
+    }
+  };
+  assign("contentType", "content-type");
+  assign("date", "date");
+  assign("rateLimitLimit", "ratelimit-limit");
+  assign("rateLimitRemaining", "ratelimit-remaining");
+  assign("rateLimitReset", "ratelimit-reset");
+  assign("providerRequestId", "x-request-id", "x-digitalocean-request-id");
+  return allowlisted;
+}
+
+async function boundedResponseBody(
+  response: Response
+): Promise<{ bytes: Uint8Array; truncated: boolean }> {
+  if (response.body === null) return { bytes: new Uint8Array(), truncated: false };
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let captured = 0;
+  let truncated = false;
+  try {
+    while (captured <= MAX_OBSERVED_BODY_BYTES) {
+      const result = await reader.read();
+      if (result.done) break;
+      const remaining = MAX_OBSERVED_BODY_BYTES + 1 - captured;
+      const chunk = result.value.subarray(0, remaining);
+      chunks.push(chunk);
+      captured += chunk.byteLength;
+      if (result.value.byteLength > remaining || captured > MAX_OBSERVED_BODY_BYTES) {
+        truncated = true;
+        await reader.cancel();
+        break;
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const boundedLength = Math.min(captured, MAX_OBSERVED_BODY_BYTES);
+  const bytes = new Uint8Array(boundedLength);
+  let offset = 0;
+  for (const chunk of chunks) {
+    const included = chunk.subarray(0, Math.max(0, boundedLength - offset));
+    bytes.set(included, offset);
+    offset += included.byteLength;
+    if (offset >= boundedLength) break;
+  }
+  return { bytes, truncated };
+}
+
+function parseObservedJson(bytes: Uint8Array, truncated: boolean): unknown | null {
+  if (bytes.byteLength === 0 || truncated) return null;
+  try {
+    return JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+function parseCertificate(value: unknown): DigitalOceanCertificate {
+  const certificate = object(value, "certificate_response_rejected");
+  return {
+    id: string(certificate.id, "certificate_response_rejected"),
+    name: string(certificate.name, "certificate_response_rejected"),
+    dnsNames: stringArray(certificate.dns_names, "certificate_response_rejected"),
+    type: string(certificate.type, "certificate_response_rejected"),
+    state: string(certificate.state, "certificate_response_rejected"),
+    createdAtUtc: string(certificate.created_at, "certificate_response_rejected")
+  };
+}
+
+function parseLoadBalancer(value: unknown): DigitalOceanLoadBalancer {
+  const loadBalancer = object(value, "load_balancer_response_rejected");
+  const region = object(loadBalancer.region, "load_balancer_response_rejected");
+  const healthCheck = object(loadBalancer.health_check, "load_balancer_response_rejected");
+  if (!Array.isArray(loadBalancer.forwarding_rules)) {
+    throw new Error("load_balancer_response_rejected");
+  }
+  const forwardingRules = loadBalancer.forwarding_rules.map((value) => {
+    const rule = object(value, "load_balancer_response_rejected");
+    return {
+      entryProtocol: string(rule.entry_protocol, "load_balancer_response_rejected"),
+      entryPort: nonNegativeInteger(rule.entry_port, "load_balancer_response_rejected"),
+      targetProtocol: string(rule.target_protocol, "load_balancer_response_rejected"),
+      targetPort: nonNegativeInteger(rule.target_port, "load_balancer_response_rejected"),
+      certificateId: typeof rule.certificate_id === "string" ? rule.certificate_id : "",
+      tlsPassthrough: typeof rule.tls_passthrough === "boolean" ? rule.tls_passthrough : false
+    };
+  });
+  return {
+    id: string(loadBalancer.id, "load_balancer_response_rejected"),
+    name: string(loadBalancer.name, "load_balancer_response_rejected"),
+    ip: typeof loadBalancer.ip === "string" ? loadBalancer.ip : "",
+    status: string(loadBalancer.status, "load_balancer_response_rejected"),
+    type: string(loadBalancer.type, "load_balancer_response_rejected"),
+    network: string(loadBalancer.network, "load_balancer_response_rejected"),
+    networkStack: string(loadBalancer.network_stack, "load_balancer_response_rejected"),
+    createdAtUtc: string(loadBalancer.created_at, "load_balancer_response_rejected"),
+    region: string(region.slug, "load_balancer_response_rejected"),
+    dropletIds: integerArray(loadBalancer.droplet_ids, "load_balancer_response_rejected"),
+    forwardingRules,
+    healthCheck: {
+      protocol: string(healthCheck.protocol, "load_balancer_response_rejected"),
+      port: nonNegativeInteger(healthCheck.port, "load_balancer_response_rejected"),
+      checkIntervalSeconds: nonNegativeInteger(
+        healthCheck.check_interval_seconds,
+        "load_balancer_response_rejected"
+      ),
+      responseTimeoutSeconds: nonNegativeInteger(
+        healthCheck.response_timeout_seconds,
+        "load_balancer_response_rejected"
+      ),
+      unhealthyThreshold: nonNegativeInteger(
+        healthCheck.unhealthy_threshold,
+        "load_balancer_response_rejected"
+      ),
+      healthyThreshold: nonNegativeInteger(
+        healthCheck.healthy_threshold,
+        "load_balancer_response_rejected"
+      )
+    },
+    redirectHttpToHttps: boolean(
+      loadBalancer.redirect_http_to_https,
+      "load_balancer_response_rejected"
+    ),
+    enableProxyProtocol: boolean(
+      loadBalancer.enable_proxy_protocol,
+      "load_balancer_response_rejected"
+    )
+  };
+}
+
 export class DigitalOceanClient {
   constructor(
     private readonly token: string,
     private readonly fetchImplementation: FetchImplementation = fetch,
     private readonly baseUrl = DIGITALOCEAN_API_BASE_URL
   ) {}
+
+  async observe(
+    method: DigitalOceanMethod,
+    path: string,
+    body?: unknown
+  ): Promise<DigitalOceanResponseObservation> {
+    let response: Response;
+    try {
+      response = await this.fetchImplementation(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          Accept: "application/json",
+          Authorization: `Bearer ${this.token}`,
+          ...(body === undefined ? {} : { "Content-Type": "application/json" })
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(15_000)
+      });
+    } catch {
+      throw new DigitalOceanTransportError();
+    }
+    const bounded = await boundedResponseBody(response);
+    const observation: DigitalOceanResponseObservation = {
+      status: response.status,
+      headers: responseHeaders(response.headers),
+      bodyByteLength: bounded.bytes.byteLength,
+      bodyTruncated: bounded.truncated,
+      parsedBody: parseObservedJson(bounded.bytes, bounded.truncated)
+    };
+    if (!response.ok) {
+      throw new DigitalOceanProviderError(providerErrorCode(response.status), response.status);
+    }
+    return observation;
+  }
 
   private async request(
     method: "GET" | "POST" | "PUT" | "DELETE",
@@ -304,6 +587,99 @@ export class DigitalOceanClient {
     await this.request("DELETE", `/droplets/${id}`, { acceptNotFound: true });
   }
 
+  async createManagedCertificate(input: {
+    name: string;
+    dnsNames: string[];
+  }): Promise<DigitalOceanResponseObservation> {
+    return await this.observe("POST", "/certificates", {
+      name: input.name,
+      type: "lets_encrypt",
+      dns_names: input.dnsNames
+    });
+  }
+
+  async listManagedCertificates(name?: string): Promise<DigitalOceanCertificate[]> {
+    const query = name === undefined ? "" : `?name=${encodeURIComponent(name)}`;
+    const response = object(
+      await this.request("GET", `/certificates${query}`),
+      "certificate_response_rejected"
+    );
+    if (!Array.isArray(response.certificates)) {
+      throw new Error("certificate_response_rejected");
+    }
+    return response.certificates.map(parseCertificate);
+  }
+
+  async getManagedCertificate(
+    id: string,
+    acceptNotFound = false
+  ): Promise<DigitalOceanCertificate | null> {
+    const response = await this.request("GET", `/certificates/${encodeURIComponent(id)}`, {
+      acceptNotFound
+    });
+    if (response === null) return null;
+    return parseCertificate(object(response, "certificate_response_rejected").certificate);
+  }
+
+  async createManagedLoadBalancer(input: {
+    name: string;
+    region: string;
+    dropletId: number;
+    certificateId: string;
+  }): Promise<DigitalOceanResponseObservation> {
+    return await this.observe("POST", "/load_balancers", {
+      name: input.name,
+      region: input.region,
+      size_unit: 1,
+      type: "REGIONAL",
+      network: "EXTERNAL",
+      network_stack: "IPV4",
+      droplet_ids: [input.dropletId],
+      redirect_http_to_https: false,
+      enable_proxy_protocol: false,
+      forwarding_rules: [
+        {
+          entry_protocol: "https",
+          entry_port: 443,
+          target_protocol: "http",
+          target_port: 18789,
+          certificate_id: input.certificateId,
+          tls_passthrough: false
+        }
+      ],
+      health_check: {
+        protocol: "tcp",
+        port: 18789,
+        check_interval_seconds: 10,
+        response_timeout_seconds: 5,
+        unhealthy_threshold: 3,
+        healthy_threshold: 5
+      }
+    });
+  }
+
+  async listManagedLoadBalancers(): Promise<DigitalOceanLoadBalancer[]> {
+    const response = object(
+      await this.request("GET", "/load_balancers?per_page=200"),
+      "load_balancer_response_rejected"
+    );
+    if (!Array.isArray(response.load_balancers)) {
+      throw new Error("load_balancer_response_rejected");
+    }
+    return response.load_balancers.map(parseLoadBalancer);
+  }
+
+  async getManagedLoadBalancer(
+    id: string,
+    acceptNotFound = false
+  ): Promise<DigitalOceanLoadBalancer | null> {
+    const response = await this.request("GET", `/load_balancers/${encodeURIComponent(id)}`, {
+      acceptNotFound
+    });
+    if (response === null) return null;
+    return parseLoadBalancer(object(response, "load_balancer_response_rejected").load_balancer);
+  }
+
   async deleteLoadBalancer(id: string): Promise<void> {
     await this.request("DELETE", `/load_balancers/${encodeURIComponent(id)}`, {
       acceptNotFound: true
@@ -320,6 +696,77 @@ export class DigitalOceanClient {
     await this.request("DELETE", `/domains/${encodeURIComponent(domain)}/records/${recordId}`, {
       acceptNotFound: true
     });
+  }
+
+  async deleteDomain(name: string): Promise<void> {
+    await this.request("DELETE", `/domains/${encodeURIComponent(name)}`, {
+      acceptNotFound: true
+    });
+  }
+
+  async deleteJournalResource(entry: ResourceJournalEntry): Promise<void> {
+    if (entry.kind === "load_balancer") {
+      await this.deleteLoadBalancer(entry.id);
+    } else if (entry.kind === "dns_record") {
+      await this.deleteDomainRecord(entry.name, integer(Number(entry.id), "journal_id_rejected"));
+    } else if (entry.kind === "certificate") {
+      await this.deleteCertificate(entry.id);
+    } else if (entry.kind === "droplet") {
+      await this.deleteDroplet(integer(Number(entry.id), "journal_id_rejected"));
+    } else if (entry.kind === "firewall") {
+      await this.deleteFirewall(entry.id);
+    } else if (entry.kind === "ssh_key") {
+      await this.deleteSshKey(integer(Number(entry.id), "journal_id_rejected"));
+    } else if (entry.kind === "tag") {
+      await this.deleteTag(entry.name);
+    } else {
+      await this.deleteDomain(entry.name);
+    }
+  }
+
+  async journalResourceAbsent(entry: ResourceJournalEntry): Promise<boolean> {
+    let response: unknown | null;
+    if (entry.kind === "load_balancer") {
+      response = await this.request("GET", `/load_balancers/${encodeURIComponent(entry.id)}`, {
+        acceptNotFound: true
+      });
+    } else if (entry.kind === "dns_record") {
+      const id = integer(Number(entry.id), "journal_id_rejected");
+      response = await this.request(
+        "GET",
+        `/domains/${encodeURIComponent(entry.name)}/records/${id}`,
+        { acceptNotFound: true }
+      );
+    } else if (entry.kind === "certificate") {
+      response = await this.request("GET", `/certificates/${encodeURIComponent(entry.id)}`, {
+        acceptNotFound: true
+      });
+    } else if (entry.kind === "droplet") {
+      response = await this.request(
+        "GET",
+        `/droplets/${integer(Number(entry.id), "journal_id_rejected")}`,
+        { acceptNotFound: true }
+      );
+    } else if (entry.kind === "firewall") {
+      response = await this.request("GET", `/firewalls/${encodeURIComponent(entry.id)}`, {
+        acceptNotFound: true
+      });
+    } else if (entry.kind === "ssh_key") {
+      response = await this.request(
+        "GET",
+        `/account/keys/${integer(Number(entry.id), "journal_id_rejected")}`,
+        { acceptNotFound: true }
+      );
+    } else if (entry.kind === "tag") {
+      response = await this.request("GET", `/tags/${encodeURIComponent(entry.name)}`, {
+        acceptNotFound: true
+      });
+    } else {
+      response = await this.request("GET", `/domains/${encodeURIComponent(entry.name)}`, {
+        acceptNotFound: true
+      });
+    }
+    return response === null;
   }
 }
 

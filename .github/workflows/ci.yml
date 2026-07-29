@@ -89,6 +89,11 @@ jobs:
           pnpm verify:digitalocean-browser-gateway
           VERA_DO_VALIDATE_WITH_DOCKER=1 \
             bash infra/digitalocean/browser-gateway/validate.sh
+          pnpm exec vitest run --project unit \
+            infra/digitalocean/browser-gateway/resource-journal.unit.test.ts \
+            infra/digitalocean/browser-gateway/managed-certificate.unit.test.ts \
+            infra/digitalocean/browser-gateway/managed-load-balancer.unit.test.ts \
+            infra/digitalocean/browser-gateway/lifecycle.unit.test.ts
 
       - name: Lint
         run: pnpm lint

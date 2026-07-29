@@ -20,6 +20,9 @@ export interface DigitalOceanBrowserGatewayFixture {
   creator: string;
   cleanup: string;
   api: string;
+  resourceJournal: string;
+  managedCertificate: string;
+  managedLoadBalancer: string;
 }
 
 type JsonObject = Record<string, unknown>;
@@ -194,6 +197,55 @@ export function findDigitalOceanBrowserGatewayViolations(
   ) {
     violations.push("Provider requests must enable the console agent and exact-/32 SSH only.");
   }
+  for (const required of [
+    "O_CREAT |",
+    "O_EXCL |",
+    "O_NOFOLLOW",
+    "await handle.sync()",
+    "await rename(temporaryPath, absolutePath)",
+    "await directoryHandle.sync()",
+    "resource_journal_identity_conflict",
+    '"delete_pending"',
+    '"delete_failed"'
+  ]) {
+    if (!input.resourceJournal.includes(required)) {
+      violations.push(`Resource journal is missing required invariant: ${required}.`);
+    }
+  }
+  if (
+    !input.managedCertificate.includes("const DEFAULT_TIMEOUT_MS = 600_000") ||
+    !input.managedCertificate.includes("exactReconciliation") ||
+    !input.managedCertificate.includes("await persistCertificate(") ||
+    !input.managedCertificate.includes("managed_certificate_identity_mismatch") ||
+    !input.managedCertificate.includes("transport_reconciled") ||
+    !input.managedCertificate.includes("resumed_from_journal")
+  ) {
+    violations.push(
+      "Managed certificate creation must persist, reconcile exactly, and verify within ten minutes."
+    );
+  }
+  if (
+    !input.managedLoadBalancer.includes("exactReconciliation") ||
+    !input.managedLoadBalancer.includes("await persistLoadBalancer(") ||
+    !input.managedLoadBalancer.includes('loadBalancer.type !== "REGIONAL"') ||
+    !input.managedLoadBalancer.includes('loadBalancer.network !== "EXTERNAL"') ||
+    !input.managedLoadBalancer.includes("loadBalancer.forwardingRules.length === 1") ||
+    !input.managedLoadBalancer.includes("await input.createDnsRecordAfterReadback?.(active)")
+  ) {
+    violations.push(
+      "Managed Load Balancer creation must persist, reconcile, read back exact ingress, then allow DNS."
+    );
+  }
+  if (
+    !input.cleanup.includes("JOURNAL_CLEANUP_ORDER") ||
+    !input.cleanup.includes('"load_balancer"') ||
+    !input.cleanup.includes('"dns_zone"') ||
+    !input.cleanup.includes('"delete_pending"') ||
+    !input.cleanup.includes('"deleted"') ||
+    !input.cleanup.includes('"delete_failed"')
+  ) {
+    violations.push("Journal cleanup must persist dependency-ordered deletion state.");
+  }
 
   for (const phrase of [
     "backend-local acceptance",
@@ -203,6 +255,9 @@ export function findDigitalOceanBrowserGatewayViolations(
     "Paired and one example.com tab shared.",
     "no_shared_tab",
     "founder_browser_experimental=no_go",
+    "certificate-only preflight",
+    "actual HTTP create status",
+    "resource journal",
     "Milestone 13B"
   ]) {
     if (!input.readme.includes(phrase)) {
@@ -222,7 +277,10 @@ async function main(): Promise<void> {
     renderer: read("render-cloud-init.ts"),
     creator: read("create-diagnostics-stack.ts"),
     cleanup: read("cleanup-stack.ts"),
-    api: read("digitalocean-api.ts")
+    api: read("digitalocean-api.ts"),
+    resourceJournal: read("resource-journal.ts"),
+    managedCertificate: read("managed-certificate.ts"),
+    managedLoadBalancer: read("managed-load-balancer.ts")
   });
   if (violations.length > 0) {
     for (const violation of violations) process.stderr.write(`- ${violation}\n`);

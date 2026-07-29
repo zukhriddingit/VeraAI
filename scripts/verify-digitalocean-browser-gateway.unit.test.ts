@@ -17,7 +17,10 @@ function repositoryFixture(): DigitalOceanBrowserGatewayFixture {
     renderer: read("render-cloud-init.ts"),
     creator: read("create-diagnostics-stack.ts"),
     cleanup: read("cleanup-stack.ts"),
-    api: read("digitalocean-api.ts")
+    api: read("digitalocean-api.ts"),
+    resourceJournal: read("resource-journal.ts"),
+    managedCertificate: read("managed-certificate.ts"),
+    managedLoadBalancer: read("managed-load-balancer.ts")
   };
 }
 
@@ -88,6 +91,40 @@ describe("DigitalOcean browser Gateway deployment verifier", () => {
     );
     expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
       "Internal listener readiness must use a bounded polling gate."
+    );
+  });
+
+  it.each([
+    ["await rename(temporaryPath, absolutePath)", "atomic rename"],
+    ["await handle.sync()", "file sync"],
+    ["await directoryHandle.sync()", "directory sync"]
+  ])("rejects a journal without %s", (marker) => {
+    const input = repositoryFixture();
+    input.resourceJournal = input.resourceJournal.replace(marker, "");
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      `Resource journal is missing required invariant: ${marker}.`
+    );
+  });
+
+  it("rejects removal of exact certificate reconciliation", () => {
+    const input = repositoryFixture();
+    input.managedCertificate = input.managedCertificate.replaceAll(
+      "exactReconciliation",
+      "unsafeReconciliation"
+    );
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Managed certificate creation must persist, reconcile exactly, and verify within ten minutes."
+    );
+  });
+
+  it("rejects DNS creation before exact Load Balancer readback", () => {
+    const input = repositoryFixture();
+    input.managedLoadBalancer = input.managedLoadBalancer.replaceAll(
+      "await input.createDnsRecordAfterReadback?.(active)",
+      "await Promise.resolve()"
+    );
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Managed Load Balancer creation must persist, reconcile, read back exact ingress, then allow DNS."
     );
   });
 });

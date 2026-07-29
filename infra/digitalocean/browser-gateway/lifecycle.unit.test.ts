@@ -3,9 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { cleanupStack } from "./cleanup-stack.ts";
+import { cleanupJournal, cleanupStack } from "./cleanup-stack.ts";
 import { createDiagnosticsStack } from "./create-diagnostics-stack.ts";
 import type { CreateStackClient } from "./create-diagnostics-stack.ts";
+import { openResourceJournal } from "./resource-journal.ts";
+import type { DigitalOceanResourceKind, ResourceCreatedInput } from "./resource-journal.ts";
 
 const temporaryDirectories: string[] = [];
 
@@ -14,6 +16,29 @@ async function privateDirectory(): Promise<string> {
   await chmod(directory, 0o700);
   temporaryDirectories.push(directory);
   return directory;
+}
+
+async function lifecycleJournal(directory: string, events: string[]) {
+  const journal = await openResourceJournal({
+    path: join(directory, "resources.json"),
+    runId: "20260729-10",
+    now: () => new Date("2026-07-29T12:00:00.000Z")
+  });
+  return {
+    snapshot: () => journal.snapshot(),
+    async recordCreated(entry: ResourceCreatedInput): Promise<void> {
+      events.push(`journal_${entry.kind}`);
+      await journal.recordCreated(entry);
+    },
+    async markCleanup(
+      kind: DigitalOceanResourceKind,
+      id: string,
+      cleanupState: "delete_pending" | "deleted" | "delete_failed"
+    ): Promise<void> {
+      events.push(`journal_cleanup:${kind}:${cleanupState}`);
+      await journal.markCleanup(kind, id, cleanupState);
+    }
+  };
 }
 
 afterEach(async () => {
@@ -87,17 +112,32 @@ describe("DigitalOcean diagnostics stack lifecycle", () => {
   it("creates firewall-before-Droplet and writes only private state", async () => {
     const events: string[] = [];
     const directory = await privateDirectory();
+    const journal = await lifecycleJournal(directory, events);
     const manifest = await createDiagnosticsStack({
       client: client(events),
+      journal,
       suffix: "20260729-10",
       operatorIpv4: "203.0.113.9",
       publicKey: `ssh-ed25519 ${"A".repeat(48)} vera-test`,
       cloudInit: "#cloud-config\n",
       manifestPath: join(directory, "manifest.json"),
       now: () => new Date("2026-07-29T12:00:00Z"),
-      waitForActive: vi.fn().mockResolvedValue(activeDroplet)
+      waitForActive: vi.fn(async () => {
+        events.push("poll_droplet");
+        return activeDroplet;
+      })
     });
-    expect(events).toEqual(["create_tag", "create_firewall", "create_ssh_key", "create_droplet"]);
+    expect(events).toEqual([
+      "create_tag",
+      "journal_tag",
+      "create_firewall",
+      "journal_firewall",
+      "create_ssh_key",
+      "journal_ssh_key",
+      "create_droplet",
+      "journal_droplet",
+      "poll_droplet"
+    ]);
     expect(JSON.stringify(manifest)).not.toContain("Authorization");
     expect(manifest.resourceIds).toMatchObject({
       droplet: 12,
@@ -109,9 +149,11 @@ describe("DigitalOcean diagnostics stack lifecycle", () => {
   it("rolls back a partial create in reverse dependency order", async () => {
     const events: string[] = [];
     const directory = await privateDirectory();
+    const journal = await lifecycleJournal(directory, events);
     await expect(
       createDiagnosticsStack({
         client: client(events, "create_droplet"),
+        journal,
         suffix: "20260729-10",
         operatorIpv4: "203.0.113.9",
         publicKey: `ssh-ed25519 ${"A".repeat(48)} vera-test`,
@@ -121,13 +163,120 @@ describe("DigitalOcean diagnostics stack lifecycle", () => {
     ).rejects.toThrow("create_droplet_failed");
     expect(events).toEqual([
       "create_tag",
+      "journal_tag",
       "create_firewall",
+      "journal_firewall",
       "create_ssh_key",
+      "journal_ssh_key",
       "create_droplet",
+      "journal_cleanup:firewall:delete_pending",
       "delete_firewall",
+      "journal_cleanup:firewall:deleted",
+      "journal_cleanup:ssh_key:delete_pending",
       "delete_ssh_key",
-      "delete_tag"
+      "journal_cleanup:ssh_key:deleted",
+      "journal_cleanup:tag:delete_pending",
+      "delete_tag",
+      "journal_cleanup:tag:deleted"
     ]);
+  });
+
+  it("cleans a restarted journal in dependency order and persists every result", async () => {
+    const directory = await privateDirectory();
+    const journal = await openResourceJournal({
+      path: join(directory, "resources.json"),
+      runId: "20260729-10",
+      now: () => new Date("2026-07-29T12:00:00.000Z")
+    });
+    const kinds: DigitalOceanResourceKind[] = [
+      "dns_zone",
+      "certificate",
+      "droplet",
+      "firewall",
+      "tag",
+      "ssh_key",
+      "load_balancer",
+      "dns_record"
+    ];
+    for (const [index, kind] of kinds.entries()) {
+      await journal.recordCreated({
+        kind,
+        name: `resource-${kind}`,
+        id: `resource-${index + 1}`,
+        status: "created",
+        createdAtUtc: "2026-07-29T12:00:00.000Z"
+      });
+    }
+    const restarted = await openResourceJournal({
+      path: join(directory, "resources.json"),
+      runId: "20260729-10"
+    });
+    const deletions: string[] = [];
+    const summary = await cleanupJournal({
+      journal: restarted,
+      actions: {
+        async deleteResource(entry) {
+          deletions.push(entry.kind);
+        },
+        async resourceAbsent() {
+          return true;
+        }
+      }
+    });
+
+    expect(deletions).toEqual([
+      "load_balancer",
+      "dns_record",
+      "certificate",
+      "droplet",
+      "firewall",
+      "ssh_key",
+      "tag",
+      "dns_zone"
+    ]);
+    expect(summary.cleanupComplete).toBe(true);
+    expect(restarted.snapshot().resources).toEqual(
+      expect.arrayContaining([expect.objectContaining({ cleanupState: "deleted" })])
+    );
+    expect(restarted.snapshot().resources.every((entry) => entry.cleanupState === "deleted")).toBe(
+      true
+    );
+  });
+
+  it("continues journal cleanup after a provider failure", async () => {
+    const directory = await privateDirectory();
+    const journal = await openResourceJournal({
+      path: join(directory, "resources.json"),
+      runId: "20260729-10"
+    });
+    for (const kind of ["droplet", "firewall", "ssh_key", "tag"] as const) {
+      await journal.recordCreated({
+        kind,
+        name: `resource-${kind}`,
+        id: `resource-${kind}`,
+        status: "created",
+        createdAtUtc: "2026-07-29T12:00:00.000Z"
+      });
+    }
+    const deletions: string[] = [];
+    await expect(
+      cleanupJournal({
+        journal,
+        actions: {
+          async deleteResource(entry) {
+            deletions.push(entry.kind);
+            if (entry.kind === "firewall") throw new Error("private failure");
+          },
+          async resourceAbsent() {
+            return true;
+          }
+        }
+      })
+    ).rejects.toThrow("journal_cleanup_incomplete:firewall");
+    expect(deletions).toEqual(["droplet", "firewall", "ssh_key", "tag"]);
+    expect(
+      journal.snapshot().resources.find((entry) => entry.kind === "firewall")?.cleanupState
+    ).toBe("delete_failed");
   });
 
   it("cleans all optional resources in dependency order", async () => {
