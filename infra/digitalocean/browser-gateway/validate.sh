@@ -74,32 +74,32 @@ if [[ "${VERA_DO_VALIDATE_WITH_DOCKER:-0}" == "1" ]]; then
   fi
 fi
 
-test "$(rg -Fxc "      readonly gateway_image=\"${expected_image}\"" "${template_path}")" -eq 1
-test "$(rg -Fxc "    \"image\": \"${expected_image}\"," "${intent_path}")" -eq 1
-test "$(rg -c 'ghcr\.io/zukhriddingit/vera-openclaw-gateway@sha256:[0-9a-f]{64}' \
+test "$(grep -Fxc "      readonly gateway_image=\"${expected_image}\"" "${template_path}")" -eq 1
+test "$(grep -Fxc "    \"image\": \"${expected_image}\"," "${intent_path}")" -eq 1
+test "$(grep -Ec 'ghcr\.io/zukhriddingit/vera-openclaw-gateway@sha256:[0-9a-f]{64}' \
   "${template_path}")" -eq 1
-! rg -q 'ghcr\.io/zukhriddingit/vera-openclaw-gateway:[A-Za-z0-9_.-]+' "${template_path}"
+! grep -Eq 'ghcr\.io/zukhriddingit/vera-openclaw-gateway:[A-Za-z0-9_.-]+' "${template_path}"
 
-test "$(rg -Fxc "      __VERA_GATEWAY_TOKEN__" "${template_path}")" -eq 1
-test "$(rg -Fxc "      __VERA_EXTENSION_PAIRING_SEED__" "${template_path}")" -eq 1
-! rg -q '[[:space:]]+[0-9a-f]{64}[[:space:]]*$' "${template_path}"
+test "$(grep -Fxc "      __VERA_GATEWAY_TOKEN__" "${template_path}")" -eq 1
+test "$(grep -Fxc "      __VERA_EXTENSION_PAIRING_SEED__" "${template_path}")" -eq 1
+! grep -Eq '[[:space:]]+[0-9a-f]{64}[[:space:]]*$' "${template_path}"
 
-! rg -qi '\b(nginx|caddy|traefik|lego|certbot)\b' "${template_path}"
-! rg -q '0\\.0\\.0\\.0/0|::/0' "${template_path}"
-! rg -q -- '-p[[:space:]]+(22|80|443|18789):' "${template_path}"
-rg -Fq -- '-p "${vpc_ipv4}:${backend_port}:${backend_port}"' "${template_path}"
-rg -Fq -- '--user 1000:1000' "${template_path}"
-rg -Fq -- '--mount "type=bind,src=${state_directory},dst=/data"' "${template_path}"
+! grep -Eqi '\b(nginx|caddy|traefik|lego|certbot)\b' "${template_path}"
+! grep -Eq '0\\.0\\.0\\.0/0|::/0' "${template_path}"
+! grep -Eq -- '-p[[:space:]]+(22|80|443|18789):' "${template_path}"
+grep -Fq -- '-p "${vpc_ipv4}:${backend_port}:${backend_port}"' "${template_path}"
+grep -Fq -- '--user 1000:1000' "${template_path}"
+grep -Fq -- '--mount "type=bind,src=${state_directory},dst=/data"' "${template_path}"
 
-rg -Fq 'PasswordAuthentication no' "${template_path}"
-rg -Fq 'PermitRootLogin prohibit-password' "${template_path}"
-rg -Fq 'trap fail_closed ERR' "${template_path}"
-rg -Fq 'timeout 240s docker pull' "${template_path}"
-rg -Fq 'TimeoutStartSec=900' "${template_path}"
-rg -Fq 'status: "failed"' "${template_path}"
-rg -Fq 'status: "backend_ready"' "${template_path}"
-rg -Fq 'publicEndpointReady: false' "${template_path}"
-rg -Fq 'wssAcceptanceStarted: false' "${template_path}"
+grep -Fq 'PasswordAuthentication no' "${template_path}"
+grep -Fq 'PermitRootLogin prohibit-password' "${template_path}"
+grep -Fq 'trap fail_closed ERR' "${template_path}"
+grep -Fq 'timeout 240s docker pull' "${template_path}"
+grep -Fq 'TimeoutStartSec=900' "${template_path}"
+grep -Fq 'status: "failed"' "${template_path}"
+grep -Fq 'status: "backend_ready"' "${template_path}"
+grep -Fq 'publicEndpointReady: false' "${template_path}"
+grep -Fq 'wssAcceptanceStarted: false' "${template_path}"
 
 jq -e --arg image "${expected_image}" '
   .provider == "digitalocean" and
