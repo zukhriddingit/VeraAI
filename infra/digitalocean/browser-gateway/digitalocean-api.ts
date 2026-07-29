@@ -70,6 +70,9 @@ export interface DigitalOceanLoadBalancer {
   name: string;
   ip: string;
   status: string;
+  type: string;
+  network: string;
+  networkStack: string;
   createdAtUtc: string;
   region: string;
   dropletIds: number[];
@@ -288,6 +291,9 @@ function parseLoadBalancer(value: unknown): DigitalOceanLoadBalancer {
     name: string(loadBalancer.name, "load_balancer_response_rejected"),
     ip: typeof loadBalancer.ip === "string" ? loadBalancer.ip : "",
     status: string(loadBalancer.status, "load_balancer_response_rejected"),
+    type: string(loadBalancer.type, "load_balancer_response_rejected"),
+    network: string(loadBalancer.network, "load_balancer_response_rejected"),
+    networkStack: string(loadBalancer.network_stack, "load_balancer_response_rejected"),
     createdAtUtc: string(loadBalancer.created_at, "load_balancer_response_rejected"),
     region: string(region.slug, "load_balancer_response_rejected"),
     dropletIds: integerArray(loadBalancer.droplet_ids, "load_balancer_response_rejected"),
@@ -624,6 +630,9 @@ export class DigitalOceanClient {
       name: input.name,
       region: input.region,
       size_unit: 1,
+      type: "REGIONAL",
+      network: "EXTERNAL",
+      network_stack: "IPV4",
       droplet_ids: [input.dropletId],
       redirect_http_to_https: false,
       enable_proxy_protocol: false,
