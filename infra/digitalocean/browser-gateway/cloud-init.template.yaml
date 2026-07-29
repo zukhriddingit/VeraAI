@@ -119,7 +119,7 @@ write_files:
 
       current_stage="vpc_address_resolution"
       vpc_ipv4=""
-      for attempt in $(seq 1 30); do
+      for _attempt in $(seq 1 30); do
         vpc_ipv4="$(curl -fsS --connect-timeout 1 --max-time 2 \
           http://169.254.169.254/metadata/v1/interfaces/private/0/ipv4/address || true)"
         if [[ "${vpc_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
@@ -175,7 +175,7 @@ write_files:
 
       current_stage="container_readiness"
       gateway_ready=0
-      for attempt in $(seq 1 90); do
+      for _attempt in $(seq 1 90); do
         gateway_ip="$(timeout 5s docker inspect "${container_name}" \
           --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')"
         root_status="$(curl -sS -o /dev/null -w '%{http_code}' \
@@ -200,8 +200,10 @@ write_files:
         --connect-timeout 1 --max-time 2 \
         "http://${vpc_ipv4}:${backend_port}/browser/extension")" == "426" ]]
       ss -ltnH | awk '{print $4}' | grep -Fxq "${vpc_ipv4}:${backend_port}"
-      ! ss -ltnH | awk '{print $4}' | \
-        grep -Eq "^(0\\.0\\.0\\.0|\\[?::\\]?):${backend_port}$"
+      if ss -ltnH | awk '{print $4}' | \
+        grep -Eq "^(0\\.0\\.0\\.0|\\[?::\\]?):${backend_port}$"; then
+        exit 1
+      fi
 
       current_stage="internal_listeners"
       timeout 15s docker exec "${container_name}" \
@@ -242,8 +244,12 @@ write_files:
       current_stage="secret_log_scan"
       timeout 15s docker logs --tail 300 "${container_name}" \
         > /tmp/vera-browser-gateway.log 2>&1
-      ! grep -Fq "${gateway_token}" /tmp/vera-browser-gateway.log
-      ! grep -Fq "${pairing_seed}" /tmp/vera-browser-gateway.log
+      if grep -Fq "${gateway_token}" /tmp/vera-browser-gateway.log; then
+        exit 1
+      fi
+      if grep -Fq "${pairing_seed}" /tmp/vera-browser-gateway.log; then
+        exit 1
+      fi
       rm -f /tmp/vera-browser-gateway.log
 
       current_stage="result_write"
