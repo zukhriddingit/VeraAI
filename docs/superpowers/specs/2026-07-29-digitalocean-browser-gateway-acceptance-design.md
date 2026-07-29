@@ -96,8 +96,9 @@ contract. `package.json` and CI invoke both the TypeScript verifier and the shel
 
 ## Guest bootstrap
 
-Cloud-init installs only `ca-certificates`, `curl`, `docker.io`, and `jq`, then enables Docker and
-starts `vera-browser-gateway-bootstrap.service`.
+Cloud-init writes five reviewed files (key-only SSH configuration, two mode-`0600` credential
+inputs, the bootstrap, and its systemd unit), installs only `ca-certificates`, `curl`, `docker.io`,
+and `jq`, then enables Docker and starts `vera-browser-gateway-bootstrap.service`.
 
 The bootstrap:
 

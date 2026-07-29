@@ -1,0 +1,74 @@
+{
+  "schemaVersion": 1,
+  "provider": "digitalocean",
+  "releaseProfile": "founder_browser_experimental",
+  "phase": "m13a_diagnostics_first_backend",
+  "region": "nyc1",
+  "droplet": {
+    "count": 1,
+    "image": "ubuntu-24-04-x64",
+    "size": "s-1vcpu-2gb",
+    "ipv4": true,
+    "ipv6": false,
+    "backups": false,
+    "monitoring": false,
+    "dropletAgent": true,
+    "additionalStorage": false,
+    "database": false,
+    "temporaryKeyOnlySsh": true
+  },
+  "firewall": {
+    "attachByUniqueTagBeforeDropletCreation": true,
+    "initialInboundRules": [
+      {
+        "protocol": "tcp",
+        "ports": "22",
+        "sources": ["operator_exact_ipv4_32_only"],
+        "temporary": true
+      }
+    ],
+    "inboundApplicationRules": [],
+    "outboundRules": [
+      {
+        "protocol": "icmp",
+        "ports": "all",
+        "destinations": ["0.0.0.0/0", "::/0"]
+      },
+      {
+        "protocol": "tcp",
+        "ports": "all",
+        "destinations": ["0.0.0.0/0", "::/0"]
+      },
+      {
+        "protocol": "udp",
+        "ports": "all",
+        "destinations": ["0.0.0.0/0", "::/0"]
+      }
+    ]
+  },
+  "gateway": {
+    "image": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd",
+    "sourceRevision": "f155bca09d57017ac141d2c8f3eebd26657aeb3d",
+    "containerCount": 1,
+    "runtimeIdentity": "1000:1000",
+    "stateHostPath": "/var/lib/vera-browser-gateway/state",
+    "stateMode": "0700",
+    "hostBinding": "vpc_only",
+    "hostPort": 18789,
+    "internalPorts": [18790, 18792],
+    "publiclyReachableBeforeBackendAcceptance": false
+  },
+  "deferredUntilBackendLocalHealthPasses": {
+    "loadBalancer": true,
+    "dnsRecord": true,
+    "tlsCertificate": true,
+    "publicWss": true,
+    "chromePairing": true
+  },
+  "forbiddenDirectInboundPorts": [80, 443, 18789],
+  "requiredPostBackendActions": [
+    "remove_ssh_firewall_rule",
+    "remove_temporary_authorized_key",
+    "verify_direct_inbound_closed"
+  ]
+}

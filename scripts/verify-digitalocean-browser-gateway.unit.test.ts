@@ -1,0 +1,82 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { describe, expect, it } from "vitest";
+
+import { findDigitalOceanBrowserGatewayViolations } from "./verify-digitalocean-browser-gateway.ts";
+import type { DigitalOceanBrowserGatewayFixture } from "./verify-digitalocean-browser-gateway.ts";
+
+const root = resolve(import.meta.dirname, "..");
+const directory = resolve(root, "infra/digitalocean/browser-gateway");
+const read = (name: string): string => readFileSync(resolve(directory, name), "utf8");
+
+function repositoryFixture(): DigitalOceanBrowserGatewayFixture {
+  return {
+    cloudInit: read("cloud-init.template.yaml"),
+    intent: JSON.parse(read("infrastructure-intent.json")) as unknown,
+    readme: read("README.md"),
+    renderer: read("render-cloud-init.ts"),
+    creator: read("create-diagnostics-stack.ts"),
+    cleanup: read("cleanup-stack.ts"),
+    api: read("digitalocean-api.ts")
+  };
+}
+
+describe("DigitalOcean browser Gateway deployment verifier", () => {
+  it("accepts the reviewed deployment assets", () => {
+    expect(findDigitalOceanBrowserGatewayViolations(repositoryFixture())).toEqual([]);
+  });
+
+  it("rejects public SSH", () => {
+    const input = repositoryFixture();
+    const intent = input.intent as {
+      firewall: { initialInboundRules: Array<{ sources: string[] }> };
+    };
+    intent.firewall.initialInboundRules[0]!.sources = ["0.0.0.0/0"];
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Public SSH must be impossible outside the exact temporary operator IPv4."
+    );
+  });
+
+  it("rejects a mutable Gateway image", () => {
+    const input = repositoryFixture();
+    input.cloudInit = input.cloudInit.replace(
+      /ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:[0-9a-f]{64}/u,
+      "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest"
+    );
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Gateway image must be immutable."
+    );
+  });
+
+  it.each(["nginx", "Caddy", "Traefik", "Lego", "Certbot"])(
+    "rejects custom TLS edge software: %s",
+    (edge) => {
+      const input = repositoryFixture();
+      input.cloudInit += `\n${edge}\n`;
+      expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+        "Custom TLS edge software is forbidden."
+      );
+    }
+  );
+
+  it("rejects a broad host binding", () => {
+    const input = repositoryFixture();
+    input.cloudInit = input.cloudInit.replace(
+      '-p "${vpc_ipv4}:${backend_port}:${backend_port}"',
+      '-p "18789:18789"'
+    );
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Cloud-init must publish the Gateway only on the VPC address."
+    );
+  });
+
+  it("rejects public ingress before backend acceptance", () => {
+    const input = repositoryFixture();
+    (
+      input.intent as { deferredUntilBackendLocalHealthPasses: { publicWss: boolean } }
+    ).deferredUntilBackendLocalHealthPasses.publicWss = false;
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Public ingress and Chrome pairing must be deferred until backend acceptance."
+    );
+  });
+});

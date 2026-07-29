@@ -16,6 +16,7 @@
     "verify:calendar-boundaries": "tsx scripts/verify-calendar-boundaries.ts",
     "verify:db-boundaries": "tsx scripts/verify-database-boundaries.ts",
     "verify:browser-boundaries": "tsx scripts/verify-browser-boundaries.ts",
+    "verify:digitalocean-browser-gateway": "tsx scripts/verify-digitalocean-browser-gateway.ts",
     "verify:remote-extension-config": "tsx scripts/verify-remote-extension-config.ts",
     "inspect:gateway-registry": "tsx scripts/inspect-gateway-registry.ts",
     "verify:gateway-image-layout": "node scripts/verify-gateway-image-layout.mjs",
