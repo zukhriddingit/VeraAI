@@ -10,7 +10,7 @@ import type { ManagedCertificateJournal } from "./managed-certificate.ts";
 import type { ResourceCreatedInput, ResourceJournalEntry } from "./resource-journal.ts";
 
 const NAME = "vera-m13a-do-cert-20260729-12";
-const DNS_NAME = "gateway-20260729-12.browser.verahousing.app";
+const DNS_NAME = "gateway-20260729-12.browser.example.test";
 const ID = "00000000-0000-4000-8000-000000000012";
 const RUN_START = "2026-07-29T16:00:00.000Z";
 const RUN_END = "2026-07-29T16:20:00.000Z";

@@ -148,7 +148,7 @@ describe("DigitalOcean API boundary", () => {
 
     await client.createManagedCertificate({
       name: "vera-m13a-do-cert-20260729-12",
-      dnsNames: ["gateway-20260729-12.browser.verahousing.app"]
+      dnsNames: ["gateway-20260729-12.browser.example.test"]
     });
     await client.createManagedLoadBalancer({
       name: "vera-m13a-do-lb-20260729-12",
@@ -164,7 +164,7 @@ describe("DigitalOcean API boundary", () => {
     expect(JSON.parse(String(fetchImplementation.mock.calls[0]?.[1]?.body))).toEqual({
       name: "vera-m13a-do-cert-20260729-12",
       type: "lets_encrypt",
-      dns_names: ["gateway-20260729-12.browser.verahousing.app"]
+      dns_names: ["gateway-20260729-12.browser.example.test"]
     });
     expect(JSON.parse(String(fetchImplementation.mock.calls[1]?.[1]?.body))).toMatchObject({
       name: "vera-m13a-do-lb-20260729-12",
