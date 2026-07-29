@@ -113,3 +113,28 @@ Remote-extension probe and audit outputs are real private evidence. Run
 sanitized reports in `release-evidence/private/` at mode `0600`, then copy the accepted bundle to the
 restricted private artifact store under the documented retention policy. Never commit the raw
 reports, endpoint, pairing secret, API key, agent ID, browser snapshot, or browser target IDs.
+
+## DigitalOcean managed-ingress acceptance
+
+The approved `founder_browser_experimental` DigitalOcean path uses one hardened Gateway container
+on one disposable Droplet. The Droplet binds host port 18789 only to its VPC address. A temporary
+operator SSH rule may allow TCP 22 only from the operator's exact current IPv4 `/32`; remove that
+rule and the temporary authorized key immediately after backend-local acceptance.
+
+No DNS record, certificate, Load Balancer, or public WSS endpoint may exist before the private
+backend proves the exact immutable Gateway digest, UID/GID `1000:1000`, state and credential modes,
+listeners 18789/18790/18792, route isolation, correct/wrong pairing behavior,
+`openclaw-extension-relay` selection, ping/pong, bounded stability and payloads, two zero-warning
+security audits, and secret-free logs.
+
+After those checks pass, a DigitalOcean-managed Regional Load Balancer may terminate trusted TLS on
+HTTPS 443 and target private HTTP 18789. The Droplet Cloud Firewall must allow 18789 only from that
+exact Load Balancer UID and keep direct 22, 80, 443, and public 18789 closed. Record the managed
+certificate and hostname only as opaque/hash references.
+
+Chrome evidence is valid only for the reviewed official extension, exactly one explicitly shared
+`https://example.com/` tab, one minimized read-only snapshot with no raw-content or screenshot
+retention, immediate unsharing, `no_shared_tab` on the next attempt, and pairing revocation. On any
+failure, delete every disposable cloud and local credential resource and prove zero billable
+resources remain. On success, revoke browser access and pause for an explicit founder retention or
+destruction choice; never silently leave the Gateway running.

@@ -1,0 +1,306 @@
+#cloud-config
+package_update: true
+package_upgrade: false
+packages:
+  - ca-certificates
+  - curl
+  - docker.io
+  - jq
+
+ssh_pwauth: false
+disable_root: false
+
+write_files:
+  - path: /etc/ssh/sshd_config.d/99-vera-key-only.conf
+    owner: root:root
+    permissions: "0644"
+    content: |
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      ChallengeResponseAuthentication no
+      PermitRootLogin prohibit-password
+
+  - path: /etc/vera-browser-gateway/gateway-token
+    owner: root:root
+    permissions: "0600"
+    content: |
+      __VERA_GATEWAY_TOKEN__
+
+  - path: /etc/vera-browser-gateway/extension-pairing-seed
+    owner: root:root
+    permissions: "0600"
+    content: |
+      __VERA_EXTENSION_PAIRING_SEED__
+
+  - path: /usr/local/sbin/vera-browser-gateway-bootstrap
+    owner: root:root
+    permissions: "0700"
+    content: |
+      #!/usr/bin/env bash
+      set -euo pipefail
+      umask 077
+
+      readonly gateway_image="ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd"
+      readonly gateway_source_revision="f155bca09d57017ac141d2c8f3eebd26657aeb3d"
+      readonly gateway_token_path="/etc/vera-browser-gateway/gateway-token"
+      readonly pairing_seed_path="/etc/vera-browser-gateway/extension-pairing-seed"
+      readonly runtime_root="/var/lib/vera-browser-gateway"
+      readonly state_directory="${runtime_root}/state"
+      readonly result_path="${runtime_root}/provisioning-result.json"
+      readonly environment_path="/run/vera-browser-gateway.env"
+      readonly container_name="vera-browser-gateway"
+      readonly network_name="vera-browser-gateway"
+      readonly backend_port="18789"
+      current_stage="initialization"
+
+      scrub_cloud_init_copies() {
+        rm -f /var/lib/cloud/instance/user-data.txt
+        find /var/lib/cloud/instances -mindepth 2 -maxdepth 2 \
+          -name user-data.txt -type f -delete 2>/dev/null || true
+      }
+
+      remove_audit_identity() {
+        timeout 15s docker exec "${container_name}" \
+          /usr/bin/node /opt/vera/bin/seed-security-audit-device.mjs remove \
+          >/dev/null 2>&1 || true
+      }
+
+      remove_runtime() {
+        timeout 20s docker rm -f "${container_name}" >/dev/null 2>&1 || true
+        timeout 20s docker network rm "${network_name}" >/dev/null 2>&1 || true
+        rm -f "${environment_path}" /tmp/vera-browser-gateway.log
+      }
+
+      write_failure_result() {
+        local failed_stage="$1"
+        mkdir -p "${runtime_root}"
+        chmod 0700 "${runtime_root}"
+        jq -n \
+          --arg failedStage "${failed_stage}" \
+          '{
+            schemaVersion: 1,
+            status: "failed",
+            firstFailedStage: $failedStage,
+            backendLocalReady: false,
+            operatorIngressRemoved: false,
+            publicEndpointReady: false,
+            wssAcceptanceStarted: false
+          }' > "${result_path}"
+        chmod 0600 "${result_path}"
+      }
+
+      fail_closed() {
+        local exit_code=$?
+        trap - ERR
+        remove_audit_identity
+        remove_runtime
+        write_failure_result "${current_stage}"
+        scrub_cloud_init_copies
+        exit "${exit_code}"
+      }
+      trap fail_closed ERR
+
+      current_stage="credential_validation"
+      [[ -f "${gateway_token_path}" && ! -L "${gateway_token_path}" ]]
+      [[ -f "${pairing_seed_path}" && ! -L "${pairing_seed_path}" ]]
+      [[ "$(stat -c '%a:%U:%G' "${gateway_token_path}")" == "600:root:root" ]]
+      [[ "$(stat -c '%a:%U:%G' "${pairing_seed_path}")" == "600:root:root" ]]
+      gateway_token="$(tr -d '\r\n' < "${gateway_token_path}")"
+      pairing_seed="$(tr -d '\r\n' < "${pairing_seed_path}")"
+      [[ "${gateway_token}" =~ ^[0-9a-f]{64}$ ]]
+      [[ "${pairing_seed}" =~ ^[0-9a-f]{64}$ ]]
+      [[ "${gateway_token}" != "${pairing_seed}" ]]
+      readonly gateway_token
+      readonly pairing_seed
+
+      current_stage="docker_activation"
+      timeout 60s systemctl enable --now docker
+      [[ "$(systemctl is-active docker)" == "active" ]]
+
+      current_stage="vpc_address_resolution"
+      vpc_ipv4=""
+      for _attempt in $(seq 1 30); do
+        vpc_ipv4="$(curl -fsS --connect-timeout 1 --max-time 2 \
+          http://169.254.169.254/metadata/v1/interfaces/private/0/ipv4/address || true)"
+        if [[ "${vpc_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+          break
+        fi
+        sleep 2
+      done
+      [[ "${vpc_ipv4}" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]
+      readonly vpc_ipv4
+
+      current_stage="state_directory"
+      mkdir -p "${state_directory}"
+      chown 1000:1000 "${state_directory}"
+      chmod 0700 "${state_directory}"
+      [[ "$(stat -c '%u:%g:%a' "${state_directory}")" == "1000:1000:700" ]]
+
+      current_stage="immutable_image_pull"
+      timeout 240s docker pull "${gateway_image}" >/dev/null
+      [[ "$(timeout 15s docker image inspect "${gateway_image}" \
+        --format '{{.Config.User}}')" == "1000:1000" ]]
+      [[ "$(timeout 15s docker image inspect "${gateway_image}" \
+        --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" == \
+        "${gateway_source_revision}" ]]
+
+      current_stage="runtime_recreation"
+      remove_runtime
+      cat > "${environment_path}" <<ENV
+      OPENCLAW_GATEWAY_TOKEN=${gateway_token}
+      OPENCLAW_EXTENSION_PAIRING_SEED=${pairing_seed}
+      ENV
+      chown root:root "${environment_path}"
+      chmod 0600 "${environment_path}"
+
+      timeout 30s docker network create --driver bridge "${network_name}" >/dev/null
+      timeout 30s docker run -d \
+        --name "${container_name}" \
+        --network "${network_name}" \
+        --restart unless-stopped \
+        --user 1000:1000 \
+        --read-only \
+        --tmpfs /tmp:rw,nosuid,nodev,noexec,uid=1000,gid=1000,mode=1777,size=32m \
+        --cap-drop ALL \
+        --security-opt no-new-privileges \
+        --pids-limit 256 \
+        --memory 1200m \
+        --cpus 0.75 \
+        --env-file "${environment_path}" \
+        --mount "type=bind,src=${state_directory},dst=/data" \
+        -p "${vpc_ipv4}:${backend_port}:${backend_port}" \
+        "${gateway_image}" \
+        >/dev/null
+      rm -f "${environment_path}"
+
+      current_stage="container_readiness"
+      gateway_ready=0
+      for _attempt in $(seq 1 90); do
+        gateway_ip="$(timeout 5s docker inspect "${container_name}" \
+          --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')"
+        root_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+          --connect-timeout 1 --max-time 2 \
+          "http://${gateway_ip}:${backend_port}/" || true)"
+        extension_status="$(curl -sS -o /dev/null -w '%{http_code}' \
+          --connect-timeout 1 --max-time 2 \
+          "http://${gateway_ip}:${backend_port}/browser/extension" || true)"
+        if [[ "${root_status}" == "404" && "${extension_status}" == "426" ]]; then
+          gateway_ready=1
+          break
+        fi
+        sleep 2
+      done
+      [[ "${gateway_ready}" == "1" ]]
+
+      current_stage="host_binding"
+      [[ "$(curl -sS -o /dev/null -w '%{http_code}' \
+        --connect-timeout 1 --max-time 2 \
+        "http://${vpc_ipv4}:${backend_port}/")" == "404" ]]
+      [[ "$(curl -sS -o /dev/null -w '%{http_code}' \
+        --connect-timeout 1 --max-time 2 \
+        "http://${vpc_ipv4}:${backend_port}/browser/extension")" == "426" ]]
+      ss -ltnH | awk '{print $4}' | grep -Fxq "${vpc_ipv4}:${backend_port}"
+      if ss -ltnH | awk '{print $4}' | \
+        grep -Eq "^(0\\.0\\.0\\.0|\\[?::\\]?):${backend_port}$"; then
+        exit 1
+      fi
+
+      current_stage="internal_listeners"
+      timeout 15s docker exec "${container_name}" \
+        /usr/bin/node -e '
+          const fs = require("node:fs");
+          const required = new Set([18789, 18790, 18792]);
+          for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+            const text = fs.readFileSync(file, "utf8").trim();
+            for (const row of text.split(/\n/).slice(1)) {
+              const columns = row.trim().split(/\s+/);
+              if (columns[3] !== "0A") continue;
+              required.delete(parseInt(columns[1].split(":").at(-1), 16));
+            }
+          }
+          if (required.size > 0) process.exit(1);
+        '
+
+      current_stage="security_audits"
+      timeout 30s docker exec "${container_name}" \
+        /usr/bin/node /opt/vera/bin/seed-security-audit-device.mjs \
+        >"${runtime_root}/audit-seed.json"
+      chmod 0600 "${runtime_root}/audit-seed.json"
+      timeout 120s docker exec "${container_name}" \
+        /usr/bin/node openclaw.mjs security audit --json \
+        >"${runtime_root}/security-audit.json"
+      timeout 180s docker exec "${container_name}" \
+        /usr/bin/node openclaw.mjs security audit --deep --json \
+        >"${runtime_root}/security-audit-deep.json"
+      chmod 0600 \
+        "${runtime_root}/security-audit.json" \
+        "${runtime_root}/security-audit-deep.json"
+      jq -e '.summary.critical == 0 and .summary.warn == 0' \
+        "${runtime_root}/security-audit.json" >/dev/null
+      jq -e '.summary.critical == 0 and .summary.warn == 0' \
+        "${runtime_root}/security-audit-deep.json" >/dev/null
+      remove_audit_identity
+
+      current_stage="secret_log_scan"
+      timeout 15s docker logs --tail 300 "${container_name}" \
+        > /tmp/vera-browser-gateway.log 2>&1
+      if grep -Fq "${gateway_token}" /tmp/vera-browser-gateway.log; then
+        exit 1
+      fi
+      if grep -Fq "${pairing_seed}" /tmp/vera-browser-gateway.log; then
+        exit 1
+      fi
+      rm -f /tmp/vera-browser-gateway.log
+
+      current_stage="result_write"
+      jq -n \
+        --arg gatewayImage "${gateway_image}" \
+        --arg gatewaySourceRevision "${gateway_source_revision}" \
+        '{
+          schemaVersion: 1,
+          status: "backend_ready",
+          gatewayImage: $gatewayImage,
+          gatewaySourceRevision: $gatewaySourceRevision,
+          containerCount: 1,
+          effectiveGatewayIdentity: "1000:1000",
+          stateDirectoryIdentity: "1000:1000:0700",
+          hostBinding: "vpc_only",
+          backendPort: 18789,
+          unrelatedRouteStatus: 404,
+          extensionWithoutUpgradeStatus: 426,
+          requiredInternalListeners: [18789, 18790, 18792],
+          shallowAudit: {critical: 0, warn: 0},
+          deepAudit: {critical: 0, warn: 0},
+          backendLocalReady: true,
+          operatorIngressRemoved: false,
+          publicEndpointReady: false,
+          wssAcceptanceStarted: false
+        }' > "${result_path}"
+      chmod 0600 "${result_path}"
+      scrub_cloud_init_copies
+      trap - ERR
+
+  - path: /etc/systemd/system/vera-browser-gateway-bootstrap.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Vera founder browser Gateway bootstrap
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/sbin/vera-browser-gateway-bootstrap
+      RemainAfterExit=yes
+      TimeoutStartSec=900
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - ["systemctl", "reload", "ssh"]
+  - ["systemctl", "daemon-reload"]
+  - ["systemctl", "enable", "--now", "vera-browser-gateway-bootstrap.service"]
