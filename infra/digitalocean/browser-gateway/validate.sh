@@ -5,6 +5,9 @@ umask 077
 readonly asset_directory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly template_path="${asset_directory}/cloud-init.template.yaml"
 readonly intent_path="${asset_directory}/infrastructure-intent.json"
+readonly journal_path="${asset_directory}/resource-journal.ts"
+readonly certificate_path="${asset_directory}/managed-certificate.ts"
+readonly load_balancer_path="${asset_directory}/managed-load-balancer.ts"
 readonly expected_image="ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd"
 readonly validation_image="docker.io/library/ubuntu@sha256:4fbb8e6a8395de5a7550b33509421a2bafbc0aab6c06ba2cef9ebffbc7092d90"
 
@@ -15,6 +18,9 @@ unit_path="${temporary_directory}/vera-browser-gateway-bootstrap.service"
 
 test -f "${template_path}"
 test -f "${intent_path}"
+test -f "${journal_path}"
+test -f "${certificate_path}"
+test -f "${load_balancer_path}"
 jq -e . "${intent_path}" >/dev/null
 
 ruby -ryaml -e '
@@ -101,6 +107,17 @@ grep -Fq 'status: "backend_ready"' "${template_path}"
 grep -Fq 'publicEndpointReady: false' "${template_path}"
 grep -Fq 'wssAcceptanceStarted: false' "${template_path}"
 
+grep -Fq 'await handle.sync()' "${journal_path}"
+grep -Fq 'await rename(temporaryPath, absolutePath)' "${journal_path}"
+grep -Fq 'await directoryHandle.sync()' "${journal_path}"
+grep -Fq 'const DEFAULT_TIMEOUT_MS = 600_000' "${certificate_path}"
+grep -Fq 'managed_certificate_identity_mismatch' "${certificate_path}"
+grep -Fq 'await persistCertificate(' "${certificate_path}"
+grep -Fq 'loadBalancer.type !== "REGIONAL"' "${load_balancer_path}"
+grep -Fq 'loadBalancer.network !== "EXTERNAL"' "${load_balancer_path}"
+grep -Fq 'await persistLoadBalancer(' "${load_balancer_path}"
+grep -Fq 'await input.createDnsRecordAfterReadback?.(active)' "${load_balancer_path}"
+
 jq -e --arg image "${expected_image}" '
   .provider == "digitalocean" and
   .releaseProfile == "founder_browser_experimental" and
@@ -131,4 +148,7 @@ printf '%s\n' \
   "immutable_gateway_digest=passed" \
   "secret_placeholders=passed" \
   "vpc_only_gateway_binding=passed" \
+  "atomic_resource_journal=passed" \
+  "certificate_reconciliation=passed" \
+  "load_balancer_readback_before_dns=passed" \
   "fail_closed_cleanup=passed"

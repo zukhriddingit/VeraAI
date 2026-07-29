@@ -210,10 +210,7 @@ export async function writeResourceJournalSnapshotAtomic(
   try {
     await handle.writeFile(`${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
     await handle.sync();
-  } finally {
     await handle.close();
-  }
-  try {
     await hooks.beforeRename?.();
     await rename(temporaryPath, absolutePath);
     const directoryHandle = await open(directory, constants.O_RDONLY);
@@ -223,6 +220,7 @@ export async function writeResourceJournalSnapshotAtomic(
       await directoryHandle.close();
     }
   } catch (error) {
+    await handle.close().catch(() => undefined);
     await rm(temporaryPath, { force: true }).catch(() => undefined);
     throw error;
   }
@@ -266,7 +264,11 @@ export class ResourceJournal {
         (entry) => entry.kind === input.kind && entry.name === input.name
       );
       if (exact !== undefined) {
-        if (exact.id !== input.id) {
+        if (
+          exact.id !== input.id ||
+          exact.status !== input.status ||
+          exact.createdAtUtc !== input.createdAtUtc
+        ) {
           throw new Error("resource_journal_identity_conflict");
         }
         return;

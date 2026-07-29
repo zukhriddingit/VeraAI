@@ -14,6 +14,7 @@ import type {
   ResourceJournalEntry,
   ResourceJournalSnapshot
 } from "./resource-journal.ts";
+import { openResourceJournal } from "./resource-journal.ts";
 
 export interface CleanupClient {
   deleteLoadBalancer(id: string): Promise<void>;
@@ -223,16 +224,40 @@ function argument(name: string): string {
   return value;
 }
 
+function optionalArgument(name: string): string | null {
+  const index = process.argv.indexOf(name);
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  if (value === undefined || value.startsWith("--")) return null;
+  return value;
+}
+
 async function main(): Promise<void> {
+  const token = requireDigitalOceanToken(process.env.VERA_DO_API_TOKEN);
+  const client = new DigitalOceanClient(token);
+  const journalPath = optionalArgument("--journal");
+  if (journalPath !== null) {
+    const journal = await openResourceJournal({
+      path: resolve(journalPath),
+      runId: argument("--suffix")
+    });
+    const summary = await cleanupJournal({
+      journal,
+      actions: {
+        deleteResource: async (entry) => {
+          await client.deleteJournalResource(entry);
+        },
+        resourceAbsent: async (entry) => await client.journalResourceAbsent(entry)
+      }
+    });
+    process.stdout.write(`${JSON.stringify(summary)}\n`);
+    return;
+  }
+
   const manifestPath = resolve(argument("--manifest"));
   await readMode0600File(manifestPath, "private_stack_manifest");
   const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as unknown;
   assertPrivateStackManifest(manifest);
-  const token = requireDigitalOceanToken(process.env.VERA_DO_API_TOKEN);
-  const summary = await cleanupStack({
-    client: new DigitalOceanClient(token),
-    manifest
-  });
+  const summary = await cleanupStack({ client, manifest });
   process.stdout.write(`${JSON.stringify(summary)}\n`);
 }
 

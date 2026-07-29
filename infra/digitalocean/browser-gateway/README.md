@@ -43,6 +43,9 @@ bash infra/digitalocean/browser-gateway/validate.sh
 pnpm exec vitest run --project unit \
   infra/digitalocean/browser-gateway/config.unit.test.ts \
   infra/digitalocean/browser-gateway/digitalocean-api.unit.test.ts \
+  infra/digitalocean/browser-gateway/resource-journal.unit.test.ts \
+  infra/digitalocean/browser-gateway/managed-certificate.unit.test.ts \
+  infra/digitalocean/browser-gateway/managed-load-balancer.unit.test.ts \
   infra/digitalocean/browser-gateway/lifecycle.unit.test.ts \
   scripts/verify-digitalocean-browser-gateway.unit.test.ts
 ```
@@ -100,9 +103,12 @@ pnpm tsx infra/digitalocean/browser-gateway/create-diagnostics-stack.ts \
   --operator-ipv4 <exact-current-public-ipv4> \
   --ssh-public-key release-evidence/private/<run>/id_ed25519.pub \
   --cloud-init release-evidence/private/<run>/cloud-init.rendered.yaml \
+  --journal release-evidence/private/<run>/resource-journal.json \
   --manifest release-evidence/private/<run>/stack.private.json
 ```
 
+The mode-`0600` resource journal is the durable state for new runs. Each returned tag, firewall,
+SSH-key, and Droplet identity is atomically persisted before the next provider operation or poll.
 The create order is tag, tag-attached Cloud Firewall, temporary SSH key, then Droplet. The only
 initial inbound rule is TCP 22 from the exact operator IPv4 `/32`. Ports 80, 443, and 18789 have no
 public rule. The DigitalOcean Droplet Agent remains enabled for the Recovery Console. No Load
@@ -195,6 +201,24 @@ after every backend-local gate passes:
 Update the Droplet Cloud Firewall to allow TCP 18789 only from the exact Load Balancer UID. Never
 allow 18789 from an address or public CIDR. Wait until the backend is healthy.
 
+### Asynchronous response reconciliation
+
+Before the final run, perform one certificate-only preflight with only the delegated temporary DNS
+zone and one uniquely named certificate. Record the actual HTTP create status and classify `201`
+as the documented certificate response; treat another 2xx as an acknowledged nonstandard response,
+not as failure. Persist a returned certificate ID immediately. If the response has no usable ID or
+delivery is ambiguous, reconcile exactly one certificate by exact name, `lets_encrypt` type, exact
+DNS-name set, and the run creation window. Poll the persisted ID for at most ten minutes until
+`verified`, reject zero or multiple matches, prove restart discovery from the resource journal, and
+delete the preflight certificate before creating a Droplet.
+
+The Regional Load Balancer follows the same acknowledgement-versus-readiness split. The documented
+create response is `202`; any other 2xx is recorded as a nonstandard acknowledgement. Persist or
+exactly reconcile the ID before polling. DNS A creation is forbidden until readback by that ID
+proves one external IPv4 `REGIONAL` Load Balancer in `nyc1`, one backend Droplet, the exact HTTPS
+443-to-HTTP-18789 rule and certificate, TCP 18789 health check, no port 80, no redirect, and no
+PROXY protocol.
+
 ## Public WSS acceptance
 
 Against the exact temporary hostname, prove certificate trust, route isolation, Control UI absence,
@@ -231,13 +255,16 @@ Any failed gate returns `founder_browser_experimental=no_go`. Run:
 
 ```sh
 pnpm tsx infra/digitalocean/browser-gateway/cleanup-stack.ts \
-  --manifest release-evidence/private/<run>/stack.private.json
+  --journal release-evidence/private/<run>/resource-journal.json \
+  --suffix <UTC-YYYYMMDD-sequence>
 ```
 
-Cleanup order is Load Balancer, DNS record, certificate, Droplet, firewall, SSH key, and tag.
-Missing resources are idempotent success. Also delete the temporary API token, local key/credential
-files, and Keychain entries. Preserve only sanitized private evidence and verify zero billable
-disposable resources.
+Cleanup order is Load Balancer, DNS record, certificate, Droplet, firewall, SSH key, tag, and DNS
+zone. Each entry is atomically marked `delete_pending`, then `deleted` only after exact absence
+readback; failures become `delete_failed` without stopping later cleanup. Missing resources are
+idempotent success. The older manifest command remains available only for historical evidence.
+Also delete the temporary API token, local key/credential files, and Keychain entries. Preserve
+only sanitized private evidence and verify zero billable disposable resources.
 
 On success, revoke browser access and keep every tab unshared while asking whether to retain the
 working Gateway temporarily for founder recording or destroy it immediately. Do not silently leave

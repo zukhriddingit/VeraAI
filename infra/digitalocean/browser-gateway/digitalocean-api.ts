@@ -1,6 +1,7 @@
 import { setTimeout as delay } from "node:timers/promises";
 
 import { DIGITALOCEAN_API_BASE_URL } from "./config.ts";
+import type { ResourceJournalEntry } from "./resource-journal.ts";
 
 export type FetchImplementation = typeof fetch;
 
@@ -695,6 +696,77 @@ export class DigitalOceanClient {
     await this.request("DELETE", `/domains/${encodeURIComponent(domain)}/records/${recordId}`, {
       acceptNotFound: true
     });
+  }
+
+  async deleteDomain(name: string): Promise<void> {
+    await this.request("DELETE", `/domains/${encodeURIComponent(name)}`, {
+      acceptNotFound: true
+    });
+  }
+
+  async deleteJournalResource(entry: ResourceJournalEntry): Promise<void> {
+    if (entry.kind === "load_balancer") {
+      await this.deleteLoadBalancer(entry.id);
+    } else if (entry.kind === "dns_record") {
+      await this.deleteDomainRecord(entry.name, integer(Number(entry.id), "journal_id_rejected"));
+    } else if (entry.kind === "certificate") {
+      await this.deleteCertificate(entry.id);
+    } else if (entry.kind === "droplet") {
+      await this.deleteDroplet(integer(Number(entry.id), "journal_id_rejected"));
+    } else if (entry.kind === "firewall") {
+      await this.deleteFirewall(entry.id);
+    } else if (entry.kind === "ssh_key") {
+      await this.deleteSshKey(integer(Number(entry.id), "journal_id_rejected"));
+    } else if (entry.kind === "tag") {
+      await this.deleteTag(entry.name);
+    } else {
+      await this.deleteDomain(entry.name);
+    }
+  }
+
+  async journalResourceAbsent(entry: ResourceJournalEntry): Promise<boolean> {
+    let response: unknown | null;
+    if (entry.kind === "load_balancer") {
+      response = await this.request("GET", `/load_balancers/${encodeURIComponent(entry.id)}`, {
+        acceptNotFound: true
+      });
+    } else if (entry.kind === "dns_record") {
+      const id = integer(Number(entry.id), "journal_id_rejected");
+      response = await this.request(
+        "GET",
+        `/domains/${encodeURIComponent(entry.name)}/records/${id}`,
+        { acceptNotFound: true }
+      );
+    } else if (entry.kind === "certificate") {
+      response = await this.request("GET", `/certificates/${encodeURIComponent(entry.id)}`, {
+        acceptNotFound: true
+      });
+    } else if (entry.kind === "droplet") {
+      response = await this.request(
+        "GET",
+        `/droplets/${integer(Number(entry.id), "journal_id_rejected")}`,
+        { acceptNotFound: true }
+      );
+    } else if (entry.kind === "firewall") {
+      response = await this.request("GET", `/firewalls/${encodeURIComponent(entry.id)}`, {
+        acceptNotFound: true
+      });
+    } else if (entry.kind === "ssh_key") {
+      response = await this.request(
+        "GET",
+        `/account/keys/${integer(Number(entry.id), "journal_id_rejected")}`,
+        { acceptNotFound: true }
+      );
+    } else if (entry.kind === "tag") {
+      response = await this.request("GET", `/tags/${encodeURIComponent(entry.name)}`, {
+        acceptNotFound: true
+      });
+    } else {
+      response = await this.request("GET", `/domains/${encodeURIComponent(entry.name)}`, {
+        acceptNotFound: true
+      });
+    }
+    return response === null;
   }
 }
 
