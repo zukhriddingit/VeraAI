@@ -79,4 +79,15 @@ describe("DigitalOcean browser Gateway deployment verifier", () => {
       "Public ingress and Chrome pairing must be deferred until backend acceptance."
     );
   });
+
+  it("rejects an immediate one-shot internal listener assertion", () => {
+    const input = repositoryFixture();
+    input.cloudInit = input.cloudInit.replace(
+      "while (( SECONDS < internal_listener_deadline )); do",
+      'if timeout 2s docker exec "${container_name}"; then'
+    );
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Internal listener readiness must use a bounded polling gate."
+    );
+  });
 });

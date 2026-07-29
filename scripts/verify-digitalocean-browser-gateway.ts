@@ -136,6 +136,17 @@ export function findDigitalOceanBrowserGatewayViolations(
       violations.push(`Cloud-init is missing required invariant: ${required}.`);
     }
   }
+  if (
+    !input.cloudInit.includes('readonly internal_listener_wait_seconds="90"') ||
+    !input.cloudInit.includes(
+      "internal_listener_deadline=$((SECONDS + internal_listener_wait_seconds))"
+    ) ||
+    !input.cloudInit.includes("while (( SECONDS < internal_listener_deadline )); do") ||
+    !input.cloudInit.includes("internal_listeners_ready=1") ||
+    !input.cloudInit.includes('[[ "${internal_listeners_ready}" == "1" ]]')
+  ) {
+    violations.push("Internal listener readiness must use a bounded polling gate.");
+  }
 
   if (
     !input.renderer.includes("readCredentialPair") ||

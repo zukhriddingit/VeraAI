@@ -51,6 +51,7 @@ write_files:
       readonly container_name="vera-browser-gateway"
       readonly network_name="vera-browser-gateway"
       readonly backend_port="18789"
+      readonly internal_listener_wait_seconds="90"
       current_stage="initialization"
 
       scrub_cloud_init_copies() {
@@ -206,20 +207,29 @@ write_files:
       fi
 
       current_stage="internal_listeners"
-      timeout 15s docker exec "${container_name}" \
-        /usr/bin/node -e '
-          const fs = require("node:fs");
-          const required = new Set([18789, 18790, 18792]);
-          for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
-            const text = fs.readFileSync(file, "utf8").trim();
-            for (const row of text.split(/\n/).slice(1)) {
-              const columns = row.trim().split(/\s+/);
-              if (columns[3] !== "0A") continue;
-              required.delete(parseInt(columns[1].split(":").at(-1), 16));
+      internal_listeners_ready=0
+      internal_listener_deadline=$((SECONDS + internal_listener_wait_seconds))
+      while (( SECONDS < internal_listener_deadline )); do
+        if timeout 2s docker exec "${container_name}" \
+          /usr/bin/node -e '
+            const fs = require("node:fs");
+            const required = new Set([18789, 18790, 18792]);
+            for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+              const text = fs.readFileSync(file, "utf8").trim();
+              for (const row of text.split(/\n/).slice(1)) {
+                const columns = row.trim().split(/\s+/);
+                if (columns[3] !== "0A") continue;
+                required.delete(parseInt(columns[1].split(":").at(-1), 16));
+              }
             }
-          }
-          if (required.size > 0) process.exit(1);
-        '
+            if (required.size > 0) process.exit(1);
+          '; then
+          internal_listeners_ready=1
+          break
+        fi
+        sleep 1
+      done
+      [[ "${internal_listeners_ready}" == "1" ]]
 
       current_stage="security_audits"
       timeout 30s docker exec "${container_name}" \
