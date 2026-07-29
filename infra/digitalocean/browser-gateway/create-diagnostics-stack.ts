@@ -13,10 +13,17 @@ import {
   writePrivateJsonExclusive
 } from "./config.ts";
 import type { PrivateStackManifest } from "./config.ts";
-import { cleanupStack } from "./cleanup-stack.ts";
+import { cleanupJournal } from "./cleanup-stack.ts";
 import type { CleanupClient } from "./cleanup-stack.ts";
 import { DigitalOceanClient, waitForActiveDroplet } from "./digitalocean-api.ts";
 import type { DigitalOceanDroplet } from "./digitalocean-api.ts";
+import { openResourceJournal } from "./resource-journal.ts";
+import type {
+  DigitalOceanResourceKind,
+  ResourceCreatedInput,
+  ResourceJournalEntry,
+  ResourceJournalSnapshot
+} from "./resource-journal.ts";
 
 export interface CreateStackClient extends CleanupClient {
   createTag(name: string): Promise<void>;
@@ -40,6 +47,15 @@ export interface CreateStackClient extends CleanupClient {
 
 export interface CreateDiagnosticsStackInput {
   client: CreateStackClient;
+  journal: {
+    snapshot(): ResourceJournalSnapshot;
+    recordCreated(entry: ResourceCreatedInput): Promise<void>;
+    markCleanup(
+      kind: DigitalOceanResourceKind,
+      id: string,
+      cleanupState: "delete_pending" | "deleted" | "delete_failed"
+    ): Promise<void>;
+  };
   suffix: string;
   operatorIpv4: string;
   publicKey: string;
@@ -91,17 +107,38 @@ export async function createDiagnosticsStack(
 
   try {
     await input.client.createTag(manifest.names.tag);
+    await input.journal.recordCreated({
+      kind: "tag",
+      name: manifest.names.tag,
+      id: manifest.names.tag,
+      status: "created",
+      createdAtUtc: manifest.createdAtUtc
+    });
     const firewall = await input.client.createFirewall({
       name: manifest.names.firewall,
       tag: manifest.names.tag,
       operatorIpv4
     });
     manifest.resourceIds.firewall = firewall.id;
+    await input.journal.recordCreated({
+      kind: "firewall",
+      name: manifest.names.firewall,
+      id: firewall.id,
+      status: "created",
+      createdAtUtc: manifest.createdAtUtc
+    });
     const sshKey = await input.client.createSshKey({
       name: manifest.names.sshKey,
       publicKey: input.publicKey
     });
     manifest.resourceIds.sshKey = sshKey.id;
+    await input.journal.recordCreated({
+      kind: "ssh_key",
+      name: manifest.names.sshKey,
+      id: String(sshKey.id),
+      status: "created",
+      createdAtUtc: manifest.createdAtUtc
+    });
     const droplet = await input.client.createDroplet({
       name: manifest.names.droplet,
       region: DIGITALOCEAN_REGION,
@@ -112,6 +149,13 @@ export async function createDiagnosticsStack(
       userData: input.cloudInit
     });
     manifest.resourceIds.droplet = droplet.id;
+    await input.journal.recordCreated({
+      kind: "droplet",
+      name: manifest.names.droplet,
+      id: String(droplet.id),
+      status: droplet.status,
+      createdAtUtc: manifest.createdAtUtc
+    });
     const activeDroplet = await (input.waitForActive ?? waitForActiveDroplet)({
       client: input.client,
       dropletId: droplet.id
@@ -126,7 +170,30 @@ export async function createDiagnosticsStack(
     await writePrivateJsonExclusive(input.manifestPath, manifest);
     return manifest;
   } catch (error) {
-    await cleanupStack({ client: input.client, manifest }).catch(() => undefined);
+    await cleanupJournal({
+      journal: input.journal,
+      actions: {
+        async deleteResource(entry: ResourceJournalEntry): Promise<void> {
+          if (entry.kind === "droplet") {
+            await input.client.deleteDroplet(Number(entry.id));
+          } else if (entry.kind === "firewall") {
+            await input.client.deleteFirewall(entry.id);
+          } else if (entry.kind === "ssh_key") {
+            await input.client.deleteSshKey(Number(entry.id));
+          } else if (entry.kind === "tag") {
+            await input.client.deleteTag(entry.name);
+          } else {
+            throw new Error("diagnostics_cleanup_kind_rejected");
+          }
+        },
+        async resourceAbsent(entry: ResourceJournalEntry): Promise<boolean> {
+          if (entry.kind === "droplet") {
+            return (await input.client.getDroplet(Number(entry.id), true)) === null;
+          }
+          return true;
+        }
+      }
+    }).catch(() => undefined);
     throw error;
   }
 }
@@ -146,9 +213,15 @@ async function main(): Promise<void> {
   const cloudInit = await readMode0600File(cloudInitPath, "rendered_cloud_init");
   const publicKey = (await readMode0600File(publicKeyPath, "ssh_public_key")).trim();
   const token = requireDigitalOceanToken(process.env.VERA_DO_API_TOKEN);
+  const suffix = argument("--suffix");
+  const journal = await openResourceJournal({
+    path: resolve(argument("--journal")),
+    runId: suffix
+  });
   await createDiagnosticsStack({
     client: new DigitalOceanClient(token),
-    suffix: argument("--suffix"),
+    journal,
+    suffix,
     operatorIpv4: argument("--operator-ipv4"),
     publicKey,
     cloudInit,
