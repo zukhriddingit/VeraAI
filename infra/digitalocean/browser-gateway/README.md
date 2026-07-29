@@ -140,6 +140,11 @@ On the Droplet, wait at most ten minutes for `cloud-init status --wait`, then in
 If bootstrap fails, record the first failed stage, collect sanitized evidence, create no public
 resource, and run cleanup immediately.
 
+The internal listener gate is intentionally polled for up to 90 seconds. A disposable Droplet
+diagnostic observed the route filter on `18789` before OpenClaw `18790` and browser control `18792`;
+an immediate assertion at that boundary is a startup-ordering race and must remain a regression
+failure.
+
 ## Required backend-local acceptance
 
 Before any public ingress, backend-local acceptance must prove all of the following:
