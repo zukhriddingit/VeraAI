@@ -16,6 +16,41 @@ function response(status: number, body?: unknown): Response {
   });
 }
 
+function loadBalancerReadback(network: unknown = "EXTERNAL"): Record<string, unknown> {
+  return {
+    id: "00000000-0000-4000-8000-000000000022",
+    name: "vera-m13a-do-lb-20260729-12",
+    ip: "203.0.113.12",
+    status: "active",
+    type: "REGIONAL",
+    network,
+    network_stack: "IPV4",
+    created_at: "2026-07-29T23:38:23Z",
+    region: { slug: "nyc1" },
+    droplet_ids: [12],
+    forwarding_rules: [
+      {
+        entry_protocol: "https",
+        entry_port: 443,
+        target_protocol: "http",
+        target_port: 18789,
+        certificate_id: "00000000-0000-4000-8000-000000000012",
+        tls_passthrough: false
+      }
+    ],
+    health_check: {
+      protocol: "tcp",
+      port: 18789,
+      check_interval_seconds: 10,
+      response_timeout_seconds: 5,
+      unhealthy_threshold: 3,
+      healthy_threshold: 5
+    },
+    redirect_http_to_https: false,
+    enable_proxy_protocol: false
+  };
+}
+
 describe("DigitalOcean API boundary", () => {
   it.each([
     ["2026-07-29T23:38:23Z", "2026-07-29T23:38:23.000Z"],
@@ -62,40 +97,7 @@ describe("DigitalOcean API boundary", () => {
       )
       .mockResolvedValueOnce(
         response(200, {
-          load_balancers: [
-            {
-              id: "00000000-0000-4000-8000-000000000022",
-              name: "vera-m13a-do-lb-20260729-12",
-              ip: "203.0.113.12",
-              status: "active",
-              type: "REGIONAL",
-              network: "EXTERNAL",
-              network_stack: "IPV4",
-              created_at: "2026-07-29T23:38:23Z",
-              region: { slug: "nyc1" },
-              droplet_ids: [12],
-              forwarding_rules: [
-                {
-                  entry_protocol: "https",
-                  entry_port: 443,
-                  target_protocol: "http",
-                  target_port: 18789,
-                  certificate_id: "00000000-0000-4000-8000-000000000012",
-                  tls_passthrough: false
-                }
-              ],
-              health_check: {
-                protocol: "tcp",
-                port: 18789,
-                check_interval_seconds: 10,
-                response_timeout_seconds: 5,
-                unhealthy_threshold: 3,
-                healthy_threshold: 5
-              },
-              redirect_http_to_https: false,
-              enable_proxy_protocol: false
-            }
-          ]
+          load_balancers: [loadBalancerReadback()]
         })
       );
     const client = new DigitalOceanClient(
@@ -109,6 +111,39 @@ describe("DigitalOcean API boundary", () => {
     expect(certificates[0]?.createdAtUtc).toBe("2026-07-29T23:38:23.000Z");
     expect(loadBalancers[0]?.createdAtUtc).toBe("2026-07-29T23:38:23.000Z");
   });
+
+  it.each([
+    ["omitted", undefined],
+    ["null", null],
+    ["explicit", "EXTERNAL"]
+  ])("normalizes %s Load Balancer network readback to EXTERNAL", async (_case, network) => {
+    const loadBalancer = loadBalancerReadback(network);
+    if (network === undefined) delete loadBalancer.network;
+    const client = new DigitalOceanClient(
+      "token-with-sufficient-private-length",
+      vi.fn<typeof fetch>().mockResolvedValue(response(200, { load_balancers: [loadBalancer] }))
+    );
+
+    await expect(client.listManagedLoadBalancers()).resolves.toMatchObject([
+      { network: "EXTERNAL" }
+    ]);
+  });
+
+  it.each(["INTERNAL", "", "external", 12, false])(
+    "rejects unexpected Load Balancer network readback %j",
+    async (network) => {
+      const client = new DigitalOceanClient(
+        "token-with-sufficient-private-length",
+        vi
+          .fn<typeof fetch>()
+          .mockResolvedValue(response(200, { load_balancers: [loadBalancerReadback(network)] }))
+      );
+
+      await expect(client.listManagedLoadBalancers()).rejects.toThrow(
+        "load_balancer_response_rejected"
+      );
+    }
+  );
 
   it("returns a bounded allowlisted response observation", async () => {
     const payload = { certificate: { id: "certificate-id", state: "pending" } };
@@ -263,6 +298,9 @@ describe("DigitalOcean API boundary", () => {
     expect(JSON.parse(String(fetchImplementation.mock.calls[1]?.[1]?.body))).toMatchObject({
       name: "vera-m13a-do-lb-20260729-12",
       region: "nyc1",
+      type: "REGIONAL",
+      network: "EXTERNAL",
+      network_stack: "IPV4",
       droplet_ids: [12],
       redirect_http_to_https: false,
       enable_proxy_protocol: false,
