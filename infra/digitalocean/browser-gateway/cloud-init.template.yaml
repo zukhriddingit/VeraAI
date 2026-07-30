@@ -72,6 +72,65 @@ write_files:
         rm -f "${environment_path}" /tmp/vera-browser-gateway.log
       }
 
+      sanitize_persisted_state_links() {
+        local candidate_state_directory="$1"
+        local expected_owner="$2"
+        local expected_relative=".openclaw/plugin-skills/browser-automation"
+        local expected_target="/app/dist/extensions/browser/skills/browser-automation"
+        local expected_link="${candidate_state_directory}/${expected_relative}"
+        local inventory_path
+        local inventory_entry
+        local link_path
+        local link_target
+        local link_listing
+        local link_owner
+        local link_uid
+        local link_gid
+        local link_count=0
+        local inventory_invalid=0
+
+        if [[ (-e "${expected_link}" || -L "${expected_link}") && ! -L "${expected_link}" ]]; then
+          return 1
+        fi
+
+        inventory_path="$(mktemp "${candidate_state_directory}/../.state-links.XXXXXX")"
+        if ! find -P "${candidate_state_directory}" -xdev -type l -print0 \
+          > "${inventory_path}"; then
+          rm -f "${inventory_path}"
+          return 1
+        fi
+        while IFS= read -r -d '' inventory_entry; do
+          link_count=$((link_count + 1))
+          if [[ "${inventory_entry}" != "${expected_link}" ]]; then
+            inventory_invalid=1
+          fi
+        done < "${inventory_path}"
+        rm -f "${inventory_path}"
+
+        if (( inventory_invalid != 0 || link_count > 1 )); then
+          return 1
+        fi
+        if (( link_count == 0 )); then
+          return 0
+        fi
+
+        link_path="${expected_link}"
+        link_target="$(readlink "${link_path}")" || return 1
+        link_listing="$(LC_ALL=C ls -nd "${link_path}")" || return 1
+        read -r _ _ link_uid link_gid _ <<< "${link_listing}"
+        link_owner="${link_uid}:${link_gid}"
+        [[ "${link_target}" == "${expected_target}" ]] || return 1
+        [[ "${link_owner}" == "${expected_owner}" ]] || return 1
+
+        [[ -L "${link_path}" ]] || return 1
+        [[ "$(readlink "${link_path}")" == "${expected_target}" ]] || return 1
+        link_listing="$(LC_ALL=C ls -nd "${link_path}")" || return 1
+        read -r _ _ link_uid link_gid _ <<< "${link_listing}"
+        [[ "${link_uid}:${link_gid}" == "${expected_owner}" ]] || return 1
+        rm "${link_path}"
+        [[ ! -e "${link_path}" && ! -L "${link_path}" ]]
+      }
+
       write_failure_result() {
         local failed_stage="$1"
         mkdir -p "${runtime_root}"
@@ -147,6 +206,9 @@ write_files:
 
       current_stage="runtime_recreation"
       remove_runtime
+      current_stage="state_link_reconciliation"
+      sanitize_persisted_state_links "${state_directory}" "1000:1000"
+      current_stage="runtime_recreation"
       cat > "${environment_path}" <<ENV
       OPENCLAW_GATEWAY_TOKEN=${gateway_token}
       OPENCLAW_EXTENSION_PAIRING_SEED=${pairing_seed}

@@ -151,6 +151,14 @@ diagnostic observed the route filter on `18789` before OpenClaw `18790` and brow
 an immediate assertion at that boundary is a startup-ordering race and must remain a regression
 failure.
 
+The reviewed Gateway creates one persistent browser-skill link at
+`.openclaw/plugin-skills/browser-automation`, targeting the immutable in-image directory
+`/app/dist/extensions/browser/skills/browser-automation`. On a second bootstrap, the prior
+container is stopped before state inspection. Bootstrap removes only that exact symbolic link when
+its owner matches the already-validated state-directory owner `1000:1000`. Any other link path,
+target, owner, additional link, or non-link object at the approved path fails closed without wiping
+or recreating the persistent state directory.
+
 ## Required backend-local acceptance
 
 Before any public ingress, backend-local acceptance must prove all of the following:

@@ -150,6 +150,39 @@ export function findDigitalOceanBrowserGatewayViolations(
   ) {
     violations.push("Internal listener readiness must use a bounded polling gate.");
   }
+  if (
+    occurrenceCount(input.cloudInit, "sanitize_persisted_state_links()") !== 1 ||
+    occurrenceCount(input.cloudInit, 'current_stage="state_link_reconciliation"') !== 1 ||
+    occurrenceCount(
+      input.cloudInit,
+      'local expected_relative=".openclaw/plugin-skills/browser-automation"'
+    ) !== 1 ||
+    occurrenceCount(
+      input.cloudInit,
+      'local expected_target="/app/dist/extensions/browser/skills/browser-automation"'
+    ) !== 1 ||
+    occurrenceCount(
+      input.cloudInit,
+      'sanitize_persisted_state_links "${state_directory}" "1000:1000"'
+    ) !== 1 ||
+    !input.cloudInit.includes(
+      'if [[ (-e "${expected_link}" || -L "${expected_link}") && ! -L "${expected_link}" ]]; then'
+    ) ||
+    !input.cloudInit.includes('find -P "${candidate_state_directory}" -xdev -type l -print0') ||
+    !input.cloudInit.includes('link_listing="$(LC_ALL=C ls -nd "${link_path}")"') ||
+    !input.cloudInit.includes('[[ "${link_owner}" == "${expected_owner}" ]]') ||
+    !input.cloudInit.includes('[[ ! -e "${link_path}" && ! -L "${link_path}" ]]') ||
+    !input.cloudInit.includes(
+      'current_stage="runtime_recreation"\n' +
+        "      remove_runtime\n" +
+        '      current_stage="state_link_reconciliation"\n' +
+        '      sanitize_persisted_state_links "${state_directory}" "1000:1000"\n' +
+        '      current_stage="runtime_recreation"'
+    ) ||
+    /rm\s+(?:-[^\n]*r[^\n]*\s+)?["']?\$\{state_directory\}/u.test(input.cloudInit)
+  ) {
+    violations.push("Persistent state-link reconciliation must remain exact and fail closed.");
+  }
 
   if (
     !input.renderer.includes("readCredentialPair") ||
