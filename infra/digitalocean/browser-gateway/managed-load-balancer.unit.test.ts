@@ -185,6 +185,57 @@ describe("managed DigitalOcean Load Balancer", () => {
     }
   );
 
+  it("normalizes a whole-second create timestamp before journal persistence", async () => {
+    const events: string[] = [];
+    const journal = new JournalDouble(events);
+    const client = clientDouble({
+      create: vi.fn(async () =>
+        observation(202, {
+          load_balancer: {
+            id: ID,
+            status: "new",
+            created_at: "2026-07-29T16:06:00Z"
+          }
+        })
+      ),
+      get: vi.fn(async () => {
+        events.push("get");
+        return loadBalancer("active");
+      })
+    });
+
+    await expect(ensureManagedLoadBalancer(baseInput(client, journal))).resolves.toMatchObject({
+      actualCreateStatus: 202,
+      acknowledgementClass: "documented_create",
+      finalStatus: "active"
+    });
+    expect(journal.entries[0]?.createdAtUtc).toBe("2026-07-29T16:06:00.000Z");
+    expect(events.indexOf("journal_created")).toBeLessThan(events.indexOf("get"));
+  });
+
+  it("rejects a malformed create timestamp before journal persistence", async () => {
+    const journal = new JournalDouble([]);
+    const get = vi.fn(async () => loadBalancer("active"));
+    const client = clientDouble({
+      create: vi.fn(async () =>
+        observation(202, {
+          load_balancer: {
+            id: ID,
+            status: "new",
+            created_at: "2026-02-30T12:00:00Z"
+          }
+        })
+      ),
+      get
+    });
+
+    await expect(ensureManagedLoadBalancer(baseInput(client, journal))).rejects.toThrow(
+      "load_balancer_response_rejected"
+    );
+    expect(journal.entries).toEqual([]);
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("reconciles no-ID and transport-ambiguous creates exactly once", async () => {
     const noIdJournal = new JournalDouble([]);
     const noIdClient = clientDouble({

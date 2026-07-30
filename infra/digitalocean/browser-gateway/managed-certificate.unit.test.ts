@@ -151,6 +151,57 @@ describe("managed DigitalOcean certificate", () => {
     }
   );
 
+  it("normalizes a whole-second create timestamp before journal persistence", async () => {
+    const events: string[] = [];
+    const journal = new JournalDouble(events);
+    const client = clientDouble({
+      create: vi.fn(async () =>
+        observation(202, {
+          certificate: {
+            id: ID,
+            state: "pending",
+            created_at: "2026-07-29T16:05:00Z"
+          }
+        })
+      ),
+      get: vi.fn(async () => {
+        events.push("get");
+        return certificate("verified");
+      })
+    });
+
+    await expect(ensureManagedCertificate(baseInput(client, journal))).resolves.toMatchObject({
+      actualCreateStatus: 202,
+      acknowledgementClass: "create_acknowledged_nonstandard",
+      finalState: "verified"
+    });
+    expect(journal.entries[0]?.createdAtUtc).toBe("2026-07-29T16:05:00.000Z");
+    expect(events.indexOf("journal_created")).toBeLessThan(events.indexOf("get"));
+  });
+
+  it("rejects a malformed create timestamp before journal persistence", async () => {
+    const journal = new JournalDouble([]);
+    const get = vi.fn(async () => certificate("verified"));
+    const client = clientDouble({
+      create: vi.fn(async () =>
+        observation(202, {
+          certificate: {
+            id: ID,
+            state: "pending",
+            created_at: "2026-02-30T12:00:00Z"
+          }
+        })
+      ),
+      get
+    });
+
+    await expect(ensureManagedCertificate(baseInput(client, journal))).rejects.toThrow(
+      "certificate_response_rejected"
+    );
+    expect(journal.entries).toEqual([]);
+    expect(get).not.toHaveBeenCalled();
+  });
+
   it("reconciles one exact certificate when an alternate 2xx has no ID", async () => {
     const events: string[] = [];
     const journal = new JournalDouble(events);
