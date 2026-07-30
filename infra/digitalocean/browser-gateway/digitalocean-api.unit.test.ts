@@ -5,6 +5,7 @@ import {
   DigitalOceanClient,
   DigitalOceanProviderError,
   DigitalOceanTransportError,
+  normalizeDigitalOceanInstant,
   waitForActiveDroplet
 } from "./digitalocean-api.ts";
 
@@ -16,6 +17,99 @@ function response(status: number, body?: unknown): Response {
 }
 
 describe("DigitalOcean API boundary", () => {
+  it.each([
+    ["2026-07-29T23:38:23Z", "2026-07-29T23:38:23.000Z"],
+    ["2026-07-29T23:38:23.125Z", "2026-07-29T23:38:23.125Z"],
+    ["2026-07-29T19:38:23-04:00", "2026-07-29T23:38:23.000Z"]
+  ])("normalizes DigitalOcean instant %s", (input, expected) => {
+    expect(normalizeDigitalOceanInstant(input, "certificate_response_rejected")).toBe(expected);
+  });
+
+  it.each([
+    "2026-02-30T12:00:00Z",
+    "2026-07-29 23:38:23",
+    "2026-07-29T23:38:23",
+    " 2026-07-29T23:38:23Z",
+    "not-a-date"
+  ])("rejects invalid DigitalOcean instant %s", (input) => {
+    expect(() => normalizeDigitalOceanInstant(input, "certificate_response_rejected")).toThrow(
+      "certificate_response_rejected"
+    );
+  });
+
+  it("rejects a non-string DigitalOcean instant", () => {
+    expect(() => normalizeDigitalOceanInstant(12, "load_balancer_response_rejected")).toThrow(
+      "load_balancer_response_rejected"
+    );
+  });
+
+  it("normalizes whole-second certificate and Load Balancer readback timestamps", async () => {
+    const fetchImplementation = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        response(200, {
+          certificates: [
+            {
+              id: "00000000-0000-4000-8000-000000000012",
+              name: "vera-m13a-do-cert-20260729-12",
+              dns_names: ["gateway-20260729-12.browser.example.test"],
+              type: "lets_encrypt",
+              state: "verified",
+              created_at: "2026-07-29T23:38:23Z"
+            }
+          ]
+        })
+      )
+      .mockResolvedValueOnce(
+        response(200, {
+          load_balancers: [
+            {
+              id: "00000000-0000-4000-8000-000000000022",
+              name: "vera-m13a-do-lb-20260729-12",
+              ip: "203.0.113.12",
+              status: "active",
+              type: "REGIONAL",
+              network: "EXTERNAL",
+              network_stack: "IPV4",
+              created_at: "2026-07-29T23:38:23Z",
+              region: { slug: "nyc1" },
+              droplet_ids: [12],
+              forwarding_rules: [
+                {
+                  entry_protocol: "https",
+                  entry_port: 443,
+                  target_protocol: "http",
+                  target_port: 18789,
+                  certificate_id: "00000000-0000-4000-8000-000000000012",
+                  tls_passthrough: false
+                }
+              ],
+              health_check: {
+                protocol: "tcp",
+                port: 18789,
+                check_interval_seconds: 10,
+                response_timeout_seconds: 5,
+                unhealthy_threshold: 3,
+                healthy_threshold: 5
+              },
+              redirect_http_to_https: false,
+              enable_proxy_protocol: false
+            }
+          ]
+        })
+      );
+    const client = new DigitalOceanClient(
+      "token-with-sufficient-private-length",
+      fetchImplementation
+    );
+
+    const certificates = await client.listManagedCertificates();
+    const loadBalancers = await client.listManagedLoadBalancers();
+
+    expect(certificates[0]?.createdAtUtc).toBe("2026-07-29T23:38:23.000Z");
+    expect(loadBalancers[0]?.createdAtUtc).toBe("2026-07-29T23:38:23.000Z");
+  });
+
   it("returns a bounded allowlisted response observation", async () => {
     const payload = { certificate: { id: "certificate-id", state: "pending" } };
     const body = JSON.stringify(payload);

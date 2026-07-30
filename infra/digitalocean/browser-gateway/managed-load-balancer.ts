@@ -4,7 +4,7 @@ import type {
   DigitalOceanLoadBalancer,
   DigitalOceanResponseObservation
 } from "./digitalocean-api.ts";
-import { DigitalOceanTransportError } from "./digitalocean-api.ts";
+import { DigitalOceanTransportError, normalizeDigitalOceanInstant } from "./digitalocean-api.ts";
 import type {
   ResourceCleanupState,
   ResourceCreatedInput,
@@ -158,7 +158,10 @@ function returnedIdentity(
   return {
     id: loadBalancer.id,
     status: typeof loadBalancer.status === "string" ? loadBalancer.status : "creation_acknowledged",
-    createdAtUtc: typeof loadBalancer.created_at === "string" ? loadBalancer.created_at : null
+    createdAtUtc:
+      loadBalancer.created_at === undefined
+        ? null
+        : normalizeDigitalOceanInstant(loadBalancer.created_at, "load_balancer_response_rejected")
   };
 }
 

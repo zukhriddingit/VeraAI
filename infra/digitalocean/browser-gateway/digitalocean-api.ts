@@ -94,6 +94,48 @@ type JsonObject = Record<string, unknown>;
 type DigitalOceanMethod = "GET" | "POST" | "PUT" | "DELETE";
 
 const MAX_OBSERVED_BODY_BYTES = 65_536;
+const DIGITALOCEAN_RFC3339 =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?(Z|([+-])(\d{2}):(\d{2}))$/u;
+
+function leapYear(year: number): boolean {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function daysInMonth(year: number, month: number): number {
+  if (month === 2) return leapYear(year) ? 29 : 28;
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
+}
+
+export function normalizeDigitalOceanInstant(value: unknown, errorCode: string): string {
+  if (typeof value !== "string") throw new Error(errorCode);
+  const match = DIGITALOCEAN_RFC3339.exec(value);
+  if (match === null) throw new Error(errorCode);
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const hour = Number(match[4]);
+  const minute = Number(match[5]);
+  const second = Number(match[6]);
+  const offsetHour = match[10] === undefined ? 0 : Number(match[10]);
+  const offsetMinute = match[11] === undefined ? 0 : Number(match[11]);
+  if (
+    year < 1 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    offsetHour > 23 ||
+    offsetMinute > 59
+  ) {
+    throw new Error(errorCode);
+  }
+  const timestamp = Date.parse(value);
+  if (Number.isNaN(timestamp)) throw new Error(errorCode);
+  return new Date(timestamp).toISOString();
+}
 
 function object(value: unknown, code: string): JsonObject {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
@@ -265,7 +307,10 @@ function parseCertificate(value: unknown): DigitalOceanCertificate {
     dnsNames: stringArray(certificate.dns_names, "certificate_response_rejected"),
     type: string(certificate.type, "certificate_response_rejected"),
     state: string(certificate.state, "certificate_response_rejected"),
-    createdAtUtc: string(certificate.created_at, "certificate_response_rejected")
+    createdAtUtc: normalizeDigitalOceanInstant(
+      certificate.created_at,
+      "certificate_response_rejected"
+    )
   };
 }
 
@@ -295,7 +340,10 @@ function parseLoadBalancer(value: unknown): DigitalOceanLoadBalancer {
     type: string(loadBalancer.type, "load_balancer_response_rejected"),
     network: string(loadBalancer.network, "load_balancer_response_rejected"),
     networkStack: string(loadBalancer.network_stack, "load_balancer_response_rejected"),
-    createdAtUtc: string(loadBalancer.created_at, "load_balancer_response_rejected"),
+    createdAtUtc: normalizeDigitalOceanInstant(
+      loadBalancer.created_at,
+      "load_balancer_response_rejected"
+    ),
     region: string(region.slug, "load_balancer_response_rejected"),
     dropletIds: integerArray(loadBalancer.droplet_ids, "load_balancer_response_rejected"),
     forwardingRules,
