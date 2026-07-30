@@ -72,7 +72,7 @@ export interface DigitalOceanLoadBalancer {
   ip: string;
   status: string;
   type: string;
-  network: string;
+  network: "EXTERNAL";
   networkStack: string;
   createdAtUtc: string;
   region: string;
@@ -172,6 +172,11 @@ function stringArray(value: unknown, code: string): string[] {
 function integerArray(value: unknown, code: string): number[] {
   if (!Array.isArray(value)) throw new Error(code);
   return value.map((entry) => integer(entry, code));
+}
+
+function externalLoadBalancerNetwork(value: unknown): "EXTERNAL" {
+  if (value === undefined || value === null || value === "EXTERNAL") return "EXTERNAL";
+  throw new Error("load_balancer_response_rejected");
 }
 
 function parseDroplet(value: unknown): DigitalOceanDroplet {
@@ -338,7 +343,7 @@ function parseLoadBalancer(value: unknown): DigitalOceanLoadBalancer {
     ip: typeof loadBalancer.ip === "string" ? loadBalancer.ip : "",
     status: string(loadBalancer.status, "load_balancer_response_rejected"),
     type: string(loadBalancer.type, "load_balancer_response_rejected"),
-    network: string(loadBalancer.network, "load_balancer_response_rejected"),
+    network: externalLoadBalancerNetwork(loadBalancer.network),
     networkStack: string(loadBalancer.network_stack, "load_balancer_response_rejected"),
     createdAtUtc: normalizeDigitalOceanInstant(
       loadBalancer.created_at,
