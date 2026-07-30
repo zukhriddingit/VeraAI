@@ -2,10 +2,7 @@ import type {
   DigitalOceanCertificate,
   DigitalOceanResponseObservation
 } from "./digitalocean-api.ts";
-import {
-  DigitalOceanTransportError,
-  normalizeDigitalOceanInstant
-} from "./digitalocean-api.ts";
+import { DigitalOceanTransportError, normalizeDigitalOceanInstant } from "./digitalocean-api.ts";
 import type {
   ResourceCleanupState,
   ResourceCreatedInput,
@@ -142,10 +139,7 @@ function returnedIdentity(
     createdAtUtc:
       certificate.created_at === undefined
         ? null
-        : normalizeDigitalOceanInstant(
-            certificate.created_at,
-            "certificate_response_rejected"
-          )
+        : normalizeDigitalOceanInstant(certificate.created_at, "certificate_response_rejected")
   };
 }
 

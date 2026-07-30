@@ -4,10 +4,7 @@ import type {
   DigitalOceanLoadBalancer,
   DigitalOceanResponseObservation
 } from "./digitalocean-api.ts";
-import {
-  DigitalOceanTransportError,
-  normalizeDigitalOceanInstant
-} from "./digitalocean-api.ts";
+import { DigitalOceanTransportError, normalizeDigitalOceanInstant } from "./digitalocean-api.ts";
 import type {
   ResourceCleanupState,
   ResourceCreatedInput,
@@ -164,10 +161,7 @@ function returnedIdentity(
     createdAtUtc:
       loadBalancer.created_at === undefined
         ? null
-        : normalizeDigitalOceanInstant(
-            loadBalancer.created_at,
-            "load_balancer_response_rejected"
-          )
+        : normalizeDigitalOceanInstant(loadBalancer.created_at, "load_balancer_response_rejected")
   };
 }
 
