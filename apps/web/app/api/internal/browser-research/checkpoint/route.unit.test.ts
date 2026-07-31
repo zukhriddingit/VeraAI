@@ -29,9 +29,10 @@ describe("validCheckpointBearer", () => {
   it("accepts only the exact HTTPS origin of the bearer-authenticated checkpoint request", () => {
     expect(() =>
       assertCheckpointRequestOrigin(
-        new Request("https://vera-api.example.test/api/internal/browser-research/checkpoint", {
+        new Request("https://internal.example.test/api/internal/browser-research/checkpoint", {
           headers: { origin: "https://vera-api.example.test" }
-        })
+        }),
+        { VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN: "https://vera-api.example.test" }
       )
     ).not.toThrow();
     for (const origin of [
@@ -42,11 +43,28 @@ describe("validCheckpointBearer", () => {
     ]) {
       expect(() =>
         assertCheckpointRequestOrigin(
-          new Request("https://vera-api.example.test/api/internal/browser-research/checkpoint", {
+          new Request("https://internal.example.test/api/internal/browser-research/checkpoint", {
             ...(origin === null ? {} : { headers: { origin } })
-          })
+          }),
+          { VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN: "https://vera-api.example.test" }
         )
       ).toThrow(CrossOriginMutationError);
     }
+  });
+
+  it("fails closed in production when the checkpoint origin is missing or malformed", () => {
+    const request = new Request(
+      "https://internal.example.test/api/internal/browser-research/checkpoint",
+      { headers: { origin: "https://vera-api.example.test" } }
+    );
+    expect(() => assertCheckpointRequestOrigin(request, { NODE_ENV: "production" })).toThrow(
+      CrossOriginMutationError
+    );
+    expect(() =>
+      assertCheckpointRequestOrigin(request, {
+        NODE_ENV: "production",
+        VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN: "https://vera-api.example.test/path"
+      })
+    ).toThrow(CrossOriginMutationError);
   });
 });
