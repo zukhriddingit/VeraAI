@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 
+import { CrossOriginMutationError } from "../../../../../lib/server/request-security.ts";
 import {
+  assertCheckpointRequestOrigin,
   CheckpointAuthorizationError,
   requireCheckpointBearer,
   validCheckpointBearer
@@ -22,5 +24,29 @@ describe("validCheckpointBearer", () => {
       CheckpointAuthorizationError
     );
     expect(() => requireCheckpointBearer(null, expected)).toThrow(CheckpointAuthorizationError);
+  });
+
+  it("accepts only the exact HTTPS origin of the bearer-authenticated checkpoint request", () => {
+    expect(() =>
+      assertCheckpointRequestOrigin(
+        new Request("https://vera-api.example.test/api/internal/browser-research/checkpoint", {
+          headers: { origin: "https://vera-api.example.test" }
+        })
+      )
+    ).not.toThrow();
+    for (const origin of [
+      null,
+      "https://app.example.test",
+      "https://vera-api.example.test/path",
+      "https://user@vera-api.example.test"
+    ]) {
+      expect(() =>
+        assertCheckpointRequestOrigin(
+          new Request("https://vera-api.example.test/api/internal/browser-research/checkpoint", {
+            ...(origin === null ? {} : { headers: { origin } })
+          })
+        )
+      ).toThrow(CrossOriginMutationError);
+    }
   });
 });
