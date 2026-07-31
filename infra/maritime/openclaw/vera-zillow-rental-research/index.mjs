@@ -276,6 +276,21 @@ function parseSharedTabs(payload) {
   return payload.tabs;
 }
 
+function isOpaqueTabReference(value) {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 256 &&
+    /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u.test(value)
+  );
+}
+
+function consentTabReference(tab) {
+  if (isOpaqueTabReference(tab.tabId)) return tab.tabId;
+  if (isOpaqueTabReference(tab.suggestedTargetId)) return tab.suggestedTargetId;
+  return tab.targetId;
+}
+
 async function prepareBrowserAction(action, state, dependencies, observedReference = null) {
   checkDeadline(state, dependencies);
   await authorizeAction("verify_shared_tab", state, dependencies, {
@@ -303,21 +318,39 @@ async function prepareBrowserAction(action, state, dependencies, observedReferen
   if (
     typeof tab !== "object" ||
     tab === null ||
-    typeof tab.targetId !== "string" ||
-    typeof tab.url !== "string" ||
-    (state.input.startingTabReference.kind === "target_id"
-      ? tab.targetId !== state.input.startingTabReference.value
-      : state.pinnedTargetId !== null && tab.targetId !== state.pinnedTargetId)
+    !isOpaqueTabReference(tab.targetId) ||
+    typeof tab.url !== "string"
   ) {
     throw new VeraZillowResearchError("shared_tab_changed", {
       manualAction: "shared_tab_changed"
     });
   }
-  if (state.pinnedTargetId === null) state.pinnedTargetId = tab.targetId;
+  const stableTabReference = consentTabReference(tab);
+  const approvedStartingReference = state.input.startingTabReference;
+  const startingReferenceMatches =
+    approvedStartingReference.kind === "single_shared_tab" ||
+    approvedStartingReference.value === tab.targetId ||
+    approvedStartingReference.value === stableTabReference;
+  if (
+    (state.pinnedConsentTabReference === null && !startingReferenceMatches) ||
+    (state.pinnedConsentTabReference !== null &&
+      stableTabReference !== state.pinnedConsentTabReference)
+  ) {
+    throw new VeraZillowResearchError("shared_tab_changed", {
+      manualAction: "shared_tab_changed"
+    });
+  }
+  if (state.pinnedConsentTabReference === null) {
+    state.pinnedConsentTabReference = stableTabReference;
+  }
   const page = validateZillowUrl(tab.url, "either");
   state.activeUrl = page.url;
+  const authorizationTabReference =
+    approvedStartingReference.kind === "target_id"
+      ? approvedStartingReference.value
+      : stableTabReference;
   await authorizeAction(action, state, dependencies, {
-    activeTabId: tab.targetId,
+    activeTabId: authorizationTabReference,
     sharedTabCount: 1,
     hostname: "www.zillow.com",
     observedReferenceHash:
@@ -731,8 +764,7 @@ export async function researchZillowRentals(
     startedMonotonic: dependencies.monotonicNow(),
     browserActions: 0,
     activeUrl: null,
-    pinnedTargetId:
-      input.startingTabReference.kind === "target_id" ? input.startingTabReference.value : null,
+    pinnedConsentTabReference: null,
     lastSharedTabCount: 1,
     resultCardsObserved: 0,
     detailPagesOpened: 0,
