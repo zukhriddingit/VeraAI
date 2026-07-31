@@ -45,11 +45,38 @@ export function requireCheckpointBearer(authorization: string | null, expectedTo
   }
 }
 
-export function assertCheckpointRequestOrigin(request: Request): void {
+function configuredCheckpointOrigin(
+  request: Request,
+  environment: Readonly<Record<string, string | undefined>>
+): string {
+  const configured = environment.VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN?.trim();
+  if (!configured) {
+    if (environment.NODE_ENV === "production") throw new CrossOriginMutationError();
+    return new URL(request.url).origin;
+  }
+  const parsed = new URL(configured);
+  if (
+    parsed.origin !== configured ||
+    parsed.protocol !== "https:" ||
+    parsed.pathname !== "/" ||
+    parsed.search ||
+    parsed.hash ||
+    parsed.username ||
+    parsed.password
+  ) {
+    throw new CrossOriginMutationError();
+  }
+  return parsed.origin;
+}
+
+export function assertCheckpointRequestOrigin(
+  request: Request,
+  environment: Readonly<Record<string, string | undefined>> = process.env
+): void {
   const supplied = request.headers.get("origin");
   if (supplied === null) throw new CrossOriginMutationError();
   try {
-    const requestOrigin = new URL(request.url).origin;
+    const expectedOrigin = configuredCheckpointOrigin(request, environment);
     const suppliedUrl = new URL(supplied);
     if (
       suppliedUrl.origin !== supplied ||
@@ -58,7 +85,7 @@ export function assertCheckpointRequestOrigin(request: Request): void {
       suppliedUrl.hash ||
       suppliedUrl.username ||
       suppliedUrl.password ||
-      suppliedUrl.origin !== requestOrigin
+      suppliedUrl.origin !== expectedOrigin
     ) {
       throw new CrossOriginMutationError();
     }
@@ -80,7 +107,7 @@ export async function POST(request: Request): Promise<Response> {
     const token = process.env.VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN?.trim() ?? "";
     if (token.length < 32) return failure("checkpoint_not_configured", 503);
     requireCheckpointBearer(request.headers.get("authorization"), token);
-    assertCheckpointRequestOrigin(request);
+    assertCheckpointRequestOrigin(request, process.env);
     const founder = VeraUserIdSchema.safeParse(
       process.env.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim()
     );
