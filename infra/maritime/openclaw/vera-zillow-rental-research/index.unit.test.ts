@@ -48,12 +48,12 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-function snapshotForState(stage: string, currentUrl: string) {
+function snapshotForState(stage: string, currentUrl: string, targetId = "shared-tab-1") {
   if (currentUrl === detailUrl) {
     return {
       ok: true,
       format: "ai",
-      targetId: "shared-tab-1",
+      targetId,
       url: detailUrl,
       snapshot:
         '- heading "12 Beacon St, Boston, MA 02108" [ref=e20]\n- text "$3,200/mo"\n- text "2 beds 1 bath 900 sq ft"\n- text "Available now"\n- text "In-unit laundry Dishwasher"',
@@ -66,7 +66,7 @@ function snapshotForState(stage: string, currentUrl: string) {
     return {
       ok: true,
       format: "ai",
-      targetId: "shared-tab-1",
+      targetId,
       url: resultUrl,
       snapshot: '- combobox "Max price" [ref=e4]\n- button "Done" [ref=e5]',
       refs: {
@@ -79,7 +79,7 @@ function snapshotForState(stage: string, currentUrl: string) {
     return {
       ok: true,
       format: "ai",
-      targetId: "shared-tab-1",
+      targetId,
       url: resultUrl,
       snapshot:
         '- button "2 Bedrooms" [ref=e6]\n- button "1 Bathrooms" [ref=e7]\n- button "Done" [ref=e5]',
@@ -90,12 +90,20 @@ function snapshotForState(stage: string, currentUrl: string) {
       }
     };
   }
-  return readyFixture;
+  return { ...readyFixture, targetId };
 }
 
-function happyFetch() {
+function happyFetch(
+  options: {
+    readonly stableTabId?: string;
+    readonly rotateTargetAfterLocation?: boolean;
+    readonly replaceStableTabAfterLocation?: boolean;
+  } = {}
+) {
   let stage = "results";
   let currentUrl = resultUrl;
+  let currentTargetId = "shared-tab-1";
+  let stableTabId = options.stableTabId;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -112,23 +120,37 @@ function happyFetch() {
     const parsed = new URL(url);
     if (parsed.pathname === "/tabs") {
       return jsonResponse({
-        tabs: [{ targetId: "shared-tab-1", title: "Boston rentals", url: currentUrl }]
+        tabs: [
+          {
+            targetId: currentTargetId,
+            ...(stableTabId === undefined
+              ? {}
+              : { tabId: stableTabId, suggestedTargetId: stableTabId }),
+            title: "Boston rentals",
+            url: currentUrl
+          }
+        ]
       });
     }
     if (parsed.pathname === "/snapshot") {
-      return jsonResponse(snapshotForState(stage, currentUrl));
+      return jsonResponse(snapshotForState(stage, currentUrl, currentTargetId));
     }
     if (parsed.pathname === "/act") {
       const action = body as { kind?: string; ref?: string };
+      const actionTargetId = currentTargetId;
+      if (action.kind === "type" && action.ref === "e1") {
+        if (options.rotateTargetAfterLocation) currentTargetId = "navigation-target-2";
+        if (options.replaceStableTabAfterLocation) stableTabId = "replacement-tab-99";
+      }
       if (action.kind === "click" && action.ref === "e2") stage = "price";
       if (action.kind === "click" && action.ref === "e3") stage = "beds";
       if (action.kind === "click" && action.ref === "e5") stage = "results";
-      return jsonResponse({ ok: true, targetId: "shared-tab-1", url: currentUrl });
+      return jsonResponse({ ok: true, targetId: actionTargetId, url: currentUrl });
     }
     if (parsed.pathname === "/navigate") {
       currentUrl = (body as { url: string }).url;
       stage = "results";
-      return jsonResponse({ ok: true, targetId: "shared-tab-1", url: currentUrl });
+      return jsonResponse({ ok: true, targetId: currentTargetId, url: currentUrl });
     }
     return jsonResponse({ error: "unexpected" }, 500);
   });
@@ -284,7 +306,10 @@ describe("Vera Zillow research execution", () => {
   });
 
   it("pins the one shared tab behind the safe consent reference", async () => {
-    const { calls, fetchImplementation } = happyFetch();
+    const { calls, fetchImplementation } = happyFetch({
+      stableTabId: "chrome-tab-42",
+      rotateTargetAfterLocation: true
+    });
     const result = await researchZillowRentals(consentInput, {
       fetch: fetchImplementation,
       now: () => new Date("2026-07-30T12:00:00.000Z"),
@@ -298,10 +323,94 @@ describe("Vera Zillow research execution", () => {
     expect(checkpointBodies).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          activeTabReference: { kind: "target_id", value: "shared-tab-1" }
+          activeTabReference: {
+            kind: "single_shared_tab",
+            value: consentInput.startingTabReference.value
+          }
+        }),
+        expect.objectContaining({
+          activeTabReference: { kind: "target_id", value: "chrome-tab-42" }
         })
       ])
     );
+    expect(
+      checkpointBodies
+        .map((body) => body.activeTabReference)
+        .filter(
+          (reference): reference is { kind: "target_id"; value: string } =>
+            typeof reference === "object" &&
+            reference !== null &&
+            "kind" in reference &&
+            reference.kind === "target_id" &&
+            "value" in reference &&
+            typeof reference.value === "string"
+        )
+        .map((reference) => reference.value)
+    ).toEqual(expect.arrayContaining(["chrome-tab-42"]));
+    expect(
+      checkpointBodies
+        .map((body) => body.activeTabReference)
+        .filter(
+          (reference): reference is { kind: "target_id"; value: string } =>
+            typeof reference === "object" &&
+            reference !== null &&
+            "kind" in reference &&
+            reference.kind === "target_id" &&
+            "value" in reference &&
+            typeof reference.value === "string"
+        )
+        .every((reference) => reference.value === "chrome-tab-42")
+    ).toBe(true);
+    const browserActionTargets = calls
+      .filter((call) => ["/act", "/navigate"].includes(new URL(call.url).pathname))
+      .map((call) => (call.body as { targetId?: string }).targetId);
+    expect(browserActionTargets).toEqual(
+      expect.arrayContaining(["shared-tab-1", "navigation-target-2"])
+    );
+  });
+
+  it("keeps an explicitly approved starting target authorized through consent-tab rotation", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      stableTabId: "chrome-tab-42",
+      rotateTargetAfterLocation: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-07-30T12:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const activeReferences = calls
+      .filter((call) => call.url.includes("/browser-research/checkpoint"))
+      .map(
+        (call) =>
+          (call.body as { activeTabReference?: { kind?: string; value?: string } })
+            .activeTabReference
+      );
+    expect(activeReferences.every((reference) => reference?.value === "shared-tab-1")).toBe(true);
+  });
+
+  it("stops when the stable shared Chrome tab is replaced", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      stableTabId: "chrome-tab-42",
+      rotateTargetAfterLocation: true,
+      replaceStableTabAfterLocation: true
+    });
+    const result = await researchZillowRentals(consentInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-07-30T12:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      manualAction: "shared_tab_changed",
+      listings: []
+    });
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/act").map((call) => call.body)
+    ).toHaveLength(1);
   });
 
   it("stops before browser work when Vera cancels the run", async () => {
