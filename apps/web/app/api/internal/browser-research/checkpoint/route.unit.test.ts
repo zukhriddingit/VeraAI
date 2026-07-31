@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 
+import { CrossOriginMutationError } from "../../../../../lib/server/request-security.ts";
 import {
   assertCheckpointRequestOrigin,
   CheckpointAuthorizationError,
   requireCheckpointBearer,
   validCheckpointBearer
 } from "./route.ts";
-import { CrossOriginMutationError } from "../../../../../lib/server/request-security.ts";
 
 describe("validCheckpointBearer", () => {
   it("accepts only an exact bearer credential", () => {
