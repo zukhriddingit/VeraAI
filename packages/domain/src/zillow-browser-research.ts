@@ -41,20 +41,31 @@ export const ZillowRentalResearchProfileSchema = z
   })
   .strict();
 
-export const ZillowSharedTabReferenceSchema = z
-  .object({
-    kind: z.literal("target_id"),
-    value: z
-      .string()
-      .trim()
-      .min(1)
-      .max(256)
-      .regex(
-        /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u,
-        "The approved shared-tab reference must be an opaque identifier."
-      )
-  })
-  .strict();
+export const ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE =
+  "explicitly_shared_zillow_rental_tab" as const;
+
+export const ZillowSharedTabReferenceSchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("target_id"),
+      value: z
+        .string()
+        .trim()
+        .min(1)
+        .max(256)
+        .regex(
+          /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u,
+          "The approved shared-tab reference must be an opaque identifier."
+        )
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("single_shared_tab"),
+      value: z.literal(ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE)
+    })
+    .strict()
+]);
 
 export const ZillowRentalResearchInputSchema = z
   .object({

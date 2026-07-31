@@ -5,6 +5,7 @@ export const MAX_RESULT_EXPANSIONS = 2;
 export const MAX_DURATION_MS = 90_000;
 
 const PROPERTY_TYPES = new Set(["apartment", "house", "townhouse", "condo"]);
+export const SINGLE_SHARED_TAB_CONSENT_REFERENCE = "explicitly_shared_zillow_rental_tab";
 const MANUAL_ACTIONS = new Set([
   "login_required",
   "two_factor_required",
@@ -144,9 +145,13 @@ export function validateResearchInput(value) {
   if (
     !isRecord(value.startingTabReference) ||
     !hasOnlyKeys(value.startingTabReference, TAB_KEYS) ||
-    value.startingTabReference.kind !== "target_id" ||
-    !requiredText(value.startingTabReference.value, 256) ||
-    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u.test(value.startingTabReference.value)
+    !(
+      (value.startingTabReference.kind === "target_id" &&
+        requiredText(value.startingTabReference.value, 256) &&
+        /^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u.test(value.startingTabReference.value)) ||
+      (value.startingTabReference.kind === "single_shared_tab" &&
+        value.startingTabReference.value === SINGLE_SHARED_TAB_CONSENT_REFERENCE)
+    )
   ) {
     throw new VeraZillowResearchError("invalid_tool_input");
   }
@@ -167,7 +172,7 @@ export function validateResearchInput(value) {
     maxResults: value.maxResults,
     maxDetailPages: value.maxDetailPages,
     startingTabReference: Object.freeze({
-      kind: "target_id",
+      kind: value.startingTabReference.kind,
       value: value.startingTabReference.value.trim()
     })
   });
@@ -390,14 +395,24 @@ export const toolParameters = {
       additionalProperties: false,
       required: ["kind", "value"],
       properties: {
-        kind: { type: "string", enum: ["target_id"] },
+        kind: { type: "string", enum: ["target_id", "single_shared_tab"] },
         value: {
           type: "string",
           minLength: 1,
           maxLength: 256,
           pattern: "^[a-zA-Z0-9][a-zA-Z0-9._:-]*$"
         }
-      }
+      },
+      allOf: [
+        {
+          if: { properties: { kind: { const: "single_shared_tab" } } },
+          then: {
+            properties: {
+              value: { const: SINGLE_SHARED_TAB_CONSENT_REFERENCE }
+            }
+          }
+        }
+      ]
     }
   }
 };

@@ -47,6 +47,20 @@ function safeActivityDetail(event: ActivityEvent): string | null {
       return "Deterministic normalization completed and queued revisioned decision work.";
     case "decision.completed":
       return "Deterministic deduplication, ranking, and risk evaluation completed atomically.";
+    case "rental_research_run_requested":
+      return "The founder explicitly selected read-only rental sources for this one run.";
+    case "zillow_research_started":
+      return "The bounded Zillow tool started against exactly one explicitly shared rental tab.";
+    case "browser.zillow_research_action_checked":
+      return "A redacted Zillow browser action checkpoint revalidated authorization, policy, tab, host, limits, and cancellation.";
+    case "zillow_research_finished":
+      return "Bounded Zillow research stopped after returning only validated observed listing evidence.";
+    case "zillow_research_failed":
+      return "Zillow research failed closed; successful results from other sources were preserved.";
+    case "rental_research_sources_finished":
+      return "All selected sources reached a safe source-level stopping point.";
+    case "rental_research_stopped":
+      return "The user stopped active source work; subsequent browser checkpoints deny continuation.";
     case "seed.evidence_completed":
       return "Sanitized evidence was seeded and queued for production decision processing.";
     case "listing.shortlisted":

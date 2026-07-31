@@ -26,7 +26,7 @@ export interface ZillowResearchCheckpointDependencies {
   readonly environment: ZillowResearchCheckpointEnvironment;
   readonly repositories: {
     readonly sourceJobs: Pick<UserRepositories["sourceJobs"], "getById">;
-    readonly activityEvents: Pick<UserRepositories["activityEvents"], "append">;
+    readonly activityEvents: Pick<UserRepositories["activityEvents"], "append" | "listByTarget">;
   };
   createId(): string;
   now(): string;
@@ -85,9 +85,30 @@ export async function checkZillowResearchAction(
   const approvedStartingTab =
     researchJob?.payload.startingTabReference ?? request.startingTabReference;
   const checkedAt = dependencies.now();
+  const priorChecks = await dependencies.repositories.activityEvents.listByTarget(
+    "source_job",
+    request.veraRunId
+  );
+  const activeTabHash = sha256Text(request.activeTabReference.value);
+  const boundTabHash = priorChecks.find(
+    (event) =>
+      event.action === "browser.zillow_research_action_checked" &&
+      typeof event.metadata.tabBindingHash === "string"
+  )?.metadata.tabBindingHash;
+  const usesConsentReference = approvedStartingTab.kind === "single_shared_tab";
+  const activeReferenceCanBind =
+    usesConsentReference &&
+    request.activeTabReference.kind === "target_id" &&
+    (boundTabHash === undefined || boundTabHash === activeTabHash);
+  const effectiveActiveTab =
+    usesConsentReference &&
+    (request.activeTabReference.kind === "single_shared_tab" || activeReferenceCanBind)
+      ? approvedStartingTab
+      : request.activeTabReference;
   const evaluatedRequest: ZillowResearchCheckpointRequest = {
     ...request,
-    startingTabReference: approvedStartingTab
+    startingTabReference: approvedStartingTab,
+    activeTabReference: effectiveActiveTab
   };
   const response = evaluateZillowResearchAction({
     checkpoint: evaluatedRequest,
@@ -124,7 +145,7 @@ export async function checkZillowResearchAction(
           action: request.action,
           hostname: request.hostname,
           approvedTabHash: sha256Text(approvedStartingTab.value),
-          activeTabHash: sha256Text(request.activeTabReference.value),
+          activeTabHash,
           observedReferenceHash: request.observedReferenceHash,
           elapsedMilliseconds: request.elapsedMilliseconds,
           resultCardsObserved: request.resultCardsObserved,
@@ -141,7 +162,8 @@ export async function checkZillowResearchAction(
         allowed: response.allowed,
         reason: response.reason,
         approvedTabHash: sha256Text(approvedStartingTab.value),
-        activeTabHash: sha256Text(request.activeTabReference.value),
+        activeTabHash,
+        ...(activeReferenceCanBind ? { tabBindingHash: activeTabHash } : {}),
         ...(request.observedReferenceHash === null
           ? {}
           : { observedReferenceHash: request.observedReferenceHash }),

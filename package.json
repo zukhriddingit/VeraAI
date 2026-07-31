@@ -70,6 +70,7 @@
     "test:staging:websocket-diagnostic": "node infra/maritime/diagnostics/websocket-diagnostic-server.mjs",
     "live-search:founder": "tsx scripts/live-search-founder.ts",
     "test:live:founder-search": "VERA_RUN_LIVE_FOUNDER_SEARCH_TESTS=1 vitest run --project unit apps/web/lib/live-founder-search.live.test.ts",
+    "test:live:founder-zillow": "VERA_RUN_LIVE_ZILLOW_RESEARCH_TESTS=1 vitest run --project unit apps/web/lib/live-founder-zillow-research.live.test.ts",
     "test:staging:gateway-http": "tsx scripts/staging/gateway-http-smoke.ts",
     "test:staging:web-push": "VERA_WEB_PUSH_STAGING_TEST=1 vitest run --project unit packages/notifications/src/web-push.staging.test.ts",
     "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures"

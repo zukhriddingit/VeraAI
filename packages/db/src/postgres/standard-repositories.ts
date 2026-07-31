@@ -409,7 +409,8 @@ export function createStandardPostgresRepositories(
           source: listingSourceRecords.source,
           observedAt: listingSourceRecords.observedAt,
           sourcePostedAt: listingSourceRecords.sourcePostedAt,
-          rawJson: rawListings.rawJson
+          rawJson: rawListings.rawJson,
+          captureMetadata: rawListings.captureMetadata
         })
         .from(canonicalListingSources)
         .innerJoin(
@@ -466,6 +467,30 @@ export function createStandardPostgresRepositories(
               return parsed.success ? parsed.data : null;
             })
             .find((evidence) => evidence !== null) ?? null;
+        const zillowMetadata = listingMemberships.map((membership) => membership.captureMetadata);
+        const researchNotes = [
+          ...new Set(
+            zillowMetadata.flatMap((metadata) =>
+              Array.isArray(metadata.researchNotes)
+                ? metadata.researchNotes.filter(
+                    (note): note is string => typeof note === "string" && note.trim().length > 0
+                  )
+                : []
+            )
+          )
+        ].slice(0, 20);
+        const safeExtractionWarnings = [
+          ...new Set(
+            zillowMetadata.flatMap((metadata) =>
+              Array.isArray(metadata.safeExtractionWarnings)
+                ? metadata.safeExtractionWarnings.filter(
+                    (warning): warning is string =>
+                      typeof warning === "string" && warning.trim().length > 0
+                  )
+                : []
+            )
+          )
+        ].slice(0, 20);
         const unknownFields = [
           ["monthly rent", listing.monthlyRentCents],
           ["recurring fees", listing.recurringFeesCents],
@@ -528,7 +553,9 @@ export function createStandardPostgresRepositories(
             riskIndicatorCount: currentRisks.filter(({ status }) => status === "open").length,
             highestRiskSeverity:
               highestRiskSeverity === "informational" ? "info" : (highestRiskSeverity ?? null),
-            liveEvidence
+            liveEvidence,
+            researchNotes,
+            safeExtractionWarnings
           })
         );
       }

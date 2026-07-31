@@ -31,6 +31,13 @@ const input = {
   maxDetailPages: 1,
   startingTabReference: { kind: "target_id", value: "shared-tab-1" }
 } as const;
+const consentInput = {
+  ...input,
+  startingTabReference: {
+    kind: "single_shared_tab",
+    value: "explicitly_shared_zillow_rental_tab"
+  }
+} as const;
 const resultUrl = "https://www.zillow.com/boston-ma/rentals/";
 const detailUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
 
@@ -273,6 +280,27 @@ describe("Vera Zillow research execution", () => {
         .filter((call) => new URL(call.url).pathname === "/act")
         .map((call) => (call.body as { kind: string }).kind)
     ).toEqual(expect.arrayContaining(["type", "click"]));
+  });
+
+  it("pins the one shared tab behind the safe consent reference", async () => {
+    const { calls, fetchImplementation } = happyFetch();
+    const result = await researchZillowRentals(consentInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-07-30T12:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const checkpointBodies = calls
+      .filter((call) => call.url.includes("/browser-research/checkpoint"))
+      .map((call) => call.body as { activeTabReference?: unknown });
+    expect(checkpointBodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          activeTabReference: { kind: "target_id", value: "shared-tab-1" }
+        })
+      ])
+    );
   });
 
   it("stops before browser work when Vera cancels the run", async () => {

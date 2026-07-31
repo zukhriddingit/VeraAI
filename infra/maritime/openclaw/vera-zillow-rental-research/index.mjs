@@ -204,7 +204,7 @@ async function authorizeAction(action, state, dependencies, input = {}) {
     action,
     startingTabReference: state.input.startingTabReference,
     activeTabReference: {
-      kind: "target_id",
+      kind: input.activeTabId === undefined ? state.input.startingTabReference.kind : "target_id",
       value: input.activeTabId ?? state.input.startingTabReference.value
     },
     sharedTabCount: input.sharedTabCount ?? state.lastSharedTabCount,
@@ -303,12 +303,15 @@ async function prepareBrowserAction(action, state, dependencies, observedReferen
     tab === null ||
     typeof tab.targetId !== "string" ||
     typeof tab.url !== "string" ||
-    tab.targetId !== state.input.startingTabReference.value
+    (state.input.startingTabReference.kind === "target_id"
+      ? tab.targetId !== state.input.startingTabReference.value
+      : state.pinnedTargetId !== null && tab.targetId !== state.pinnedTargetId)
   ) {
     throw new VeraZillowResearchError("shared_tab_changed", {
       manualAction: "shared_tab_changed"
     });
   }
+  if (state.pinnedTargetId === null) state.pinnedTargetId = tab.targetId;
   const page = validateZillowUrl(tab.url, "either");
   state.activeUrl = page.url;
   await authorizeAction(action, state, dependencies, {
@@ -726,6 +729,8 @@ export async function researchZillowRentals(
     startedMonotonic: dependencies.monotonicNow(),
     browserActions: 0,
     activeUrl: null,
+    pinnedTargetId:
+      input.startingTabReference.kind === "target_id" ? input.startingTabReference.value : null,
     lastSharedTabCount: 1,
     resultCardsObserved: 0,
     detailPagesOpened: 0,

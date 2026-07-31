@@ -77,6 +77,7 @@ function fixture(currentJob: SourceJob | null = job) {
     repositories: {
       sourceJobs: { getById: async () => currentJob },
       activityEvents: {
+        listByTarget: async () => activities,
         append: async (event) => {
           activities.push(event);
           return event;
@@ -120,6 +121,39 @@ describe("checkZillowResearchAction", () => {
         activeTabReference: { kind: "target_id", value: "attacker-selected-tab" }
       })
     ).resolves.toMatchObject({ allowed: false, reason: "shared_tab_mismatch" });
+  });
+
+  it("binds a safe consent reference to one exact shared tab without persisting the raw ID", async () => {
+    const consentJob = SourceJobSchema.parse({
+      ...job,
+      payload: {
+        ...payload,
+        startingTabReference: {
+          kind: "single_shared_tab",
+          value: "explicitly_shared_zillow_rental_tab"
+        }
+      }
+    });
+    const { activities, dependencies } = fixture(consentJob);
+    const consentRequest = {
+      ...request,
+      startingTabReference: {
+        kind: "single_shared_tab",
+        value: "explicitly_shared_zillow_rental_tab"
+      } as const,
+      activeTabReference: { kind: "target_id", value: "bound-tab-17" } as const
+    };
+    await expect(checkZillowResearchAction(dependencies, consentRequest)).resolves.toMatchObject({
+      allowed: true
+    });
+    await expect(
+      checkZillowResearchAction(dependencies, {
+        ...consentRequest,
+        activeTabReference: { kind: "target_id", value: "different-tab" }
+      })
+    ).resolves.toMatchObject({ allowed: false, reason: "shared_tab_mismatch" });
+    expect(JSON.stringify(activities)).not.toContain("bound-tab-17");
+    expect(JSON.stringify(activities)).not.toContain("different-tab");
   });
 
   it("denies missing, completed, and cancelled jobs", async () => {

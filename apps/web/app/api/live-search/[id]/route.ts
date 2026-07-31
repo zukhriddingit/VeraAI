@@ -6,6 +6,10 @@ import {
   LiveSearchServiceError,
   parseLiveSearchEnvironment
 } from "../../../../lib/live-search-service";
+import {
+  getRentalResearchStatus,
+  RentalResearchServiceError
+} from "../../../../lib/rental-research-service";
 import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
@@ -24,7 +28,14 @@ export async function GET(
     assertLiveSearchFounder(session.userId, parseLiveSearchEnvironment(process.env));
     const { id } = await context.params;
     const runId = EntityIdSchema.parse(id);
-    return Response.json(await getLiveSearchStatus(runId, { repositories: session.repositories }), {
+    const events = await session.repositories.activityEvents.list();
+    const isMultiSource = events.some(
+      (event) => event.correlationId === runId && event.action === "rental_research_run_requested"
+    );
+    const status = isMultiSource
+      ? await getRentalResearchStatus(runId, { repositories: session.repositories })
+      : await getLiveSearchStatus(runId, { repositories: session.repositories });
+    return Response.json(status, {
       status: 200,
       headers
     });
@@ -35,7 +46,7 @@ export async function GET(
         { status: 401, headers }
       );
     }
-    if (error instanceof LiveSearchServiceError) {
+    if (error instanceof LiveSearchServiceError || error instanceof RentalResearchServiceError) {
       return Response.json(
         { code: error.code, message: error.message },
         { status: error.status, headers }
