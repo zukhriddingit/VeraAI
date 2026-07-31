@@ -13,6 +13,7 @@ export * from "./gmail-alert-connector.ts";
 export * from "./maritime-client.ts";
 export * from "./maritime-openclaw-client.ts";
 export * from "./maritime-remote-extension-client.ts";
+export * from "./maritime-zillow-research-client.ts";
 export * from "./production-maritime-orchestrator.ts";
 export * from "./rentcast-connector.ts";
 export * from "./normalizer.ts";
