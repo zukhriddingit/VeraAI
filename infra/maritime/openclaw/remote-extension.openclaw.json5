@@ -48,10 +48,13 @@
   plugins: {
     enabled: true,
     bundledDiscovery: "allowlist",
-    allow: ["browser", "vera-read-shared-tab"],
+    allow: ["browser", "vera-read-shared-tab", "vera-zillow-rental-research"],
     deny: [],
     load: {
-      paths: ["/opt/vera/plugins/vera-read-shared-tab"]
+      paths: [
+        "/opt/vera/plugins/vera-read-shared-tab",
+        "/opt/vera/plugins/vera-zillow-rental-research"
+      ]
     },
     entries: {
       browser: {
@@ -62,6 +65,9 @@
         }
       },
       "vera-read-shared-tab": {
+        enabled: true
+      },
+      "vera-zillow-rental-research": {
         enabled: true
       }
     },
@@ -84,7 +90,7 @@
   },
   tools: {
     profile: "minimal",
-    allow: ["vera_read_shared_tab_snapshot"],
+    allow: ["vera_read_shared_tab_snapshot", "vera_zillow_rental_research_v1"],
     alsoAllow: [],
     deny: [
       "browser",

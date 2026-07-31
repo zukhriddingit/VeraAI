@@ -1,0 +1,7 @@
+{
+  "login_required": "- heading \"Sign in to continue\"\n- textbox \"Email\"",
+  "two_factor_required": "- heading \"Two-step verification\"\n- textbox \"Verification code\"",
+  "captcha_required": "- heading \"Verify you are human\"\n- text \"Complete CAPTCHA\"",
+  "consent_required": "- dialog \"Cookie consent\"\n- button \"Accept all cookies\"",
+  "blocked": "- heading \"Access denied\"\n- text \"Unusual traffic security check\""
+}

@@ -16,6 +16,7 @@ export const REMOTE_EXTENSION_RUNTIME_MANIFEST =
   "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:628ce0093a6f9443cfd766493ce872edaa60e05d158a4ea6790fe4f26d6780a8";
 export const REMOTE_EXTENSION_SOURCE_COMMIT = "01bc0adc02808dbaf01089d1464ee8db5fe90593";
 export const REMOTE_EXTENSION_TOOL = "vera_read_shared_tab_snapshot";
+export const ZILLOW_RESEARCH_TOOL = "vera_zillow_rental_research_v1";
 
 type JsonObject = Record<string, unknown>;
 
@@ -58,8 +59,15 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly config: unknown;
   readonly pluginManifest: unknown;
   readonly pluginPackage: unknown;
+  readonly zillowPluginManifest: unknown;
+  readonly zillowPluginPackage: unknown;
   readonly imageManifest: unknown;
+  readonly acceptedRollbackManifest: unknown;
+  readonly candidateManifest: unknown;
   readonly pluginSource: string;
+  readonly zillowPluginSource: string;
+  readonly zillowContractSource: string;
+  readonly zillowSnapshotSource: string;
   readonly auditDeviceSource: string;
   readonly dockerfile: string;
   readonly supervisorSource: string;
@@ -71,8 +79,15 @@ export function findRemoteExtensionConfigViolations(input: {
     config,
     pluginManifest,
     pluginPackage,
+    zillowPluginManifest,
+    zillowPluginPackage,
     imageManifest,
+    acceptedRollbackManifest,
+    candidateManifest,
     pluginSource,
+    zillowPluginSource,
+    zillowContractSource,
+    zillowSnapshotSource,
     auditDeviceSource,
     dockerfile,
     supervisorSource,
@@ -119,6 +134,97 @@ export function findRemoteExtensionConfigViolations(input: {
       "Remote extension image manifest must pin the reviewed release and stay blocked."
     );
   }
+  const rollbackImage =
+    "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd";
+  if (
+    !exactObjectKeys(objectAt(acceptedRollbackManifest), [
+      "schemaVersion",
+      "milestone",
+      "classification",
+      "image",
+      "sourceCommit",
+      "openclawVersion",
+      "extensionVersion",
+      "runtimeUid",
+      "runtimeGid",
+      "extensionManifestSha256",
+      "immutableRollbackArtifact",
+      "acceptedAt"
+    ]) ||
+    objectAt(acceptedRollbackManifest)?.schemaVersion !== 1 ||
+    objectAt(acceptedRollbackManifest)?.milestone !== "13A" ||
+    objectAt(acceptedRollbackManifest)?.classification !== "passed_13a" ||
+    objectAt(acceptedRollbackManifest)?.image !== rollbackImage ||
+    objectAt(acceptedRollbackManifest)?.sourceCommit !==
+      "f155bca09d57017ac141d2c8f3eebd26657aeb3d" ||
+    objectAt(acceptedRollbackManifest)?.openclawVersion !== "2026.7.1" ||
+    objectAt(acceptedRollbackManifest)?.extensionVersion !== "2.0.0" ||
+    objectAt(acceptedRollbackManifest)?.runtimeUid !== 1000 ||
+    objectAt(acceptedRollbackManifest)?.runtimeGid !== 1000 ||
+    objectAt(acceptedRollbackManifest)?.extensionManifestSha256 !==
+      "90dc60974ff7b68b4b487cc7040268d4ce458224beeb8bb715e56f59d23bec23" ||
+    objectAt(acceptedRollbackManifest)?.immutableRollbackArtifact !== true
+  ) {
+    violations.push("The accepted Milestone 13A image must remain an immutable rollback artifact.");
+  }
+  const candidate = objectAt(candidateManifest);
+  const candidateState = candidate?.publicationState;
+  const unpublishedCandidate =
+    candidateState === "unpublished" &&
+    candidate?.image === null &&
+    candidate.sourceCommit === null &&
+    candidate.signatureVerified === false &&
+    candidate.sbomVerified === false &&
+    candidate.provenanceVerified === false &&
+    candidate.highVulnerabilities === null &&
+    candidate.criticalVulnerabilities === null;
+  const publishedImage =
+    typeof candidate?.image === "string" &&
+    /^ghcr\.io\/zukhriddingit\/vera-openclaw-gateway@sha256:[a-f0-9]{64}$/u.test(candidate.image) &&
+    candidate.image !== rollbackImage;
+  const publishedCandidate =
+    candidateState === "published" &&
+    publishedImage &&
+    typeof candidate?.sourceCommit === "string" &&
+    /^[a-f0-9]{40}$/u.test(candidate.sourceCommit) &&
+    candidate.signatureVerified === true &&
+    candidate.sbomVerified === true &&
+    candidate.provenanceVerified === true &&
+    candidate.highVulnerabilities === 0 &&
+    candidate.criticalVulnerabilities === 0;
+  if (
+    !exactObjectKeys(candidate, [
+      "schemaVersion",
+      "milestone",
+      "tool",
+      "rollbackImage",
+      "publicationState",
+      "image",
+      "sourceCommit",
+      "openclawVersion",
+      "extensionVersion",
+      "runtimeUid",
+      "runtimeGid",
+      "signatureVerified",
+      "sbomVerified",
+      "provenanceVerified",
+      "highVulnerabilities",
+      "criticalVulnerabilities"
+    ]) ||
+    candidate?.schemaVersion !== 1 ||
+    candidate.milestone !== "13B" ||
+    candidate.tool !== ZILLOW_RESEARCH_TOOL ||
+    candidate.rollbackImage !== rollbackImage ||
+    candidate.openclawVersion !== "2026.7.1" ||
+    candidate.extensionVersion !== "2.0.0" ||
+    candidate.runtimeUid !== 1000 ||
+    candidate.runtimeGid !== 1000 ||
+    (!unpublishedCandidate && !publishedCandidate)
+  ) {
+    violations.push(
+      "The Milestone 13B candidate must preserve rollback identity and use one verified immutable publication."
+    );
+  }
   if (
     !dockerfile.includes(`FROM ${REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE} AS openclaw-runtime`) ||
     !dockerfile.includes(`FROM ${REMOTE_EXTENSION_RUNTIME_BASE_IMAGE} AS final`) ||
@@ -130,6 +236,9 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("--chmod=0555") ||
     !dockerfile.includes("remote-extension-supervisor.mjs") ||
     !dockerfile.includes("remote-extension-route-filter.mjs") ||
+    !dockerfile.includes("vera-zillow-rental-research/index.mjs") ||
+    !dockerfile.includes("vera-zillow-rental-research/contract.mjs") ||
+    !dockerfile.includes("vera-zillow-rental-research/zillow-snapshot.mjs") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
     !dockerfile.includes("OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
@@ -259,12 +368,20 @@ export function findRemoteExtensionConfigViolations(input: {
   if (
     plugins?.enabled !== true ||
     plugins.bundledDiscovery !== "allowlist" ||
-    !exact(stringArrayAt(plugins, "allow"), ["browser", "vera-read-shared-tab"]) ||
-    !exact(stringArrayAt(plugins, "load", "paths"), ["/opt/vera/plugins/vera-read-shared-tab"]) ||
+    !exact(stringArrayAt(plugins, "allow"), [
+      "browser",
+      "vera-read-shared-tab",
+      "vera-zillow-rental-research"
+    ]) ||
+    !exact(stringArrayAt(plugins, "load", "paths"), [
+      "/opt/vera/plugins/vera-read-shared-tab",
+      "/opt/vera/plugins/vera-zillow-rental-research"
+    ]) ||
     objectAt(plugins, "entries", "browser")?.enabled !== true ||
-    objectAt(plugins, "entries", "vera-read-shared-tab")?.enabled !== true
+    objectAt(plugins, "entries", "vera-read-shared-tab")?.enabled !== true ||
+    objectAt(plugins, "entries", "vera-zillow-rental-research")?.enabled !== true
   ) {
-    violations.push("Only the browser and Vera snapshot plugins may be enabled.");
+    violations.push("Only the internal browser and two reviewed Vera plugins may be enabled.");
   }
   const browserHooks = objectAt(plugins, "entries", "browser", "hooks");
   if (
@@ -276,13 +393,13 @@ export function findRemoteExtensionConfigViolations(input: {
 
   const tools = objectAt(config, "tools");
   if (
-    !exact(stringArrayAt(tools, "allow"), [REMOTE_EXTENSION_TOOL]) ||
+    !exact(stringArrayAt(tools, "allow"), [REMOTE_EXTENSION_TOOL, ZILLOW_RESEARCH_TOOL]) ||
     !stringArrayAt(tools, "deny")?.includes("browser") ||
     !stringArrayAt(tools, "deny")?.includes("gateway") ||
     !stringArrayAt(tools, "deny")?.includes("exec") ||
     !stringArrayAt(tools, "deny")?.includes("message")
   ) {
-    violations.push("The model may receive only Vera's snapshot tool.");
+    violations.push("The model may receive only the two reviewed Vera-owned tools.");
   }
 
   const gateway = objectAt(config, "gateway");
@@ -328,6 +445,20 @@ export function findRemoteExtensionConfigViolations(input: {
   ) {
     violations.push("Snapshot plugin package must target only OpenClaw 2026.7.1.");
   }
+  if (
+    objectAt(zillowPluginManifest)?.id !== "vera-zillow-rental-research" ||
+    !exact(stringArrayAt(zillowPluginManifest, "contracts", "tools"), [ZILLOW_RESEARCH_TOOL]) ||
+    objectAt(zillowPluginManifest, "configSchema")?.additionalProperties !== false
+  ) {
+    violations.push("Zillow plugin manifest must expose exactly one reviewed versioned tool.");
+  }
+  if (
+    objectAt(zillowPluginPackage, "peerDependencies")?.openclaw !==
+      REMOTE_EXTENSION_OPENCLAW_VERSION ||
+    !exact(stringArrayAt(zillowPluginPackage, "openclaw", "extensions"), ["./index.mjs"])
+  ) {
+    violations.push("Zillow plugin package must target only OpenClaw 2026.7.1.");
+  }
 
   if (!/name:\s*"vera_read_shared_tab_snapshot"/u.test(pluginSource)) {
     violations.push("Snapshot plugin tool name is missing.");
@@ -361,6 +492,49 @@ export function findRemoteExtensionConfigViolations(input: {
   }
   if (/MARITIME_(?:API_KEY|OPENCLAW_AGENT_ID)/u.test(pluginSource)) {
     violations.push("Snapshot plugin must not reuse the RentCast live-search Maritime identity.");
+  }
+  if (
+    !zillowPluginSource.includes(`name: TOOL_NAME`) ||
+    !zillowContractSource.includes(`export const TOOL_NAME = "${ZILLOW_RESEARCH_TOOL}"`) ||
+    !zillowContractSource.includes("additionalProperties: false") ||
+    !zillowContractSource.includes("export const MAX_RESULTS = 10") ||
+    !zillowContractSource.includes("export const MAX_DETAIL_PAGES = 5") ||
+    !zillowContractSource.includes("export const MAX_RESULT_EXPANSIONS = 2") ||
+    !zillowContractSource.includes("export const MAX_DURATION_MS = 90_000")
+  ) {
+    violations.push("Zillow tool contract must remain strict, versioned, and bounded.");
+  }
+  if (
+    !zillowPluginSource.includes('const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18792"') ||
+    !zillowPluginSource.includes('path !== "/navigate" && path !== "/act"') ||
+    !zillowPluginSource.includes('new Set(["click", "type"])') ||
+    !zillowPluginSource.includes('kind: "scrollIntoView"') ||
+    !zillowPluginSource.includes("VERA_BROWSER_RESEARCH_CHECKPOINT_URL") ||
+    !zillowPluginSource.includes("VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN") ||
+    !zillowSnapshotSource.includes('"www.zillow.com"') ||
+    !zillowSnapshotSource.includes("DETAIL_PATH_PATTERN") ||
+    !zillowSnapshotSource.includes("RESULT_PATH_PATTERNS")
+  ) {
+    violations.push(
+      "Zillow plugin must use only the fixed checkpointed semantic browser-control workflow."
+    );
+  }
+  const zillowRuntimeSource = [zillowPluginSource, zillowContractSource, zillowSnapshotSource].join(
+    "\n"
+  );
+  if (
+    /["'`]\/(?:screenshot|download|upload|cookies?|storage|pdf|dialog)(?:[/?'"`])/iu.test(
+      zillowRuntimeSource
+    ) ||
+    /\b(?:eval|Function)\s*\(/u.test(zillowRuntimeSource) ||
+    /\b(?:selector|javascript|clickCoords)\s*:/u.test(zillowRuntimeSource) ||
+    /tools:\s*\[[^\]]*(?:browser|navigate|act|evaluate|shell|filesystem)/iu.test(
+      zillowRuntimeSource
+    )
+  ) {
+    violations.push(
+      "Zillow plugin must not expose or call forbidden browser, script, file, or generic tool surfaces."
+    );
   }
 
   if (
@@ -419,8 +593,28 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     ),
     pluginManifest: readJson(resolve(directory, "vera-read-shared-tab/openclaw.plugin.json")),
     pluginPackage: readJson(resolve(directory, "vera-read-shared-tab/package.json")),
+    zillowPluginManifest: readJson(
+      resolve(directory, "vera-zillow-rental-research/openclaw.plugin.json")
+    ),
+    zillowPluginPackage: readJson(resolve(directory, "vera-zillow-rental-research/package.json")),
     imageManifest: readJson(resolve(directory, "remote-extension-image.json")),
+    acceptedRollbackManifest: readJson(
+      resolve(directory, "remote-extension-image.m13a-accepted.json")
+    ),
+    candidateManifest: readJson(resolve(directory, "remote-extension-image.m13b-candidate.json")),
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
+    zillowPluginSource: readFileSync(
+      resolve(directory, "vera-zillow-rental-research/index.mjs"),
+      "utf8"
+    ),
+    zillowContractSource: readFileSync(
+      resolve(directory, "vera-zillow-rental-research/contract.mjs"),
+      "utf8"
+    ),
+    zillowSnapshotSource: readFileSync(
+      resolve(directory, "vera-zillow-rental-research/zillow-snapshot.mjs"),
+      "utf8"
+    ),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
     supervisorSource: readFileSync(resolve(directory, "remote-extension-supervisor.mjs"), "utf8"),

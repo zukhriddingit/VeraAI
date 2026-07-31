@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "milestone": "13B",
+  "tool": "vera_zillow_rental_research_v1",
+  "rollbackImage": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd",
+  "publicationState": "unpublished",
+  "image": null,
+  "sourceCommit": null,
+  "openclawVersion": "2026.7.1",
+  "extensionVersion": "2.0.0",
+  "runtimeUid": 1000,
+  "runtimeGid": 1000,
+  "signatureVerified": false,
+  "sbomVerified": false,
+  "provenanceVerified": false,
+  "highVulnerabilities": null,
+  "criticalVulnerabilities": null
+}
