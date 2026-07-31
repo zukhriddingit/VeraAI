@@ -41,13 +41,13 @@ describe("web mutation boundary verifier", () => {
     ).toEqual([]);
   });
 
-  it("accepts an authenticated same-origin internal checkpoint mutation", () => {
+  it("accepts an authenticated exact-request-origin internal checkpoint mutation", () => {
     expect(
       findMutationBoundaryViolations(
         files(`
           export async function POST(request: Request) {
             requireCheckpointBearer(request.headers.get("authorization"), checkpointToken);
-            assertSameOriginMutation(request);
+            assertCheckpointRequestOrigin(request);
             const input = await readBoundedJson(request, { maxBytes: 4_000 });
             return checkpoint(input);
           }
