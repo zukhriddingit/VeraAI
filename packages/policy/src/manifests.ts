@@ -129,6 +129,46 @@ export const ZILLOW_CURRENT_TAB_MANIFEST = freezeManifest(
 );
 
 /**
+ * Founder-only rental research. The reviewed tool is disabled at rest and can be
+ * activated only by the separate per-run founder, kill-switch, consent-tab, and
+ * action-budget checks in zillow-research-policy.ts.
+ */
+export const ZILLOW_RENTAL_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "zillow.browser-research.v1",
+    displayName: "Zillow rental research (founder experiment)",
+    version: 1,
+    source: "zillow",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["zillow.rental_research.v1"],
+    allowedDomains: ["www.zillow.com"],
+    allowedOrigins: ["https://www.zillow.com/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.zillow.browser-research.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-07-30",
+    decisionRecord: "docs/superpowers/specs/2026-07-30-bounded-zillow-browser-research-design.md",
+    notes:
+      "Unsupported founder-only experiment. One explicit user-triggered run may inspect one shared Zillow rental tab through vera_zillow_rental_research_v1; no schedule, background polling, login automation, contact, application, tour, messaging, payment, or file transfer is permitted.",
+    createdAt: "2026-07-30T00:00:00.000Z",
+    updatedAt: "2026-07-30T00:00:00.000Z"
+  })
+);
+
+/**
  * Calendar write access is deliberately narrower than the provider scope: Vera may
  * create only one user-approved tentative hold through the reviewed Google API.
  */
@@ -252,5 +292,6 @@ export const INITIAL_LOCAL_MANIFESTS = Object.freeze([
   GOOGLE_GMAIL_ALERT_MANIFEST,
   GOOGLE_CALENDAR_MANIFEST,
   RENTCAST_RENTAL_MANIFEST,
-  ZILLOW_CURRENT_TAB_MANIFEST
+  ZILLOW_CURRENT_TAB_MANIFEST,
+  ZILLOW_RENTAL_RESEARCH_MANIFEST
 ]) satisfies readonly SourcePolicyManifest[];

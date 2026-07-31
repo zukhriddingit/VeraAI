@@ -201,6 +201,55 @@ export const ZillowSafeActionAuditEntrySchema = z
   })
   .strict();
 
+export const ZillowResearchCheckpointRequestSchema = z
+  .object({
+    version: z.literal("1"),
+    veraRunId: EntityIdSchema,
+    action: ZillowSafeActionKindSchema,
+    startingTabReference: ZillowSharedTabReferenceSchema,
+    activeTabReference: ZillowSharedTabReferenceSchema,
+    sharedTabCount: z.number().int().nonnegative().max(100),
+    hostname: z.string().trim().toLowerCase().min(1).max(253),
+    elapsedMilliseconds: z.number().int().nonnegative().max(900_000),
+    resultCardsObserved: z.number().int().nonnegative().max(1_000),
+    detailPagesOpened: z.number().int().nonnegative().max(1_000),
+    resultPageExpansions: z.number().int().nonnegative().max(1_000),
+    observedReferenceHash: Sha256Schema.nullable(),
+    requestedAt: IsoDateTimeSchema
+  })
+  .strict();
+
+export const ZillowResearchCheckpointDenialReasonSchema = z.enum([
+  "founder_denied",
+  "source_disabled",
+  "user_trigger_required",
+  "browser_kill_switch_active",
+  "run_not_active",
+  "cancelled",
+  "single_shared_tab_required",
+  "shared_tab_mismatch",
+  "hostname_not_allowed",
+  "run_limit_exceeded",
+  "source_policy_denied"
+]);
+
+export const ZillowResearchCheckpointResponseSchema = z
+  .object({
+    allowed: z.boolean(),
+    reason: z.union([z.literal("allowed"), ZillowResearchCheckpointDenialReasonSchema]),
+    checkedAt: IsoDateTimeSchema
+  })
+  .strict()
+  .superRefine((response, context) => {
+    if (response.allowed !== (response.reason === "allowed")) {
+      context.addIssue({
+        code: "custom",
+        path: ["reason"],
+        message: "Checkpoint decisions must pair allowed=true only with the allowed reason."
+      });
+    }
+  });
+
 export const ZillowRentalResearchOutputSchema = z
   .object({
     version: z.literal("1"),
@@ -256,4 +305,11 @@ export type ZillowFieldProvenance = z.infer<typeof ZillowFieldProvenanceSchema>;
 export type ZillowObservedListing = z.infer<typeof ZillowObservedListingSchema>;
 export type ZillowSafeActionKind = z.infer<typeof ZillowSafeActionKindSchema>;
 export type ZillowSafeActionAuditEntry = z.infer<typeof ZillowSafeActionAuditEntrySchema>;
+export type ZillowResearchCheckpointRequest = z.infer<typeof ZillowResearchCheckpointRequestSchema>;
+export type ZillowResearchCheckpointDenialReason = z.infer<
+  typeof ZillowResearchCheckpointDenialReasonSchema
+>;
+export type ZillowResearchCheckpointResponse = z.infer<
+  typeof ZillowResearchCheckpointResponseSchema
+>;
 export type ZillowRentalResearchOutput = z.infer<typeof ZillowRentalResearchOutputSchema>;

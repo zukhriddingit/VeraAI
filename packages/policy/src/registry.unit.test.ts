@@ -297,12 +297,13 @@ describe("initial local manifests", () => {
       "google.gmail.listing-alerts.v1",
       "google.calendar.v1",
       "rentcast.rental-listings.v1",
-      "zillow.current-tab.v1"
+      "zillow.current-tab.v1",
+      "zillow.browser-research.v1"
     ]);
     for (const manifest of INITIAL_LOCAL_MANIFESTS) {
       expect(Object.isFrozen(manifest)).toBe(true);
       expect(manifest.schemaVersion).toBe(2);
-      expect(manifest.enabled).toBe(manifest.connectorId !== "zillow.current-tab.v1");
+      expect(manifest.enabled).toBe(!manifest.connectorId.startsWith("zillow."));
       expect(manifest.execution).toBe(
         manifest.connectorId === "google.gmail.listing-alerts.v1" ? "scheduled" : "manual"
       );
@@ -377,6 +378,21 @@ describe("initial local manifests", () => {
       allowedHttpMethods: ["GET"],
       requiresUserSession: true,
       requiresApproval: true
+    });
+    expect(manifests["zillow.browser-research.v1"]).toMatchObject({
+      acquisitionMode: "local_browser",
+      policyState: "experimental_personal",
+      enabled: false,
+      execution: "manual",
+      capabilities: ["browser.capture"],
+      allowedOperations: ["zillow.rental_research.v1"],
+      allowedDomains: ["www.zillow.com"],
+      allowedOrigins: ["https://www.zillow.com/"],
+      allowedHttpMethods: ["GET"],
+      requiresUserSession: true,
+      requiresApproval: true,
+      minimumIntervalSeconds: null,
+      maxConcurrency: 1
     });
   });
 
