@@ -229,7 +229,7 @@ requireText(
 );
 requireText(
   environmentExample,
-  /VERA_ZILLOW_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BROWSER_RESEARCH_CHECKPOINT_URL=[\r\n]+VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN=/u,
+  /VERA_ZILLOW_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BROWSER_RESEARCH_CHECKPOINT_URL=[\r\n]+(?:#[^\r\n]*[\r\n]+)?VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN=[\r\n]+VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN=/u,
   "The bounded Zillow tool must remain disabled by default with server-only checkpoint configuration."
 );
 rejectText(
