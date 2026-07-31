@@ -218,13 +218,15 @@ async function authorizeAction(action, state, dependencies, input = {}) {
   };
   let response;
   try {
-    response = await dependencies.fetch(checkpointEndpoint(), {
+    const endpoint = checkpointEndpoint();
+    response = await dependencies.fetch(endpoint, {
       method: "POST",
       redirect: "error",
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        Origin: endpoint.origin
       },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(remainingRequestTimeout(state, dependencies))

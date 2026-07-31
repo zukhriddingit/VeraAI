@@ -5,7 +5,8 @@ import { fileURLToPath } from "node:url";
 import ts from "typescript";
 
 const MUTATION_HANDLERS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
-const AUTHENTICATION_CALL = /\b(?:requireVeraSession|calendarRouteService)\s*\(/u;
+const AUTHENTICATION_CALL =
+  /\b(?:requireVeraSession|calendarRouteService|requireCheckpointBearer)\s*\(/u;
 const ORIGIN_CALL = /\bassertSameOriginMutation\s*\(/u;
 const BOUNDED_READER_CALL = /\b(?:readBoundedJson|readCalendarMutationJson)\s*\(/u;
 const DIRECT_BODY_READER = /\brequest\s*\.\s*(?:json|text|arrayBuffer|blob|formData)\s*\(/u;

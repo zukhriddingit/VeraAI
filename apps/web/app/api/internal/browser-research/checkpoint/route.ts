@@ -8,6 +8,8 @@ import {
 } from "../../../../../lib/zillow-research-checkpoint-service.ts";
 import { getHostedApplication } from "../../../../../lib/server/application.ts";
 import {
+  assertSameOriginMutation,
+  CrossOriginMutationError,
   MutationRequestError,
   readBoundedJson
 } from "../../../../../lib/server/request-security.ts";
@@ -31,6 +33,19 @@ export function validCheckpointBearer(
   return supplied.length === expected.length && timingSafeEqual(supplied, expected);
 }
 
+export class CheckpointAuthorizationError extends Error {
+  constructor() {
+    super("The browser research checkpoint credential is invalid.");
+    this.name = "CheckpointAuthorizationError";
+  }
+}
+
+export function requireCheckpointBearer(authorization: string | null, expectedToken: string): void {
+  if (!validCheckpointBearer(authorization, expectedToken)) {
+    throw new CheckpointAuthorizationError();
+  }
+}
+
 function failure(code: string, status: number): Response {
   return Response.json(
     { code, message: "Browser research authorization stopped safely." },
@@ -42,9 +57,8 @@ export async function POST(request: Request): Promise<Response> {
   try {
     const token = process.env.VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN?.trim() ?? "";
     if (token.length < 32) return failure("checkpoint_not_configured", 503);
-    if (!validCheckpointBearer(request.headers.get("authorization"), token)) {
-      return failure("checkpoint_unauthorized", 401);
-    }
+    requireCheckpointBearer(request.headers.get("authorization"), token);
+    assertSameOriginMutation(request);
     const founder = VeraUserIdSchema.safeParse(
       process.env.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim()
     );
@@ -68,6 +82,12 @@ export async function POST(request: Request): Promise<Response> {
         "malformed_request",
         error instanceof MutationRequestError ? error.status : 400
       );
+    }
+    if (error instanceof CheckpointAuthorizationError) {
+      return failure("checkpoint_unauthorized", 401);
+    }
+    if (error instanceof CrossOriginMutationError) {
+      return failure("cross_origin_request", 403);
     }
     return failure("checkpoint_unavailable", 503);
   }

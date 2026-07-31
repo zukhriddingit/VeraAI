@@ -96,12 +96,12 @@ function snapshotForState(stage: string, currentUrl: string) {
 function happyFetch() {
   let stage = "results";
   let currentUrl = resultUrl;
-  const calls: Array<{ url: string; method: string; body: unknown }> = [];
+  const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
     const method = init?.method ?? "GET";
     const body = typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : null;
-    calls.push({ url, method, body });
+    calls.push({ url, method, body, origin: new Headers(init?.headers).get("origin") });
     if (url === "https://vera.example.test/api/internal/browser-research/checkpoint") {
       return jsonResponse({
         allowed: true,
@@ -265,6 +265,7 @@ describe("Vera Zillow research execution", () => {
     const browserCalls = calls.filter((call) => call.url.startsWith("http://127.0.0.1:18792/"));
     const checkpoints = calls.filter((call) => call.url.startsWith("https://vera.example.test/"));
     expect(checkpoints).toHaveLength(browserCalls.length);
+    expect(checkpoints.every((call) => call.origin === "https://vera.example.test")).toBe(true);
     expect(browserCalls.map((call) => new URL(call.url).pathname)).toEqual(
       expect.arrayContaining(["/tabs", "/snapshot", "/act", "/navigate"])
     );
