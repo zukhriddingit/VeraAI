@@ -30,6 +30,7 @@ export default defineConfig([
     "**/dist/**",
     "**/node_modules/**",
     "**/playwright-report/**",
+    "**/release-evidence/private/**",
     "**/test-results/**",
     "next-env.d.ts"
   ])

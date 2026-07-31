@@ -95,6 +95,49 @@ describe("DigitalOcean browser Gateway deployment verifier", () => {
   });
 
   it.each([
+    ['current_stage="state_link_reconciliation"', 'current_stage="runtime_recreation"', "stage"],
+    [
+      'local expected_relative=".openclaw/plugin-skills/browser-automation"',
+      'local expected_relative=".openclaw/plugin-skills/unreviewed"',
+      "path"
+    ],
+    [
+      'local expected_target="/app/dist/extensions/browser/skills/browser-automation"',
+      'local expected_target="/app/dist/extensions/browser/skills/unreviewed"',
+      "target"
+    ],
+    [
+      'sanitize_persisted_state_links "${state_directory}" "1000:1000"',
+      'sanitize_persisted_state_links "${state_directory}" "0:0"',
+      "ownership"
+    ],
+    [
+      '(-e "${expected_link}" || -L "${expected_link}") && ! -L "${expected_link}"',
+      '-L "${expected_link}"',
+      "file type"
+    ],
+    [
+      'remove_runtime\n      current_stage="state_link_reconciliation"',
+      'current_stage="state_link_reconciliation"\n      remove_runtime',
+      "post-stop ordering"
+    ]
+  ])("rejects weakened state-link reconciliation: %s", (marker, replacement, _label) => {
+    const input = repositoryFixture();
+    input.cloudInit = input.cloudInit.replace(marker, replacement);
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Persistent state-link reconciliation must remain exact and fail closed."
+    );
+  });
+
+  it("rejects recursive persistent-state deletion", () => {
+    const input = repositoryFixture();
+    input.cloudInit += '\nrm -rf "${state_directory}"\n';
+    expect(findDigitalOceanBrowserGatewayViolations(input)).toContain(
+      "Persistent state-link reconciliation must remain exact and fail closed."
+    );
+  });
+
+  it.each([
     ["await rename(temporaryPath, absolutePath)", "atomic rename"],
     ["await handle.sync()", "file sync"],
     ["await directoryHandle.sync()", "directory sync"]

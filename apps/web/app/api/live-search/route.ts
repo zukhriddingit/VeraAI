@@ -5,6 +5,11 @@ import {
   parseLiveSearchEnvironment,
   runLiveSearch
 } from "../../../lib/live-search-service";
+import {
+  createRentalResearchDependencies,
+  RentalResearchServiceError,
+  runRentalResearch
+} from "../../../lib/rental-research-service";
 import { createPersistedPolicyRegistry } from "../../../lib/connector-registry";
 import {
   assertSameOriginMutation,
@@ -30,16 +35,26 @@ export async function POST(request: Request): Promise<Response> {
     assertLiveSearchFounder(context.userId, parseLiveSearchEnvironment(process.env));
     const input = await readBoundedJson(request, { maxBytes: 2_000 });
     const policyRegistry = await createPersistedPolicyRegistry(context.repositories);
-    const result = await runLiveSearch(
-      input,
-      createLiveSearchDependencies(
-        context.userId,
-        context.repositories,
-        context.repositoryProvider,
-        process.env,
-        policyRegistry
-      )
+    const liveDependencies = createLiveSearchDependencies(
+      context.userId,
+      context.repositories,
+      context.repositoryProvider,
+      process.env,
+      policyRegistry
     );
+    const isMultiSource = typeof input === "object" && input !== null && "selectedSources" in input;
+    const result = isMultiSource
+      ? await runRentalResearch(
+          input,
+          createRentalResearchDependencies(
+            context.userId,
+            context.repositories,
+            context.repositoryProvider,
+            liveDependencies,
+            process.env
+          )
+        )
+      : await runLiveSearch(input, liveDependencies);
     return Response.json(result, { status: 202, headers });
   } catch (error: unknown) {
     if (error instanceof AuthenticationRequiredError) {
@@ -69,6 +84,17 @@ export async function POST(request: Request): Promise<Response> {
           code: error.code,
           message: error.message,
           searchRunId: error.searchRunId,
+          retryable: error.retryable
+        },
+        { status: error.status, headers }
+      );
+    }
+    if (error instanceof RentalResearchServiceError) {
+      return Response.json(
+        {
+          code: error.code,
+          message: error.message,
+          searchRunId: null,
           retryable: error.retryable
         },
         { status: error.status, headers }

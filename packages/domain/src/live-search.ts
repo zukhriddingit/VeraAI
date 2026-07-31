@@ -125,7 +125,86 @@ export const RunLiveSearchRequestSchema = z
   .object({
     searchProfileId: EntityIdSchema,
     confirmedExternalUsage: z.literal(true),
+    retryOfSearchRunId: EntityIdSchema.optional(),
+    veraRunId: EntityIdSchema.optional()
+  })
+  .strict();
+
+export const RentalResearchSourceSchema = z.enum(["rentcast", "zillow"]);
+export const RentalResearchSourceStateSchema = z.enum([
+  "ready",
+  "login_required",
+  "browser_offline",
+  "excluded_by_user",
+  "searching",
+  "completed",
+  "partial",
+  "failed"
+]);
+export const RentalResearchProgressPhaseSchema = z.enum([
+  "connecting",
+  "checking_login",
+  "searching",
+  "opening_details",
+  "importing",
+  "deduplicating",
+  "ranking",
+  "completed"
+]);
+
+export const RunRentalResearchRequestSchema = z
+  .object({
+    veraRunId: EntityIdSchema,
+    searchProfileId: EntityIdSchema,
+    selectedSources: z.array(RentalResearchSourceSchema).min(1).max(2),
+    confirmedExternalUsage: z.literal(true),
     retryOfSearchRunId: EntityIdSchema.optional()
+  })
+  .strict()
+  .superRefine((request, context) => {
+    if (new Set(request.selectedSources).size !== request.selectedSources.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["selectedSources"],
+        message: "Each research source may be selected only once."
+      });
+    }
+  });
+
+export const RentalResearchSourceStatusSchema = z
+  .object({
+    source: RentalResearchSourceSchema,
+    state: RentalResearchSourceStateSchema,
+    retrievedCount: z.number().int().nonnegative().max(10),
+    importedCount: z.number().int().nonnegative().max(10),
+    rejectedCount: z.number().int().nonnegative().max(10),
+    manualAction: z
+      .enum([
+        "login_required",
+        "two_factor_required",
+        "captcha_required",
+        "consent_required",
+        "blocked",
+        "layout_changed",
+        "browser_offline",
+        "no_shared_tab",
+        "multiple_shared_tabs",
+        "shared_tab_changed",
+        "cancelled"
+      ])
+      .nullable(),
+    message: z.string().trim().min(1).max(300).nullable()
+  })
+  .strict();
+
+export const RentalResearchRunStatusSchema = z
+  .object({
+    searchRunId: EntityIdSchema,
+    searchProfileId: EntityIdSchema,
+    phase: RentalResearchProgressPhaseSchema,
+    sources: z.array(RentalResearchSourceStatusSchema).length(2),
+    partial: z.boolean(),
+    completedAt: IsoDateTimeSchema.nullable()
   })
   .strict();
 
@@ -193,3 +272,8 @@ export type AgentRentalRecommendation = z.infer<typeof AgentRentalRecommendation
 export type LiveSearchResultState = z.infer<typeof LiveSearchResultStateSchema>;
 export type LiveSearchStatus = z.infer<typeof LiveSearchStatusSchema>;
 export type LiveListingEvidence = z.infer<typeof LiveListingEvidenceSchema>;
+export type RentalResearchSource = z.infer<typeof RentalResearchSourceSchema>;
+export type RentalResearchSourceState = z.infer<typeof RentalResearchSourceStateSchema>;
+export type RentalResearchProgressPhase = z.infer<typeof RentalResearchProgressPhaseSchema>;
+export type RentalResearchSourceStatus = z.infer<typeof RentalResearchSourceStatusSchema>;
+export type RentalResearchRunStatus = z.infer<typeof RentalResearchRunStatusSchema>;

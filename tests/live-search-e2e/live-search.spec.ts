@@ -1,20 +1,30 @@
 import { expect, test } from "@playwright/test";
 
 const baseStatus = {
-  searchRunId: "live-search-ui-1",
+  searchRunId: "pending-client-run",
   searchProfileId: "profile-cambridge-e2e",
-  dataProvider: "RentCast",
-  maritimeAgent: "OpenClaw on Maritime",
-  retrievedCount: 1,
-  importedCount: 1,
-  rejectedCount: 0,
-  retrievalLatencyMilliseconds: 120,
-  agentLatencyMilliseconds: 240,
-  totalLatencyMilliseconds: null,
-  completedAt: null,
-  queryHash: "a".repeat(64),
-  promptVersion: "vera-live-rental-analysis.v1",
-  agentSchemaVersion: "1"
+  sources: [
+    {
+      source: "rentcast",
+      state: "completed",
+      retrievedCount: 1,
+      importedCount: 1,
+      rejectedCount: 0,
+      manualAction: null,
+      message: null
+    },
+    {
+      source: "zillow",
+      state: "completed",
+      retrievedCount: 1,
+      importedCount: 1,
+      rejectedCount: 0,
+      manualAction: null,
+      message: null
+    }
+  ],
+  partial: false,
+  completedAt: null
 } as const;
 
 const interpretedDraft = {
@@ -88,17 +98,21 @@ test("founder reviews and saves a profile before confirming live provider usage"
     await route.fulfill({
       status: 202,
       contentType: "application/json",
-      body: JSON.stringify({ ...baseStatus, state: "importing" })
+      body: JSON.stringify({
+        ...baseStatus,
+        searchRunId: (liveSearchBody as { veraRunId: string }).veraRunId,
+        phase: "importing"
+      })
     });
   });
-  await page.route("**/api/live-search/live-search-ui-1", async (route) => {
+  await page.route("**/api/live-search/*", async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         ...baseStatus,
-        state: "completed",
-        totalLatencyMilliseconds: 500,
+        searchRunId: route.request().url().split("/").at(-1),
+        phase: "completed",
         completedAt: "2026-07-24T12:00:00.000Z"
       })
     });
@@ -121,17 +135,18 @@ test("founder reviews and saves a profile before confirming live provider usage"
   ).toBeVisible();
   expect(liveSearchCalls).toBe(0);
 
-  const button = page.getByRole("button", { name: "Search now" });
+  const button = page.getByRole("button", { name: "Search selected sources" });
   await expect(button).toBeDisabled();
-  await page.getByLabel(/I understand this uses live RentCast/u).check();
+  await page.getByRole("checkbox", { name: "Zillow Excluded by user" }).check();
+  await page.getByLabel(/I am starting this read-only search now/u).check();
   await button.click();
   expect(liveSearchCalls).toBe(1);
   expect(liveSearchBody).toMatchObject({
     searchProfileId: createdProfile.id,
+    selectedSources: ["rentcast", "zillow"],
     confirmedExternalUsage: true
   });
-  await expect(
-    page.getByText("Live RentCast inventory analyzed by OpenClaw on Maritime.")
-  ).toBeVisible();
-  await expect(page.getByText("OpenClaw on Maritime", { exact: true })).toBeVisible();
+  expect(liveSearchBody).toMatchObject({ veraRunId: expect.any(String) });
+  await expect(page.getByText("Completed", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Zillow", { exact: true }).first()).toBeVisible();
 });

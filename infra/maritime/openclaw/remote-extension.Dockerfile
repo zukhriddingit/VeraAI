@@ -13,7 +13,8 @@ RUN install -d -m 0755 -o 1000 -g 1000 \
       /opt/vera/bin \
       /opt/vera/config \
       /opt/vera/plugins \
-      /opt/vera/plugins/vera-read-shared-tab && \
+      /opt/vera/plugins/vera-read-shared-tab \
+      /opt/vera/plugins/vera-zillow-rental-research && \
     install -d -m 0700 -o 1000 -g 1000 \
       /data \
       /data/.openclaw \
@@ -33,6 +34,13 @@ COPY --chown=1000:1000 --chmod=0444 \
   vera-read-shared-tab/openclaw.plugin.json \
   vera-read-shared-tab/package.json \
   /opt/vera/plugins/vera-read-shared-tab/
+COPY --chown=1000:1000 --chmod=0444 \
+  vera-zillow-rental-research/contract.mjs \
+  vera-zillow-rental-research/index.mjs \
+  vera-zillow-rental-research/openclaw.plugin.json \
+  vera-zillow-rental-research/package.json \
+  vera-zillow-rental-research/zillow-snapshot.mjs \
+  /opt/vera/plugins/vera-zillow-rental-research/
 
 FROM cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09 AS final
 
@@ -45,7 +53,7 @@ LABEL org.opencontainers.image.title="Vera OpenClaw Browser Gateway" \
   org.opencontainers.image.description="Hardened founder-only OpenClaw direct-extension Gateway" \
   org.opencontainers.image.source="https://github.com/zukhriddingit/VeraAI" \
   org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}" \
-  org.opencontainers.image.version="2026.7.1-vera.4" \
+  org.opencontainers.image.version="2026.7.1-vera.5" \
   org.opencontainers.image.base.name="cgr.dev/chainguard/node" \
   org.opencontainers.image.base.digest="sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09" \
   io.vera.openclaw.image.digest="sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"

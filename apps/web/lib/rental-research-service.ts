@@ -1,0 +1,1050 @@
+import { randomUUID } from "node:crypto";
+
+import {
+  createMaritimeZillowResearchClient,
+  MaritimeZillowResearchError,
+  zillowObservedListingToEnvelope,
+  zillowResearchSafeCaptureMetadata,
+  ZILLOW_BROWSER_RESEARCH_CONNECTOR_ID
+} from "@vera/connectors";
+import {
+  canonicalJson,
+  sha256Text,
+  type UserRepositories,
+  type UserRepositoryProvider
+} from "@vera/db";
+import {
+  ActivityEventSchema,
+  RawListingCaptureSchema,
+  RentalResearchRunStatusSchema,
+  RunRentalResearchRequestSchema,
+  SourceJobSchema,
+  ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE,
+  type ActivityEvent,
+  type RentalResearchProgressPhase,
+  type RentalResearchRunStatus,
+  type RentalResearchSource,
+  type RentalResearchSourceStatus,
+  type SearchProfile,
+  type SourceJob,
+  type VeraUserId,
+  type ZillowRentalResearchInput,
+  type ZillowRentalResearchOutput,
+  type ZillowResearchManualAction
+} from "@vera/domain";
+
+import { runLiveSearch, type LiveSearchServiceDependencies } from "./live-search-service.ts";
+import {
+  parseZillowResearchCheckpointEnvironment,
+  type ZillowResearchCheckpointEnvironment
+} from "./zillow-research-checkpoint-service.ts";
+
+export const RENTAL_RESEARCH_ACTIONS = {
+  requested: "rental_research_run_requested",
+  sourceStarted: "zillow_research_started",
+  sourceFinished: "zillow_research_finished",
+  sourceFailed: "zillow_research_failed",
+  sourcesFinished: "rental_research_sources_finished",
+  stopped: "rental_research_stopped"
+} as const;
+
+const ZILLOW_OPERATION = "zillow.rental_research.v1";
+
+export class RentalResearchServiceError extends Error {
+  constructor(
+    readonly code:
+      | "profile_not_found"
+      | "duplicate_run"
+      | "zillow_disabled"
+      | "zillow_profile_incomplete"
+      | "run_not_found",
+    readonly status: number,
+    readonly retryable: boolean
+  ) {
+    super(`Rental research stopped safely: ${code}.`);
+    this.name = "RentalResearchServiceError";
+  }
+}
+
+export interface RentalResearchDependencies {
+  readonly userId: VeraUserId;
+  readonly repositories: UserRepositories;
+  readonly repositoryProvider: UserRepositoryProvider;
+  readonly liveSearch: LiveSearchServiceDependencies;
+  readonly zillow: {
+    run(
+      input: ZillowRentalResearchInput,
+      options: { readonly signal: AbortSignal }
+    ): Promise<ZillowRentalResearchOutput>;
+  };
+  readonly zillowEnvironment: ZillowResearchCheckpointEnvironment;
+  now(): Date;
+  createId(): string;
+}
+
+function nowIso(dependencies: RentalResearchDependencies): string {
+  const value = dependencies.now();
+  if (Number.isNaN(value.getTime())) throw new Error("Rental-research clock is invalid.");
+  return value.toISOString();
+}
+
+function hash(value: unknown): string {
+  return sha256Text(canonicalJson(value as never));
+}
+
+function event(
+  dependencies: RentalResearchDependencies,
+  input: {
+    action: string;
+    runId: string;
+    actor: ActivityEvent["actor"];
+    outcome: ActivityEvent["outcome"];
+    payloadHash: string;
+    metadata: ActivityEvent["metadata"];
+    occurredAt: string;
+    causationId?: string | null;
+    errorCategory?: ActivityEvent["errorCategory"];
+    targetType?: string;
+    targetId?: string;
+    approvalId?: string | null;
+  }
+): ActivityEvent {
+  return ActivityEventSchema.parse({
+    id: dependencies.createId(),
+    correlationId: input.runId,
+    causationId: input.causationId ?? null,
+    actor: input.actor,
+    action: input.action,
+    targetType: input.targetType ?? "live_search_run",
+    targetId: input.targetId ?? input.runId,
+    policyDecision: "authorized",
+    approvalId: input.approvalId ?? null,
+    payloadHash: input.payloadHash,
+    outcome: input.outcome,
+    errorCategory: input.errorCategory ?? null,
+    metadata: input.metadata,
+    occurredAt: input.occurredAt
+  });
+}
+
+function explicitPropertyType(
+  profile: SearchProfile
+): "apartment" | "house" | "townhouse" | "condo" | undefined {
+  const constraint = profile.hardConstraints.find(
+    (candidate) =>
+      candidate.field.trim().toLowerCase() === "propertytype" &&
+      candidate.operator === "equals" &&
+      typeof candidate.value === "string"
+  );
+  const value = typeof constraint?.value === "string" ? constraint.value.trim().toLowerCase() : "";
+  return ["apartment", "house", "townhouse", "condo"].includes(value)
+    ? (value as "apartment" | "house" | "townhouse" | "condo")
+    : undefined;
+}
+
+function zillowInput(profile: SearchProfile, jobId: string) {
+  const maximumCents = profile.absoluteMonthlyMaximumCents ?? profile.targetMonthlyTotalCents;
+  if (maximumCents === null || maximumCents < 100) {
+    throw new RentalResearchServiceError("zillow_profile_incomplete", 422, false);
+  }
+  const propertyType = explicitPropertyType(profile);
+  return {
+    version: "1" as const,
+    veraRunId: jobId,
+    profile: {
+      location: profile.locationText,
+      maximumRentUsd: Math.floor(maximumCents / 100),
+      minimumBedrooms: profile.minimumBedrooms ?? 0,
+      ...(profile.minimumBathrooms === null ? {} : { minimumBathrooms: profile.minimumBathrooms }),
+      ...(propertyType === undefined ? {} : { rentalPropertyType: propertyType })
+    },
+    maxResults: 10,
+    maxDetailPages: 5,
+    startingTabReference: {
+      kind: "single_shared_tab" as const,
+      value: ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE
+    }
+  };
+}
+
+function zillowJob(
+  dependencies: RentalResearchDependencies,
+  profile: SearchProfile,
+  parentRunId: string,
+  jobId: string,
+  createdAt: string
+): SourceJob {
+  const input = zillowInput(profile, jobId);
+  const payload = {
+    acquisitionMode: "local_browser" as const,
+    captureKind: "research_tab" as const,
+    nodeId: "remote-extension-gateway",
+    profileId: "official-chrome-extension",
+    startingTabReference: input.startingTabReference,
+    limits: {
+      maxPages: 6,
+      maxRecords: 10,
+      maxBytes: 250_000,
+      maxDurationMilliseconds: 90_000,
+      maxConcurrency: 1 as const
+    },
+    maxDetailPages: 5,
+    maxResultPageExpansions: 2 as const
+  };
+  const payloadHash = hash(payload);
+  return SourceJobSchema.parse({
+    id: jobId,
+    correlationId: parentRunId,
+    connectorId: ZILLOW_BROWSER_RESEARCH_CONNECTOR_ID,
+    source: "zillow",
+    acquisitionMode: "local_browser",
+    manifestVersion: 1,
+    trigger: "manual",
+    capability: "browser.capture",
+    approvalId: `approval:${jobId}`,
+    operation: ZILLOW_OPERATION,
+    payload,
+    payloadHash,
+    idempotencyKey: sha256Text(
+      `zillow-research-job:v1:${dependencies.userId}:${profile.id}:${jobId}:${payloadHash}`
+    ),
+    status: "queued",
+    attempts: 0,
+    maxAttempts: 1,
+    manualAction: null,
+    deferredReason: null,
+    result: null,
+    createdAt,
+    updatedAt: createdAt,
+    completedAt: null
+  });
+}
+
+function manualBlocker(
+  action: ZillowResearchManualAction
+): SourceJob["manualAction"] extends infer _Value
+  ? | "login_required"
+    | "two_factor_required"
+    | "captcha_required"
+    | "consent_required"
+    | "rate_or_bot_challenge"
+    | "layout_incompatible"
+    | "node_offline"
+    | "user_intervention_required"
+  : never {
+  if (action === "login_required") return "login_required";
+  if (action === "two_factor_required") return "two_factor_required";
+  if (action === "captcha_required") return "captcha_required";
+  if (action === "consent_required") return "consent_required";
+  if (action === "blocked") return "rate_or_bot_challenge";
+  if (action === "layout_changed") return "layout_incompatible";
+  if (action === "browser_offline") return "node_offline";
+  return "user_intervention_required";
+}
+
+function manualInstruction(action: ZillowResearchManualAction): string {
+  if (action === "no_shared_tab")
+    return "Open Zillow rentals and explicitly share exactly one tab.";
+  if (action === "multiple_shared_tabs") return "Unshare every tab except one Zillow rental tab.";
+  if (action === "login_required") return "Log into Zillow manually in the shared tab, then retry.";
+  if (action === "two_factor_required")
+    return "Complete Zillow two-factor authentication manually, then retry.";
+  if (action === "captcha_required") return "Complete the Zillow challenge manually, then retry.";
+  if (action === "consent_required")
+    return "Review the Zillow consent prompt manually, then retry.";
+  if (action === "browser_offline") return "Reconnect the official OpenClaw extension, then retry.";
+  if (action === "cancelled")
+    return "The search was stopped. Start a new user-triggered run to continue.";
+  return "Review the shared Zillow tab manually, then retry the failed source.";
+}
+
+async function importZillowListings(
+  dependencies: RentalResearchDependencies,
+  profile: SearchProfile,
+  parentRunId: string,
+  sourceJobId: string,
+  listings: ZillowRentalResearchOutput["listings"]
+): Promise<{ importedCount: number; rejectedCount: number }> {
+  let importedCount = 0;
+  let rejectedCount = 0;
+  for (const listing of listings) {
+    const sourceJob = await dependencies.repositories.sourceJobs.getById(sourceJobId);
+    if (sourceJob?.status === "cancelled_by_policy") break;
+    try {
+      const envelope = zillowObservedListingToEnvelope(listing);
+      const capture = RawListingCaptureSchema.parse({
+        id: dependencies.createId(),
+        source: envelope.source,
+        acquisitionMode: envelope.acquisitionMode,
+        sourceListingId: envelope.sourceListingId,
+        sourceUrl: envelope.sourceUrl,
+        captureMethod: envelope.captureMethod,
+        observedAt: envelope.observedAt,
+        sourcePostedAt: envelope.sourcePostedAt,
+        rawText: envelope.rawText,
+        rawJson: envelope.rawJson,
+        captureMetadata: {
+          ...envelope.captureMetadata,
+          ...zillowResearchSafeCaptureMetadata(listing, {
+            veraRunId: sourceJobId,
+            searchProfileId: profile.id
+          })
+        }
+      });
+      const importEventId = dependencies.createId();
+      const result = await dependencies.repositoryProvider.transaction(
+        dependencies.userId,
+        async (repositories) => {
+          const imported = await repositories.rawListings.import(capture);
+          const existingRecord = await repositories.sourceRecords.getByRawListingId(
+            imported.record.id
+          );
+          const queued =
+            existingRecord === null
+              ? (
+                  await repositories.normalizationJobs.enqueue({
+                    id: dependencies.createId(),
+                    rawListingId: imported.record.id,
+                    idempotencyKey: sha256Text(`normalization-job:v1:${imported.record.id}`),
+                    availableAt: nowIso(dependencies),
+                    maxAttempts: 3,
+                    correlationId: parentRunId,
+                    causationId: importEventId,
+                    createdAt: nowIso(dependencies)
+                  })
+                ).record
+              : await repositories.normalizationJobs.getByRawListingId(imported.record.id);
+          await repositories.activityEvents.append(
+            ActivityEventSchema.parse({
+              ...event(dependencies, {
+                action: "live_listing_imported",
+                runId: parentRunId,
+                causationId: sourceJobId,
+                actor: "connector",
+                outcome: "succeeded",
+                payloadHash: imported.record.contentHash,
+                metadata: {
+                  profileId: profile.id,
+                  provider: "zillow",
+                  sourceListingIdHash:
+                    listing.sourceListingId === null ? null : sha256Text(listing.sourceListingId),
+                  sourceUrlHash: sha256Text(envelope.sourceUrl ?? ""),
+                  duplicate: !imported.inserted,
+                  normalizationJobId: queued?.id ?? null,
+                  missingFieldCount: listing.missingFields.length,
+                  warningCount: listing.safeExtractionWarnings.length
+                },
+                occurredAt: nowIso(dependencies),
+                targetType: "raw_listing",
+                targetId: imported.record.id
+              }),
+              id: importEventId
+            })
+          );
+          return imported.inserted;
+        }
+      );
+      if (result) importedCount += 1;
+    } catch {
+      rejectedCount += 1;
+      await dependencies.repositories.activityEvents.append(
+        event(dependencies, {
+          action: "live_listing_rejected",
+          runId: parentRunId,
+          causationId: sourceJobId,
+          actor: "system",
+          outcome: "failed",
+          errorCategory: "validation",
+          payloadHash: hash({
+            sourceListingId: listing.sourceListingId,
+            observedAt: listing.observedAt
+          }),
+          metadata: { profileId: profile.id, provider: "zillow" },
+          occurredAt: nowIso(dependencies)
+        })
+      );
+    }
+  }
+  return { importedCount, rejectedCount };
+}
+
+async function runZillowSource(
+  dependencies: RentalResearchDependencies,
+  profile: SearchProfile,
+  parentRunId: string,
+  isOnlySource: boolean
+): Promise<void> {
+  if (
+    !dependencies.zillowEnvironment.sourceEnabled ||
+    dependencies.zillowEnvironment.browserDisabled ||
+    dependencies.zillowEnvironment.founderUserId !== dependencies.userId
+  ) {
+    throw new RentalResearchServiceError("zillow_disabled", 503, false);
+  }
+  const jobId = isOnlySource ? parentRunId : `${parentRunId}.zillow`;
+  const createdAt = nowIso(dependencies);
+  const job = zillowJob(dependencies, profile, parentRunId, jobId, createdAt);
+  const input = zillowInput(profile, jobId);
+  await dependencies.repositoryProvider.transaction(dependencies.userId, async (repositories) => {
+    await repositories.approvals.insert({
+      id: job.approvalId!,
+      actor: "user",
+      connectorId: job.connectorId,
+      operation: job.operation,
+      targetType: "source_job",
+      targetId: job.id,
+      payloadHash: job.payloadHash,
+      state: "used",
+      createdAt,
+      expiresAt: new Date(Date.parse(createdAt) + 120_000).toISOString(),
+      usedAt: createdAt
+    });
+    const queued = await repositories.sourceJobs.enqueue(job);
+    if (!queued.inserted) throw new RentalResearchServiceError("duplicate_run", 409, false);
+    if (isOnlySource) {
+      await repositories.activityEvents.append(
+        event(dependencies, {
+          action: "live_search_requested",
+          runId: parentRunId,
+          actor: "user",
+          outcome: "recorded",
+          payloadHash: job.payloadHash,
+          metadata: { profileId: profile.id, provider: "zillow" },
+          occurredAt: createdAt
+        })
+      );
+    }
+    await repositories.activityEvents.append(
+      event(dependencies, {
+        action: RENTAL_RESEARCH_ACTIONS.sourceStarted,
+        runId: parentRunId,
+        actor: "connector",
+        outcome: "authorized",
+        payloadHash: job.payloadHash,
+        metadata: {
+          profileId: profile.id,
+          source: "zillow",
+          maxResults: 10,
+          maxDetailPages: 5
+        },
+        occurredAt: createdAt,
+        targetType: "source_job",
+        targetId: jobId,
+        approvalId: job.approvalId
+      })
+    );
+    await repositories.sourceJobs.transition(jobId, "dispatched", createdAt);
+    await repositories.sourceJobs.transition(jobId, "running", createdAt, { attempts: 1 });
+  });
+
+  try {
+    const output = await dependencies.zillow.run(input, { signal: new AbortController().signal });
+    const afterResearch = await dependencies.repositories.sourceJobs.getById(jobId);
+    if (afterResearch?.status === "cancelled_by_policy") {
+      await dependencies.repositories.activityEvents.append(
+        event(dependencies, {
+          action: RENTAL_RESEARCH_ACTIONS.sourceFinished,
+          runId: parentRunId,
+          causationId: jobId,
+          actor: "connector",
+          outcome: "succeeded",
+          payloadHash: hash({ state: "cancelled" }),
+          metadata: {
+            profileId: profile.id,
+            source: "zillow",
+            outputState: "manual_action_required",
+            pageState: output.pageState,
+            manualAction: "cancelled",
+            retrievedCount: 0,
+            importedCount: 0,
+            rejectedCount: 0,
+            resultCardsObserved: 0,
+            detailPagesOpened: 0,
+            resultPageExpansions: 0,
+            warningCount: 0
+          },
+          occurredAt: nowIso(dependencies),
+          targetType: "source_job",
+          targetId: jobId,
+          approvalId: job.approvalId
+        })
+      );
+      return;
+    }
+    const imported = await importZillowListings(
+      dependencies,
+      profile,
+      parentRunId,
+      jobId,
+      output.listings
+    );
+    const finishedAt = nowIso(dependencies);
+    if (output.state === "manual_action_required" && output.manualAction !== null) {
+      await dependencies.repositories.sourceJobs.transition(
+        jobId,
+        "manual_action_required",
+        finishedAt,
+        {
+          attempts: 1,
+          manualAction: {
+            jobId,
+            nodeId: "remote-extension-gateway",
+            source: "zillow",
+            blocker: manualBlocker(output.manualAction),
+            instruction: manualInstruction(output.manualAction),
+            correlationId: parentRunId,
+            requiredAt: finishedAt
+          }
+        }
+      );
+    } else if (output.state === "failed" && output.listings.length === 0) {
+      await dependencies.repositories.sourceJobs.transition(
+        jobId,
+        "permanently_failed",
+        finishedAt,
+        {
+          attempts: 1,
+          result: {
+            jobId,
+            connectorId: job.connectorId,
+            source: "zillow",
+            acquisitionMode: "local_browser",
+            operation: ZILLOW_OPERATION,
+            status: "failed",
+            correlationId: parentRunId,
+            payloadHash: job.payloadHash,
+            idempotencyKey: job.idempotencyKey,
+            resultHash: hash({ state: output.state, completedAt: output.completedAt }),
+            recordCount: 0,
+            previousCursor: null,
+            cursorCandidate: null,
+            error: { code: "zillow_research_failed", category: "permanent_provider" },
+            capture: null,
+            completedAt: finishedAt,
+            idempotentReplay: false,
+            untrustedInput: true
+          }
+        }
+      );
+    } else {
+      await dependencies.repositories.sourceJobs.transition(jobId, "completed", finishedAt, {
+        attempts: 1,
+        result: {
+          jobId,
+          connectorId: job.connectorId,
+          source: "zillow",
+          acquisitionMode: "local_browser",
+          operation: ZILLOW_OPERATION,
+          status: "completed",
+          correlationId: parentRunId,
+          payloadHash: job.payloadHash,
+          idempotencyKey: job.idempotencyKey,
+          resultHash: hash({
+            outputState: output.state,
+            listingCount: output.listings.length,
+            importedCount: imported.importedCount
+          }),
+          recordCount: imported.importedCount,
+          previousCursor: null,
+          cursorCandidate: null,
+          error: null,
+          capture: null,
+          completedAt: finishedAt,
+          idempotentReplay: false,
+          untrustedInput: true
+        }
+      });
+    }
+    await dependencies.repositories.activityEvents.append(
+      event(dependencies, {
+        action: RENTAL_RESEARCH_ACTIONS.sourceFinished,
+        runId: parentRunId,
+        causationId: jobId,
+        actor: "connector",
+        outcome: "succeeded",
+        payloadHash: hash({
+          state: output.state,
+          pageState: output.pageState,
+          importedCount: imported.importedCount
+        }),
+        metadata: {
+          profileId: profile.id,
+          source: "zillow",
+          outputState: output.state,
+          pageState: output.pageState,
+          manualAction: output.manualAction,
+          retrievedCount: output.listings.length,
+          importedCount: imported.importedCount,
+          rejectedCount: imported.rejectedCount,
+          resultCardsObserved: output.resultCardsObserved,
+          detailPagesOpened: output.detailPagesOpened,
+          resultPageExpansions: output.resultPageExpansions,
+          warningCount: output.warnings.length
+        },
+        occurredAt: finishedAt,
+        targetType: "source_job",
+        targetId: jobId,
+        approvalId: job.approvalId
+      })
+    );
+  } catch (error: unknown) {
+    const failedAt = nowIso(dependencies);
+    const current = await dependencies.repositories.sourceJobs.getById(jobId);
+    if (current?.status === "running") {
+      const retryable = error instanceof MaritimeZillowResearchError && error.retryable;
+      await dependencies.repositories.sourceJobs.transition(
+        jobId,
+        retryable ? "retryable_failed" : "permanently_failed",
+        failedAt,
+        {
+          attempts: 1,
+          result: {
+            jobId,
+            connectorId: job.connectorId,
+            source: "zillow",
+            acquisitionMode: "local_browser",
+            operation: ZILLOW_OPERATION,
+            status: "failed",
+            correlationId: parentRunId,
+            payloadHash: job.payloadHash,
+            idempotencyKey: job.idempotencyKey,
+            resultHash: hash({ code: "zillow_research_unavailable", failedAt }),
+            recordCount: 0,
+            previousCursor: null,
+            cursorCandidate: null,
+            error: {
+              code:
+                error instanceof MaritimeZillowResearchError
+                  ? error.code
+                  : "zillow_research_unavailable",
+              category: retryable ? "transient_provider" : "permanent_provider"
+            },
+            capture: null,
+            completedAt: failedAt,
+            idempotentReplay: false,
+            untrustedInput: true
+          }
+        }
+      );
+    }
+    await dependencies.repositories.activityEvents.append(
+      event(dependencies, {
+        action: RENTAL_RESEARCH_ACTIONS.sourceFailed,
+        runId: parentRunId,
+        causationId: jobId,
+        actor: "connector",
+        outcome: "failed",
+        errorCategory:
+          error instanceof MaritimeZillowResearchError && error.retryable
+            ? "transient_provider"
+            : "permanent_provider",
+        payloadHash: job.payloadHash,
+        metadata: {
+          profileId: profile.id,
+          source: "zillow",
+          retryable: error instanceof MaritimeZillowResearchError && error.retryable
+        },
+        occurredAt: failedAt,
+        targetType: "source_job",
+        targetId: jobId,
+        approvalId: job.approvalId
+      })
+    );
+  }
+}
+
+export async function runRentalResearch(
+  rawRequest: unknown,
+  dependencies: RentalResearchDependencies
+): Promise<RentalResearchRunStatus> {
+  const request = RunRentalResearchRequestSchema.parse(rawRequest);
+  const profile = await dependencies.repositories.searchProfiles.getById(request.searchProfileId);
+  if (!profile) throw new RentalResearchServiceError("profile_not_found", 404, false);
+  if (await dependencies.repositories.sourceJobs.getById(request.veraRunId)) {
+    throw new RentalResearchServiceError("duplicate_run", 409, false);
+  }
+  const requestedAt = nowIso(dependencies);
+  await dependencies.repositories.activityEvents.append(
+    event(dependencies, {
+      action: RENTAL_RESEARCH_ACTIONS.requested,
+      runId: request.veraRunId,
+      actor: "user",
+      outcome: "recorded",
+      payloadHash: hash({
+        profileId: profile.id,
+        selectedSources: request.selectedSources
+      }),
+      metadata: {
+        profileId: profile.id,
+        selectedSources: request.selectedSources,
+        retryOfSearchRunId: request.retryOfSearchRunId ?? null
+      },
+      occurredAt: requestedAt
+    })
+  );
+
+  const operations: Array<{
+    readonly source: RentalResearchSource;
+    readonly promise: Promise<unknown>;
+  }> = [];
+  if (request.selectedSources.includes("rentcast")) {
+    operations.push({
+      source: "rentcast",
+      promise: runLiveSearch(
+        {
+          searchProfileId: profile.id,
+          confirmedExternalUsage: true,
+          veraRunId: request.veraRunId,
+          ...(request.retryOfSearchRunId ? { retryOfSearchRunId: request.retryOfSearchRunId } : {})
+        },
+        dependencies.liveSearch
+      )
+    });
+  }
+  if (request.selectedSources.includes("zillow")) {
+    operations.push({
+      source: "zillow",
+      promise: runZillowSource(
+        dependencies,
+        profile,
+        request.veraRunId,
+        request.selectedSources.length === 1
+      )
+    });
+  }
+  const outcomes = await Promise.allSettled(operations.map((operation) => operation.promise));
+  for (const [index, outcome] of outcomes.entries()) {
+    if (outcome.status !== "rejected") continue;
+    const source = operations[index]?.source;
+    if (source === undefined) continue;
+    const prior = (await dependencies.repositories.activityEvents.list()).some(
+      (item) =>
+        item.correlationId === request.veraRunId &&
+        item.action ===
+          (source === "zillow" ? RENTAL_RESEARCH_ACTIONS.sourceFailed : "live_search_failed")
+    );
+    if (!prior) {
+      await dependencies.repositories.activityEvents.append(
+        event(dependencies, {
+          action: source === "zillow" ? RENTAL_RESEARCH_ACTIONS.sourceFailed : "live_search_failed",
+          runId: request.veraRunId,
+          actor: "system",
+          outcome: "failed",
+          errorCategory: "policy_denial",
+          payloadHash: hash({ source, stoppedSafely: true }),
+          metadata: {
+            profileId: profile.id,
+            source,
+            provider: source,
+            resultState: source === "zillow" ? "zillow_disabled" : "provider_unavailable",
+            retryable: false
+          },
+          occurredAt: nowIso(dependencies)
+        })
+      );
+    }
+  }
+  await dependencies.repositories.activityEvents.append(
+    event(dependencies, {
+      action: RENTAL_RESEARCH_ACTIONS.sourcesFinished,
+      runId: request.veraRunId,
+      actor: "system",
+      outcome: "succeeded",
+      payloadHash: hash({ selectedSources: request.selectedSources }),
+      metadata: { profileId: profile.id, selectedSources: request.selectedSources },
+      occurredAt: nowIso(dependencies)
+    })
+  );
+  return getRentalResearchStatus(request.veraRunId, dependencies);
+}
+
+function numeric(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function selectedSourcesFromEvent(eventValue: ActivityEvent): RentalResearchSource[] {
+  const parsed = RunRentalResearchRequestSchema.shape.selectedSources.safeParse(
+    eventValue.metadata.selectedSources
+  );
+  return parsed.success ? parsed.data : [];
+}
+
+function zillowManualAction(job: SourceJob | null, finished: ActivityEvent | undefined) {
+  const parsed = RentalResearchRunStatusSchema.shape.sources.element.shape.manualAction.safeParse(
+    finished?.metadata.manualAction
+  );
+  if (parsed.success) return parsed.data;
+  if (job?.status === "cancelled_by_policy") return "cancelled" as const;
+  return null;
+}
+
+function sourceStatus(
+  source: RentalResearchSource,
+  selected: boolean,
+  job: SourceJob | null,
+  events: readonly ActivityEvent[]
+): RentalResearchSourceStatus {
+  if (!selected) {
+    return {
+      source,
+      state: "excluded_by_user",
+      retrievedCount: 0,
+      importedCount: 0,
+      rejectedCount: 0,
+      manualAction: null,
+      message: null
+    };
+  }
+  const imports = events.filter(
+    (item) => item.action === "live_listing_imported" && item.metadata.provider === source
+  );
+  const rejections = events.filter(
+    (item) => item.action === "live_listing_rejected" && item.metadata.provider === source
+  );
+  if (source === "zillow") {
+    const finished = events.findLast(
+      (item) => item.action === RENTAL_RESEARCH_ACTIONS.sourceFinished
+    );
+    const manualAction = zillowManualAction(job, finished);
+    const failed = events.findLast((item) => item.action === RENTAL_RESEARCH_ACTIONS.sourceFailed);
+    const retrievedCount = numeric(finished?.metadata.retrievedCount);
+    const importedCount = numeric(finished?.metadata.importedCount) || imports.length;
+    const rejectedCount = numeric(finished?.metadata.rejectedCount) || rejections.length;
+    let state: RentalResearchSourceStatus["state"] = "ready";
+    if (job?.status === "manual_action_required") {
+      state =
+        manualAction === "login_required"
+          ? "login_required"
+          : manualAction === "browser_offline"
+            ? "browser_offline"
+            : importedCount > 0
+              ? "partial"
+              : "failed";
+    } else if (job?.status === "completed") {
+      state = finished?.metadata.outputState === "partial" ? "partial" : "completed";
+    } else if (
+      job?.status === "retryable_failed" ||
+      job?.status === "permanently_failed" ||
+      job?.status === "cancelled_by_policy"
+    ) {
+      state = importedCount > 0 ? "partial" : "failed";
+    } else if (failed) {
+      state = importedCount > 0 ? "partial" : "failed";
+    } else if (job !== null) {
+      state = "searching";
+    }
+    return {
+      source,
+      state,
+      retrievedCount,
+      importedCount,
+      rejectedCount,
+      manualAction,
+      message:
+        manualAction !== null
+          ? manualInstruction(manualAction)
+          : failed
+            ? "Zillow stopped safely; other source results were preserved."
+            : null
+    };
+  }
+
+  const provider = events.findLast((item) => item.action === "live_provider_query_completed");
+  const failure = events.findLast(
+    (item) => item.action === "live_search_failed" && item.metadata.provider === "rentcast"
+  );
+  let state: RentalResearchSourceStatus["state"] = "ready";
+  if (failure) state = imports.length > 0 ? "partial" : "failed";
+  else if (job?.status === "completed") state = "completed";
+  else if (job !== null) state = "searching";
+  return {
+    source,
+    state,
+    retrievedCount: numeric(provider?.metadata.retrievedCount),
+    importedCount: imports.length,
+    rejectedCount: rejections.length,
+    manualAction: job?.status === "cancelled_by_policy" ? "cancelled" : null,
+    message: failure ? "RentCast stopped safely; other source results were preserved." : null
+  };
+}
+
+function researchPhase(
+  events: readonly ActivityEvent[],
+  jobs: readonly SourceJob[],
+  imports: readonly ActivityEvent[]
+): RentalResearchProgressPhase {
+  if (events.some((item) => item.action === "live_search_completed")) return "completed";
+  const normalizedIds = new Set(
+    events.filter((item) => item.action === "normalization.completed").map((item) => item.targetId)
+  );
+  if (imports.length > 0 && imports.every((item) => normalizedIds.has(item.targetId))) {
+    return "ranking";
+  }
+  if (normalizedIds.size > 0) return "deduplicating";
+  if (imports.length > 0) return "importing";
+  const checkpoints = events.filter(
+    (item) => item.action === "browser.zillow_research_action_checked"
+  );
+  if (
+    checkpoints.some(
+      (item) =>
+        item.metadata.action === "open_observed_listing" ||
+        item.metadata.action === "return_to_results"
+    )
+  ) {
+    return "opening_details";
+  }
+  if (
+    checkpoints.some(
+      (item) =>
+        item.metadata.action === "set_reviewed_filter" || item.metadata.action === "scroll_bounded"
+    )
+  ) {
+    return "searching";
+  }
+  if (checkpoints.some((item) => item.metadata.action === "snapshot")) {
+    return "checking_login";
+  }
+  if (
+    events.some((item) => item.action === RENTAL_RESEARCH_ACTIONS.sourcesFinished) &&
+    imports.length === 0
+  ) {
+    return "completed";
+  }
+  const terminal =
+    jobs.length > 0 &&
+    jobs.every((job) =>
+      [
+        "completed",
+        "retryable_failed",
+        "permanently_failed",
+        "manual_action_required",
+        "cancelled_by_policy"
+      ].includes(job.status)
+    );
+  return terminal ? "completed" : "connecting";
+}
+
+export async function getRentalResearchStatus(
+  runId: string,
+  dependencies: Pick<RentalResearchDependencies, "repositories">
+): Promise<RentalResearchRunStatus> {
+  const events = (await dependencies.repositories.activityEvents.list()).filter(
+    (item) => item.correlationId === runId
+  );
+  const requested = events.find((item) => item.action === RENTAL_RESEARCH_ACTIONS.requested);
+  if (!requested) throw new RentalResearchServiceError("run_not_found", 404, false);
+  const selected = selectedSourcesFromEvent(requested);
+  const profileId =
+    typeof requested.metadata.profileId === "string" ? requested.metadata.profileId : "";
+  const jobs = (await dependencies.repositories.sourceJobs.list()).filter(
+    (job) => job.id === runId || job.correlationId === runId
+  );
+  const rentcast = jobs.find((job) => job.source === "rentcast") ?? null;
+  const zillow = jobs.find((job) => job.source === "zillow") ?? null;
+  const imports = events.filter((item) => item.action === "live_listing_imported");
+  const sources = [
+    sourceStatus("rentcast", selected.includes("rentcast"), rentcast, events),
+    sourceStatus("zillow", selected.includes("zillow"), zillow, events)
+  ] as const;
+  const phase = researchPhase(events, jobs, imports);
+  const failures = sources.filter(
+    (source) =>
+      selected.includes(source.source) &&
+      ["failed", "partial", "login_required", "browser_offline"].includes(source.state)
+  );
+  return RentalResearchRunStatusSchema.parse({
+    searchRunId: runId,
+    searchProfileId: profileId,
+    phase,
+    sources,
+    partial:
+      failures.length > 0 &&
+      sources.some(
+        (source) =>
+          selected.includes(source.source) &&
+          (source.importedCount > 0 || source.state === "completed")
+      ),
+    completedAt:
+      phase === "completed"
+        ? (events.findLast(
+            (item) =>
+              item.action === "live_search_completed" ||
+              item.action === RENTAL_RESEARCH_ACTIONS.sourcesFinished
+          )?.occurredAt ?? null)
+        : null
+  });
+}
+
+export async function stopRentalResearch(
+  runId: string,
+  dependencies: RentalResearchDependencies
+): Promise<RentalResearchRunStatus> {
+  const jobs = (await dependencies.repositories.sourceJobs.list()).filter(
+    (job) => job.id === runId || job.correlationId === runId
+  );
+  if (jobs.length === 0) throw new RentalResearchServiceError("run_not_found", 404, false);
+  const stoppedAt = nowIso(dependencies);
+  for (const job of jobs) {
+    if (
+      [
+        "queued",
+        "dispatched",
+        "running",
+        "retryable_failed",
+        "deferred_node_offline",
+        "manual_action_required"
+      ].includes(job.status)
+    ) {
+      await dependencies.repositories.sourceJobs.transition(
+        job.id,
+        "cancelled_by_policy",
+        stoppedAt,
+        {
+          manualAction: null,
+          deferredReason: null
+        }
+      );
+    }
+  }
+  await dependencies.repositories.activityEvents.append(
+    event(dependencies, {
+      action: RENTAL_RESEARCH_ACTIONS.stopped,
+      runId,
+      actor: "user",
+      outcome: "succeeded",
+      payloadHash: hash({ runId, stoppedAt }),
+      metadata: { stoppedJobCount: jobs.length },
+      occurredAt: stoppedAt
+    })
+  );
+  return getRentalResearchStatus(runId, dependencies);
+}
+
+export function createRentalResearchDependencies(
+  userId: VeraUserId,
+  repositories: UserRepositories,
+  repositoryProvider: UserRepositoryProvider,
+  liveSearch: LiveSearchServiceDependencies,
+  environment: NodeJS.ProcessEnv = process.env
+): RentalResearchDependencies {
+  const canConfigureZillow =
+    (environment.MARITIME_BROWSER_GATEWAY_API_KEY?.trim().length ?? 0) >= 8 &&
+    (environment.MARITIME_BROWSER_GATEWAY_AGENT_ID?.trim().length ?? 0) > 0;
+  return {
+    userId,
+    repositories,
+    repositoryProvider,
+    liveSearch,
+    zillow: canConfigureZillow
+      ? createMaritimeZillowResearchClient(environment)
+      : {
+          async run() {
+            throw new MaritimeZillowResearchError("gateway_unavailable", true);
+          }
+        },
+    zillowEnvironment: parseZillowResearchCheckpointEnvironment(environment),
+    now: () => new Date(),
+    createId: randomUUID
+  };
+}

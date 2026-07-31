@@ -179,6 +179,27 @@ describe("source job payload schemas", () => {
         }
       })
     ).toMatchObject({ captureKind: "current_tab", profileId: "vera-zillow" });
+    expect(
+      SourceJobPayloadSchema.parse({
+        acquisitionMode: "local_browser",
+        captureKind: "research_tab",
+        nodeId: "remote-extension-gateway",
+        profileId: "official-chrome-extension",
+        startingTabReference: { kind: "target_id", value: "shared-tab-1" },
+        limits: {
+          maxPages: 6,
+          maxRecords: 10,
+          maxBytes: 250_000,
+          maxDurationMilliseconds: 90_000,
+          maxConcurrency: 1
+        },
+        maxDetailPages: 5,
+        maxResultPageExpansions: 2
+      })
+    ).toMatchObject({
+      captureKind: "research_tab",
+      startingTabReference: { kind: "target_id", value: "shared-tab-1" }
+    });
   });
 
   it("rejects credential, browser-profile, pasted-evidence, and arbitrary fields", () => {
@@ -188,7 +209,10 @@ describe("source job payload schemas", () => {
       { authorization: "must-reject" },
       { sessionExport: "must-reject" },
       { profilePath: "/tmp/must-reject" },
-      { rawPageContent: "must-reject" }
+      { rawPageContent: "must-reject" },
+      { selector: ".result-card" },
+      { javascript: "document.body.innerText" },
+      { actions: [{ kind: "click", x: 1, y: 1 }] }
     ]) {
       expect(() => SourceJobPayloadSchema.parse({ ...browserPayload, ...forbidden })).toThrow();
     }

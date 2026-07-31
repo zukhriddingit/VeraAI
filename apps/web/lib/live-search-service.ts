@@ -376,7 +376,7 @@ export async function runLiveSearch(
     if (retries.length > 0) throw new LiveSearchServiceError("duplicate_run", 409, null, false);
   }
 
-  const runId = dependencies.createId();
+  const runId = request.veraRunId ?? dependencies.createId();
   const requestedAt = isoNow(dependencies);
   const runSequence =
     existingJobs.filter(

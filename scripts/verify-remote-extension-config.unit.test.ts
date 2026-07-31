@@ -20,8 +20,24 @@ function fixture() {
     ) as unknown,
     pluginManifest: readJson("vera-read-shared-tab/openclaw.plugin.json"),
     pluginPackage: readJson("vera-read-shared-tab/package.json"),
+    zillowPluginManifest: readJson("vera-zillow-rental-research/openclaw.plugin.json"),
+    zillowPluginPackage: readJson("vera-zillow-rental-research/package.json"),
     imageManifest: readJson("remote-extension-image.json"),
+    acceptedRollbackManifest: readJson("remote-extension-image.m13a-accepted.json"),
+    candidateManifest: readJson("remote-extension-image.m13b-candidate.json"),
     pluginSource: readFileSync(resolve(directory, "vera-read-shared-tab/index.mjs"), "utf8"),
+    zillowPluginSource: readFileSync(
+      resolve(directory, "vera-zillow-rental-research/index.mjs"),
+      "utf8"
+    ),
+    zillowContractSource: readFileSync(
+      resolve(directory, "vera-zillow-rental-research/contract.mjs"),
+      "utf8"
+    ),
+    zillowSnapshotSource: readFileSync(
+      resolve(directory, "vera-zillow-rental-research/zillow-snapshot.mjs"),
+      "utf8"
+    ),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
     dockerfile: readFileSync(resolve(directory, "remote-extension.Dockerfile"), "utf8"),
     supervisorSource: readFileSync(resolve(directory, "remote-extension-supervisor.mjs"), "utf8"),
@@ -62,6 +78,21 @@ describe("remote extension configuration verifier", () => {
     );
   });
 
+  it("rejects rollback replacement and mutable candidate publication", () => {
+    const input = fixture();
+    (input.acceptedRollbackManifest as { image: string }).image =
+      "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
+    const candidate = input.candidateManifest as Record<string, unknown>;
+    candidate.publicationState = "published";
+    candidate.image = "ghcr.io/zukhriddingit/vera-openclaw-gateway:latest";
+    expect(findRemoteExtensionConfigViolations(input)).toEqual(
+      expect.arrayContaining([
+        "The accepted Milestone 13A image must remain an immutable rollback artifact.",
+        "The Milestone 13B candidate must preserve rollback identity and use one verified immutable publication."
+      ])
+    );
+  });
+
   it.each([
     ["mixed runtime child", "runtimeManifest", `ghcr.io/other/gateway@sha256:${"a".repeat(64)}`],
     ["missing runtime child", "runtimeManifest", undefined],
@@ -88,7 +119,7 @@ describe("remote extension configuration verifier", () => {
     expect(findRemoteExtensionConfigViolations(input)).toEqual(
       expect.arrayContaining([
         "Remote extension topology must not route through an OpenClaw node.",
-        "The model may receive only Vera's snapshot tool."
+        "The model may receive only the two reviewed Vera-owned tools."
       ])
     );
   });
@@ -101,6 +132,14 @@ describe("remote extension configuration verifier", () => {
         "Snapshot plugin contains a mutating browser-control method.",
         "Snapshot plugin contains a forbidden browser-control route."
       ])
+    );
+  });
+
+  it("rejects an unrestricted Zillow browser operation", () => {
+    const input = fixture();
+    input.zillowPluginSource += '\nfetch("/screenshot", { method: "GET" });\n';
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Zillow plugin must not expose or call forbidden browser, script, file, or generic tool surfaces."
     );
   });
 

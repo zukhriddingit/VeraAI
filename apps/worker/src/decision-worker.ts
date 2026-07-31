@@ -170,7 +170,10 @@ async function finalizeCompletedLiveSearches(
           errorCategory: null,
           metadata: {
             profileId: job.searchProfileId,
-            provider: "rentcast",
+            provider:
+              request.metadata.provider === "zillow" || request.metadata.provider === "rentcast"
+                ? request.metadata.provider
+                : "multiple",
             normalizedCount: normalized.length,
             scoredCorpusRevision: job.targetCorpusRevision,
             decisionJobId: job.id

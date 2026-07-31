@@ -1,45 +1,48 @@
 "use client";
 
 import {
-  LiveSearchStatusSchema,
+  RentalResearchRunStatusSchema,
   type CanonicalListingSummary,
-  type LiveSearchResultState,
-  type LiveSearchStatus,
+  type RentalResearchProgressPhase,
+  type RentalResearchRunStatus,
+  type RentalResearchSource,
+  type RentalResearchSourceState,
   type SearchProfile
 } from "@vera/domain";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
 import { SearchComposer } from "./search-composer";
 
-const terminalStates = new Set<LiveSearchResultState>([
-  "provider_unavailable",
-  "provider_auth_failed",
-  "provider_rate_limited",
-  "maritime_unavailable",
-  "agent_timeout",
-  "agent_invalid_response",
-  "no_matching_live_results",
-  "completed"
-]);
-
-const stateLabels: Record<LiveSearchResultState, string> = {
-  queued: "Queued",
-  retrieving: "Retrieving RentCast inventory",
-  analyzing: "OpenClaw analyzing candidates on Maritime",
-  importing: "Importing, normalizing, and scoring",
-  provider_unavailable: "RentCast unavailable",
-  provider_auth_failed: "RentCast authentication failed",
-  provider_rate_limited: "RentCast rate limit reached",
-  maritime_unavailable: "Maritime unavailable",
-  agent_timeout: "OpenClaw analysis timed out",
-  agent_invalid_response: "OpenClaw returned an invalid response",
-  no_matching_live_results: "No matching live results",
+const phaseLabels: Record<RentalResearchProgressPhase, string> = {
+  connecting: "Connecting",
+  checking_login: "Checking login",
+  searching: "Searching",
+  opening_details: "Opening details",
+  importing: "Importing",
+  deduplicating: "Deduplicating",
+  ranking: "Ranking",
   completed: "Completed"
 };
 
-function milliseconds(value: number | null): string {
-  return value === null ? "Pending" : `${String(value)} ms`;
+const sourceLabels: Record<RentalResearchSource, string> = {
+  rentcast: "RentCast",
+  zillow: "Zillow"
+};
+
+const sourceStateLabels: Record<RentalResearchSourceState, string> = {
+  ready: "Ready",
+  login_required: "Login required",
+  browser_offline: "Browser offline",
+  excluded_by_user: "Excluded by user",
+  searching: "Searching",
+  completed: "Completed",
+  partial: "Partial",
+  failed: "Failed"
+};
+
+function sourceNeedsRetry(state: RentalResearchSourceState): boolean {
+  return ["login_required", "browser_offline", "partial", "failed"].includes(state);
 }
 
 export function LiveSearchPanel({
@@ -51,80 +54,118 @@ export function LiveSearchPanel({
 }) {
   const [profiles, setProfiles] = useState<readonly SearchProfile[]>(initialProfiles);
   const [profileId, setProfileId] = useState(initialProfiles[0]?.id ?? "");
+  const [selectedSources, setSelectedSources] = useState<readonly RentalResearchSource[]>([
+    "rentcast"
+  ]);
   const [confirmed, setConfirmed] = useState(false);
-  const [status, setStatus] = useState<LiveSearchStatus | null>(null);
-  const [requestState, setRequestState] = useState<LiveSearchResultState | null>(null);
+  const [status, setStatus] = useState<RentalResearchRunStatus | null>(null);
+  const [runId, setRunId] = useState<string | null>(null);
+  const [localPhase, setLocalPhase] = useState<RentalResearchProgressPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [retryOf, setRetryOf] = useState<string | null>(null);
-  const [retryUsed, setRetryUsed] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  const activeState = status?.state ?? requestState;
-  const running = activeState !== null && !terminalStates.has(activeState);
   const selectedProfile = profiles.find((profile) => profile.id === profileId) ?? null;
+  const phase = status?.phase ?? localPhase;
+  const running = runId !== null && phase !== "completed";
+  const failedSources = useMemo(
+    () =>
+      status?.sources
+        .filter((source) => sourceNeedsRetry(source.state))
+        .map((source) => source.source) ?? [],
+    [status]
+  );
 
   useEffect(() => {
-    if (!status || terminalStates.has(status.state)) return;
+    if (runId === null || phase === "completed") return;
     const controller = new AbortController();
-    const timeout = window.setTimeout(async () => {
+    let polling = false;
+    const poll = async () => {
+      if (polling) return;
+      polling = true;
       try {
-        const response = await fetch(`/api/live-search/${encodeURIComponent(status.searchRunId)}`, {
+        const response = await fetch(`/api/live-search/${encodeURIComponent(runId)}`, {
           cache: "no-store",
           signal: controller.signal
         });
+        if (response.status === 404) return;
         if (!response.ok) throw new Error("status unavailable");
-        const next = LiveSearchStatusSchema.parse((await response.json()) as unknown);
+        const next = RentalResearchRunStatusSchema.parse((await response.json()) as unknown);
         setStatus(next);
-        if (next.state === "completed") setRefreshKey((value) => value + 1);
+        setLocalPhase(null);
+        if (next.phase === "completed") setRefreshKey((value) => value + 1);
       } catch (caught: unknown) {
         if (!(caught instanceof DOMException && caught.name === "AbortError")) {
-          setError(
-            "Live-search status is temporarily unavailable. Your existing listings are safe."
-          );
+          setError("Research status is temporarily unavailable. Imported listings remain safe.");
         }
+      } finally {
+        polling = false;
       }
-    }, 1_000);
+    };
+    const interval = window.setInterval(() => void poll(), 1_000);
+    void poll();
     return () => {
       controller.abort();
-      window.clearTimeout(timeout);
+      window.clearInterval(interval);
     };
-  }, [status]);
+  }, [phase, runId]);
 
-  async function run() {
+  function toggleSource(source: RentalResearchSource) {
+    setSelectedSources((current) =>
+      current.includes(source)
+        ? current.filter((candidate) => candidate !== source)
+        : [...current, source]
+    );
+    setConfirmed(false);
+  }
+
+  async function run(sources: readonly RentalResearchSource[] = selectedSources) {
+    if (sources.length === 0) return;
+    const nextRunId = crypto.randomUUID();
     setError(null);
-    setRequestState("queued");
+    setStatus(null);
+    setRunId(nextRunId);
+    setLocalPhase("connecting");
     try {
       const response = await fetch("/api/live-search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          veraRunId: nextRunId,
           searchProfileId: profileId,
-          confirmedExternalUsage: true,
-          ...(retryOf ? { retryOfSearchRunId: retryOf } : {})
+          selectedSources: sources,
+          confirmedExternalUsage: true
         })
       });
       const body = (await response.json()) as unknown;
       if (!response.ok) {
-        const safe = body as {
-          code?: unknown;
-          message?: unknown;
-          searchRunId?: unknown;
-          retryable?: unknown;
-        };
-        if (safe.retryable === true && typeof safe.searchRunId === "string" && !retryUsed) {
-          setRetryOf(safe.searchRunId);
-        }
+        const safe = body as { message?: unknown };
         throw new Error(
-          typeof safe.message === "string" ? safe.message : "Live search stopped safely."
+          typeof safe.message === "string" ? safe.message : "Rental research stopped safely."
         );
       }
-      setStatus(LiveSearchStatusSchema.parse(body));
-      setRequestState(null);
-      if (retryOf) setRetryUsed(true);
-      setRetryOf(null);
+      const next = RentalResearchRunStatusSchema.parse(body);
+      setStatus(next);
+      setLocalPhase(null);
+      if (next.phase === "completed") setRefreshKey((value) => value + 1);
     } catch (caught: unknown) {
-      setRequestState(null);
-      setError(caught instanceof Error ? caught.message : "Live search stopped safely.");
+      setRunId(null);
+      setLocalPhase(null);
+      setError(caught instanceof Error ? caught.message : "Rental research stopped safely.");
+    }
+  }
+
+  async function stop() {
+    if (runId === null) return;
+    setError(null);
+    try {
+      const response = await fetch(`/api/live-search/${encodeURIComponent(runId)}/stop`, {
+        method: "POST"
+      });
+      if (!response.ok) throw new Error("Stop request failed.");
+      setStatus(RentalResearchRunStatusSchema.parse((await response.json()) as unknown));
+      setLocalPhase(null);
+    } catch {
+      setError("Vera could not confirm Stop. Use the extension to unshare the tab immediately.");
     }
   }
 
@@ -147,94 +188,114 @@ export function LiveSearchPanel({
 
       <section className="live-search-launch" aria-labelledby="live-search-heading">
         <div className="live-search-launch-copy">
-          <p className="eyebrow">Read-only live inventory</p>
-          <h2 id="live-search-heading">Ready to search?</h2>
-          {selectedProfile ? (
-            <p>
-              Vera will retrieve up to ten active RentCast rentals for{" "}
-              <strong>{selectedProfile.name}</strong>, then ask OpenClaw on Maritime to analyze
-              minimized candidate facts. Deterministic constraints and scoring stay in Vera.
-            </p>
-          ) : (
-            <p>Create and save a search profile before using live providers.</p>
-          )}
+          <p className="eyebrow">Read-only rental research</p>
+          <h2 id="live-search-heading">Choose sources</h2>
+          <p>
+            RentCast is Vera’s official API source. Zillow is an opt-in founder experiment that
+            reads only one explicitly shared Zillow rental tab through the bounded OpenClaw tool.
+          </p>
+          <div className="source-selector" role="group" aria-label="Rental sources">
+            {(["rentcast", "zillow"] as const).map((source) => {
+              const selected = selectedSources.includes(source);
+              const current = status?.sources.find((candidate) => candidate.source === source);
+              return (
+                <label className="source-selector-option" key={source}>
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={running}
+                    onChange={() => toggleSource(source)}
+                  />
+                  <span>
+                    <strong>{sourceLabels[source]}</strong>
+                    <small>
+                      {current
+                        ? sourceStateLabels[current.state]
+                        : selected
+                          ? "Ready"
+                          : "Excluded by user"}
+                    </small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
           <label className="live-search-confirmation">
             <input
               type="checkbox"
               checked={confirmed}
-              disabled={running || selectedProfile === null}
+              disabled={running || selectedProfile === null || selectedSources.length === 0}
               onChange={(event) => setConfirmed(event.target.checked)}
             />
-            <span>I understand this uses live RentCast and Maritime API capacity.</span>
+            <span>
+              I am starting this read-only search now. If Zillow is selected, I have opened and
+              explicitly shared exactly one Zillow rental tab.
+            </span>
           </label>
         </div>
-        <button
-          className="primary-button live-search-button"
-          type="button"
-          disabled={running || !confirmed || selectedProfile === null}
-          onClick={() => void run()}
-        >
-          {running && activeState
-            ? stateLabels[activeState]
-            : retryOf
-              ? "Retry search once"
-              : "Search now"}
-        </button>
+        <div className="live-search-actions">
+          <button
+            className="primary-button live-search-button"
+            type="button"
+            disabled={
+              running || !confirmed || selectedProfile === null || selectedSources.length === 0
+            }
+            onClick={() => void run()}
+          >
+            {running && phase ? phaseLabels[phase] : "Search selected sources"}
+          </button>
+          {running ? (
+            <button className="secondary-button" type="button" onClick={() => void stop()}>
+              Stop search
+            </button>
+          ) : null}
+        </div>
       </section>
 
       {error ? (
         <div className="listing-message listing-message-warning" role="alert">
-          <strong>Live search did not complete.</strong>
+          <strong>Rental research did not complete.</strong>
           <span>{error}</span>
         </div>
       ) : null}
 
       {status ? (
-        <section className="profile-card" aria-label="Live search status">
+        <section className="profile-card" aria-label="Rental research status">
           <div className="profile-card-copy">
-            <p className="eyebrow">Live search status</p>
-            <h2>{stateLabels[status.state]}</h2>
-            {status.state === "completed" ? (
-              <p>Live RentCast inventory analyzed by OpenClaw on Maritime.</p>
+            <p className="eyebrow">Live progress</p>
+            <h2>{phaseLabels[status.phase]}</h2>
+            <p>
+              {status.partial
+                ? "Partial completion: successful source results were preserved."
+                : "Each source progresses independently through Vera’s normal import pipeline."}
+            </p>
+            {failedSources.length > 0 && !running ? (
+              <button
+                className="secondary-button"
+                type="button"
+                onClick={() => void run(failedSources)}
+              >
+                Retry failed source{failedSources.length === 1 ? "" : "s"}
+              </button>
             ) : null}
           </div>
-          <dl className="profile-facts">
-            <div>
-              <dt>Search run ID</dt>
-              <dd>{status.searchRunId}</dd>
-            </div>
-            <div>
-              <dt>Data provider</dt>
-              <dd>{status.dataProvider}</dd>
-            </div>
-            <div>
-              <dt>Maritime agent</dt>
-              <dd>{status.maritimeAgent}</dd>
-            </div>
-            <div>
-              <dt>Results</dt>
-              <dd>
-                {status.retrievedCount} retrieved, {status.importedCount} imported,{" "}
-                {status.rejectedCount} rejected
-              </dd>
-            </div>
-            <div>
-              <dt>Retrieval latency</dt>
-              <dd>{milliseconds(status.retrievalLatencyMilliseconds)}</dd>
-            </div>
-            <div>
-              <dt>Agent latency</dt>
-              <dd>{milliseconds(status.agentLatencyMilliseconds)}</dd>
-            </div>
-            <div>
-              <dt>Total latency</dt>
-              <dd>{milliseconds(status.totalLatencyMilliseconds)}</dd>
-            </div>
-            <div>
-              <dt>Completed</dt>
-              <dd>{status.completedAt ?? "Pending normalization and scoring"}</dd>
-            </div>
-          </dl>
+          <div className="source-status-grid">
+            {status.sources.map((source) => (
+              <article className="source-status-card" key={source.source}>
+                <div>
+                  <strong>{sourceLabels[source.source]}</strong>
+                  <span className={`source-state source-state-${source.state}`}>
+                    {sourceStateLabels[source.state]}
+                  </span>
+                </div>
+                <p>
+                  {source.retrievedCount} observed · {source.importedCount} imported ·{" "}
+                  {source.rejectedCount} rejected
+                </p>
+                {source.message ? <p>{source.message}</p> : null}
+              </article>
+            ))}
+          </div>
         </section>
       ) : null}
 
@@ -247,7 +308,7 @@ export function LiveSearchPanel({
             <p className="eyebrow">Decision cockpit</p>
             <h2 id="listings-heading">Homes worth your attention</h2>
           </div>
-          <p>Compare Vera fit scores, source freshness, missing facts, and agent notes.</p>
+          <p>Compare Vera fit scores, source freshness, missing facts, and research notes.</p>
         </div>
         <ListingDashboard initialListings={initialListings} refreshKey={refreshKey} />
       </section>

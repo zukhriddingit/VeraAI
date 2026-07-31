@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "format": "ai",
+  "targetId": "shared-tab-1",
+  "url": "https://www.zillow.com/boston-ma/rentals/",
+  "snapshot": "- searchbox \"Search\" [ref=e1]\n- button \"Price\" [ref=e2]\n- button \"Beds & Baths\" [ref=e3]\n- link \"12 Beacon St, Boston, MA 02108\" [ref=e10]\n  - text \"$3,200/mo\"\n  - text \"2 beds 1 bath 900 sq ft\"\n  - text \"In-unit laundry\"\n\nLinks:\n1. 12 Beacon St, Boston, MA 02108 -> https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/",
+  "refs": {
+    "e1": { "role": "searchbox", "name": "Search" },
+    "e2": { "role": "button", "name": "Price" },
+    "e3": { "role": "button", "name": "Beds & Baths" },
+    "e10": { "role": "link", "name": "12 Beacon St, Boston, MA 02108" }
+  }
+}

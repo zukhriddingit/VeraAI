@@ -232,6 +232,13 @@ export class ProductionMaritimeOrchestrator implements MaritimeOrchestrator {
     ) {
       return false;
     }
+    if (
+      job.payload.acquisitionMode === "local_browser" &&
+      job.payload.captureKind === "research_tab"
+    ) {
+      // The generic production orchestrator cannot execute the bounded research tool.
+      return false;
+    }
     const [hasUserSession, approval] = await Promise.all([
       this.#authorization.isUserSessionAvailable(job),
       job.approvalId === null

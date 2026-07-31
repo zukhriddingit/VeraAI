@@ -48,7 +48,9 @@ export const CanonicalListingSummarySchema = z
     topConcern: z.string().trim().min(1).max(300).nullable(),
     riskIndicatorCount: z.number().int().nonnegative(),
     highestRiskSeverity: z.enum(["info", "low", "medium", "high"]).nullable(),
-    liveEvidence: LiveListingEvidenceSchema.nullable().optional()
+    liveEvidence: LiveListingEvidenceSchema.nullable().optional(),
+    researchNotes: z.array(z.string().trim().min(1).max(240)).max(20).optional(),
+    safeExtractionWarnings: z.array(z.string().trim().min(1).max(240)).max(20).optional()
   })
   .strict();
 

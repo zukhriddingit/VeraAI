@@ -973,13 +973,15 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
           canonicalListingId: canonicalListingSources.canonicalListingId,
           source: listingSourceRecords.source,
           observedAt: listingSourceRecords.observedAt,
-          sourcePostedAt: listingSourceRecords.sourcePostedAt
+          sourcePostedAt: listingSourceRecords.sourcePostedAt,
+          captureMetadata: rawListings.captureMetadata
         })
         .from(canonicalListingSources)
         .innerJoin(
           listingSourceRecords,
           eq(canonicalListingSources.listingSourceRecordId, listingSourceRecords.id)
         )
+        .innerJoin(rawListings, eq(listingSourceRecords.rawListingId, rawListings.id))
         .orderBy(asc(canonicalListingSources.canonicalListingId), asc(listingSourceRecords.source))
         .all();
       const sourcesByListing = new Map<string, string[]>();
@@ -1075,6 +1077,32 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
             scoreV2.lowConfidencePenaltyBasisPoints +
             scoreV2.riskPenaltyBasisPoints
           : 0;
+        const zillowMetadata = memberships
+          .filter((membership) => membership.canonicalListingId === listing.id)
+          .map((membership) => membership.captureMetadata);
+        const researchNotes = [
+          ...new Set(
+            zillowMetadata.flatMap((metadata) =>
+              Array.isArray(metadata.researchNotes)
+                ? metadata.researchNotes.filter(
+                    (note): note is string => typeof note === "string" && note.trim().length > 0
+                  )
+                : []
+            )
+          )
+        ].slice(0, 20);
+        const safeExtractionWarnings = [
+          ...new Set(
+            zillowMetadata.flatMap((metadata) =>
+              Array.isArray(metadata.safeExtractionWarnings)
+                ? metadata.safeExtractionWarnings.filter(
+                    (warning): warning is string =>
+                      typeof warning === "string" && warning.trim().length > 0
+                  )
+                : []
+            )
+          )
+        ].slice(0, 20);
 
         return CanonicalListingSummarySchema.parse({
           id: listing.id,
@@ -1134,7 +1162,9 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
             currentRisks?.filter(({ status }) => status === "open").length ??
             riskCountByListing.get(listing.id) ??
             0,
-          highestRiskSeverity: highestRiskSeverity ?? null
+          highestRiskSeverity: highestRiskSeverity ?? null,
+          researchNotes,
+          safeExtractionWarnings
         });
       });
     },

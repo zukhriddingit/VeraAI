@@ -15,6 +15,7 @@ temporary_directory="$(mktemp -d)"
 trap 'rm -rf "${temporary_directory}"' EXIT
 bootstrap_path="${temporary_directory}/vera-browser-gateway-bootstrap"
 unit_path="${temporary_directory}/vera-browser-gateway-bootstrap.service"
+policy_path="${temporary_directory}/state-link-policy.sh"
 
 test -f "${template_path}"
 test -f "${intent_path}"
@@ -47,6 +48,109 @@ ruby -ryaml -e '
 
 chmod 0700 "${bootstrap_path}"
 bash -n "${bootstrap_path}"
+
+awk '
+  /^sanitize_persisted_state_links\(\) \{$/ { capture = 1 }
+  capture { print }
+  capture && /^}$/ { exit }
+' "${bootstrap_path}" > "${policy_path}"
+test -s "${policy_path}"
+bash -n "${policy_path}"
+# shellcheck source=/dev/null
+source "${policy_path}"
+
+readonly expected_state_link_relative=".openclaw/plugin-skills/browser-automation"
+readonly expected_state_link_target="/app/dist/extensions/browser/skills/browser-automation"
+
+make_state_case() {
+  local name="$1"
+  local root="${temporary_directory}/${name}"
+  mkdir -p "${root}/.openclaw/plugin-skills"
+  printf '%s\n' "${root}"
+}
+
+state_owner() {
+  local path="$1"
+  local listing
+  local uid
+  local gid
+  listing="$(LC_ALL=C ls -nd "${path}")"
+  read -r _ _ uid gid _ <<< "${listing}"
+  printf '%s:%s\n' "${uid}" "${gid}"
+}
+
+empty_state="$(make_state_case empty-state)"
+empty_owner="$(state_owner "${empty_state}")"
+sanitize_persisted_state_links "${empty_state}" "${empty_owner}"
+
+exact_state="$(make_state_case exact-state)"
+exact_owner="$(state_owner "${exact_state}")"
+exact_link="${exact_state}/${expected_state_link_relative}"
+ln -s "${expected_state_link_target}" "${exact_link}"
+sanitize_persisted_state_links "${exact_state}" "${exact_owner}"
+[[ ! -e "${exact_link}" && ! -L "${exact_link}" ]]
+sanitize_persisted_state_links "${exact_state}" "${exact_owner}"
+
+wrong_target_state="$(make_state_case wrong-target-state)"
+wrong_target_owner="$(state_owner "${wrong_target_state}")"
+wrong_target_link="${wrong_target_state}/${expected_state_link_relative}"
+ln -s "/app/dist/extensions/browser/skills/unreviewed" "${wrong_target_link}"
+if sanitize_persisted_state_links "${wrong_target_state}" "${wrong_target_owner}"; then
+  exit 1
+fi
+[[ -L "${wrong_target_link}" ]]
+
+wrong_owner_state="$(make_state_case wrong-owner-state)"
+wrong_owner="$(state_owner "${wrong_owner_state}")"
+wrong_owner_link="${wrong_owner_state}/${expected_state_link_relative}"
+ln -s "${expected_state_link_target}" "${wrong_owner_link}"
+if [[ "${wrong_owner}" == "0:0" ]]; then
+  mismatched_owner="1:1"
+else
+  mismatched_owner="0:0"
+fi
+if sanitize_persisted_state_links "${wrong_owner_state}" "${mismatched_owner}"; then
+  exit 1
+fi
+[[ -L "${wrong_owner_link}" ]]
+
+regular_file_state="$(make_state_case regular-file-state)"
+regular_file_owner="$(state_owner "${regular_file_state}")"
+regular_file_path="${regular_file_state}/${expected_state_link_relative}"
+touch "${regular_file_path}"
+if sanitize_persisted_state_links "${regular_file_state}" "${regular_file_owner}"; then
+  exit 1
+fi
+[[ -f "${regular_file_path}" && ! -L "${regular_file_path}" ]]
+
+directory_state="$(make_state_case directory-state)"
+directory_owner="$(state_owner "${directory_state}")"
+directory_path="${directory_state}/${expected_state_link_relative}"
+mkdir "${directory_path}"
+if sanitize_persisted_state_links "${directory_state}" "${directory_owner}"; then
+  exit 1
+fi
+[[ -d "${directory_path}" && ! -L "${directory_path}" ]]
+
+unexpected_state="$(make_state_case unexpected-state)"
+unexpected_owner="$(state_owner "${unexpected_state}")"
+unexpected_link="${unexpected_state}/unexpected-link"
+ln -s "${expected_state_link_target}" "${unexpected_link}"
+if sanitize_persisted_state_links "${unexpected_state}" "${unexpected_owner}"; then
+  exit 1
+fi
+[[ -L "${unexpected_link}" ]]
+
+multiple_state="$(make_state_case multiple-state)"
+multiple_owner="$(state_owner "${multiple_state}")"
+multiple_exact_link="${multiple_state}/${expected_state_link_relative}"
+multiple_unexpected_link="${multiple_state}/unexpected-link"
+ln -s "${expected_state_link_target}" "${multiple_exact_link}"
+ln -s "${expected_state_link_target}" "${multiple_unexpected_link}"
+if sanitize_persisted_state_links "${multiple_state}" "${multiple_owner}"; then
+  exit 1
+fi
+[[ -L "${multiple_exact_link}" && -L "${multiple_unexpected_link}" ]]
 
 if command -v shellcheck >/dev/null 2>&1; then
   shellcheck -x "${bootstrap_path}"
@@ -148,6 +252,7 @@ printf '%s\n' \
   "immutable_gateway_digest=passed" \
   "secret_placeholders=passed" \
   "vpc_only_gateway_binding=passed" \
+  "state_link_restart_reconciliation=passed" \
   "atomic_resource_journal=passed" \
   "certificate_reconciliation=passed" \
   "load_balancer_readback_before_dns=passed" \

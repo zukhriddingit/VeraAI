@@ -28,13 +28,14 @@ function activeSwitches(
 
 function networkForJob(job: SourceJob) {
   if (job.acquisitionMode === "local_browser") {
-    const url = new URL(
-      job.payload.acquisitionMode === "local_browser" && job.payload.captureKind === "current_tab"
+    if (job.payload.acquisitionMode !== "local_browser") return null;
+    const browserUrl =
+      job.payload.captureKind === "current_tab"
         ? job.payload.expectedUrl
-        : job.payload.acquisitionMode === "local_browser"
-          ? job.payload.savedSearchUrl
-          : "https://invalid.example/"
-    );
+        : job.payload.captureKind === "research_tab"
+          ? "https://www.zillow.com/homes/for_rent/"
+          : job.payload.savedSearchUrl;
+    const url = new URL(browserUrl);
     return { origin: `${url.origin}/`, domain: url.hostname, httpMethod: "GET" as const };
   }
   if (job.acquisitionMode === "email_alert") {

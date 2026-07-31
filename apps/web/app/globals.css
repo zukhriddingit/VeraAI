@@ -2603,10 +2603,101 @@ h2 {
 }
 
 .live-search-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
   margin-top: 4px;
   color: rgba(255, 255, 255, 0.88);
   font-size: 0.82rem;
   line-height: 1.4;
+}
+
+.source-selector,
+.source-status-grid {
+  display: grid;
+  width: 100%;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.source-selector-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+}
+
+.source-selector-option span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.source-selector-option small {
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.live-search-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.live-search-actions .secondary-button {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+  background: transparent;
+}
+
+.source-status-grid {
+  align-content: start;
+}
+
+.source-status-card {
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(201, 234, 216, 0.22);
+}
+
+.source-status-card > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.source-status-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.source-state {
+  padding: 5px 8px;
+  border-radius: 999px;
+  color: var(--forest-deep);
+  background: var(--mint);
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.source-state-failed,
+.source-state-browser_offline,
+.source-state-login_required {
+  color: #733a2b;
+  background: rgba(229, 113, 85, 0.18);
+}
+
+.source-state-excluded_by_user {
+  color: var(--muted);
+  background: var(--paper);
 }
 
 .live-search-button {
@@ -2660,6 +2751,11 @@ h2 {
   .live-search-launch {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .source-selector,
+  .source-status-grid {
+    grid-template-columns: 1fr;
   }
 
   .search-composer-actions .primary-button,

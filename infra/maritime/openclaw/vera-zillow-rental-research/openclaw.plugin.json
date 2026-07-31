@@ -1,0 +1,15 @@
+{
+  "id": "vera-zillow-rental-research",
+  "name": "Vera Zillow Rental Research",
+  "description": "Runs one founder-authorized bounded Zillow rental research workflow in exactly one shared tab.",
+  "contracts": {
+    "tools": ["vera_zillow_rental_research_v1"]
+  },
+  "activation": {
+    "onStartup": true
+  },
+  "configSchema": {
+    "type": "object",
+    "additionalProperties": false
+  }
+}

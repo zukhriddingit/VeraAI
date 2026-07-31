@@ -10,12 +10,23 @@ const connectorPackage = read("packages/connectors/package.json");
 const worker = read("apps/worker/src/acquisition-worker.ts");
 const demo = read("packages/db/src/demo/index.ts");
 const remotePlugin = read("infra/maritime/openclaw/vera-read-shared-tab/index.mjs");
+const zillowResearchPlugin = read("infra/maritime/openclaw/vera-zillow-rental-research/index.mjs");
+const zillowResearchContract = read(
+  "infra/maritime/openclaw/vera-zillow-rental-research/contract.mjs"
+);
+const zillowResearchSnapshot = read(
+  "infra/maritime/openclaw/vera-zillow-rental-research/zillow-snapshot.mjs"
+);
 const remoteConfig = read("infra/maritime/openclaw/remote-extension.openclaw.json5");
 const remoteImage = read("infra/maritime/openclaw/remote-extension-image.json");
 const remoteRouteFilter = read("infra/maritime/openclaw/remote-extension-route-filter.mjs");
 const remoteClient = read("packages/connectors/src/maritime-remote-extension-client.ts");
 const remoteService = read("apps/web/lib/remote-extension-snapshot-service.ts");
 const remoteRoute = read("apps/web/app/api/integrations/remote-browser/snapshot/route.ts");
+const zillowCheckpointRoute = read(
+  "apps/web/app/api/internal/browser-research/checkpoint/route.ts"
+);
+const zillowCheckpointService = read("apps/web/lib/zillow-research-checkpoint-service.ts");
 const environmentExample = read(".env.example");
 const routes = [
   "apps/web/app/api/integrations/browser-agent/status/route.ts",
@@ -137,6 +148,46 @@ rejectText(
   "The consent-tab tool contains a mutating loopback method."
 );
 requireText(
+  zillowResearchContract,
+  /TOOL_NAME\s*=\s*"vera_zillow_rental_research_v1"/u,
+  "The bounded Zillow tool must keep its reviewed versioned name."
+);
+requireText(
+  zillowResearchContract,
+  /MAX_RESULTS\s*=\s*10[\s\S]*MAX_DETAIL_PAGES\s*=\s*5[\s\S]*MAX_RESULT_EXPANSIONS\s*=\s*2[\s\S]*MAX_DURATION_MS\s*=\s*90_000/u,
+  "The bounded Zillow tool must keep its 10/5/2/90-second limits."
+);
+requireText(
+  zillowResearchPlugin,
+  /authorizeAction\("verify_shared_tab"[\s\S]*browserGet\([\s\S]*\/tabs\?profile=[\s\S]*authorizeAction\(action/u,
+  "Every Zillow browser action must be surrounded by the Vera checkpoint and exact-tab recheck."
+);
+requireText(
+  zillowResearchPlugin,
+  /path !== "\/navigate" && path !== "\/act"/u,
+  "The bounded tool may mutate only through the fixed navigate and act loopback routes."
+);
+requireText(
+  zillowResearchPlugin,
+  /new Set\(\["click", "type"\]\)[\s\S]*kind: "scrollIntoView"/u,
+  "The bounded tool may act only through reviewed semantic click, type, and scroll operations."
+);
+requireText(
+  zillowResearchSnapshot,
+  /hostname\.toLowerCase\(\) !== "www\.zillow\.com"[\s\S]*RESULT_PATH_PATTERNS[\s\S]*DETAIL_PATH_PATTERN/u,
+  "The bounded tool must enforce the exact reviewed Zillow rental and detail surfaces."
+);
+rejectText(
+  [zillowResearchPlugin, zillowResearchContract, zillowResearchSnapshot].join("\n"),
+  /["'`]\/(?:screenshot|download|upload|cookies?|storage|pdf|dialog)(?:[/?'"`])/iu,
+  "The bounded Zillow tool contains a forbidden browser-control route."
+);
+rejectText(
+  [zillowResearchPlugin, zillowResearchContract, zillowResearchSnapshot].join("\n"),
+  /\b(?:eval|Function)\s*\(|\b(?:selector|javascript|clickCoords)\s*:/u,
+  "The bounded Zillow tool contains arbitrary evaluation, selector, script, or coordinate input."
+);
+requireText(
   remoteRouteFilter,
   /request\.url\s*!==\s*EXTENSION_ROUTE/u,
   "The public browser Gateway filter must require the exact extension route."
@@ -176,6 +227,11 @@ requireText(
   /MARITIME_BROWSER_GATEWAY_API_KEY=[\r\n]/u,
   "The environment example must declare the server-only browser-Gateway API key."
 );
+requireText(
+  environmentExample,
+  /VERA_ZILLOW_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BROWSER_RESEARCH_CHECKPOINT_URL=[\r\n]+VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN=/u,
+  "The bounded Zillow tool must remain disabled by default with server-only checkpoint configuration."
+);
 rejectText(
   environmentExample,
   /NEXT_PUBLIC_(?:MARITIME_BROWSER_GATEWAY|VERA_REMOTE_EXTENSION|OPENCLAW_EXTENSION)/u,
@@ -185,6 +241,21 @@ requireText(
   remoteRoute,
   /requireVeraSession[\s\S]*assertSameOriginMutation[\s\S]*readBoundedJson/u,
   "The remote browser route must authenticate, enforce same origin, and bound input."
+);
+requireText(
+  zillowCheckpointRoute,
+  /timingSafeEqual[\s\S]*VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN[\s\S]*readBoundedJson/u,
+  "The Gateway checkpoint route must use exact bearer authentication and bounded JSON."
+);
+requireText(
+  zillowCheckpointService,
+  /founderAuthorized[\s\S]*sourceEnabled[\s\S]*browserKillSwitchActive[\s\S]*runActive[\s\S]*cancelled/u,
+  "The checkpoint service must re-evaluate founder, source, kill-switch, run, and cancellation state."
+);
+rejectText(
+  zillowCheckpointService,
+  /rawPageContent|snapshot\s*:|cookie|password/u,
+  "The checkpoint service must not accept or persist raw browser or credential material."
 );
 
 if (failures.length > 0) {

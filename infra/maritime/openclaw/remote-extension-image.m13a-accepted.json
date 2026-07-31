@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "milestone": "13A",
+  "classification": "passed_13a",
+  "image": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd",
+  "sourceCommit": "f155bca09d57017ac141d2c8f3eebd26657aeb3d",
+  "openclawVersion": "2026.7.1",
+  "extensionVersion": "2.0.0",
+  "runtimeUid": 1000,
+  "runtimeGid": 1000,
+  "extensionManifestSha256": "90dc60974ff7b68b4b487cc7040268d4ce458224beeb8bb715e56f59d23bec23",
+  "immutableRollbackArtifact": true,
+  "acceptedAt": "2026-07-30"
+}

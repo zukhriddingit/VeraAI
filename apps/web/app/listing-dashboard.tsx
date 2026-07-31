@@ -229,6 +229,23 @@ function ListingCard({
           </div>
         ) : null}
 
+        {(listing.researchNotes?.length ?? 0) > 0 ? (
+          <div className="listing-reasons" aria-label="OpenClaw research notes">
+            <p className="eyebrow">OpenClaw research notes</p>
+            {listing.researchNotes?.slice(0, 2).map((note) => (
+              <p className="fit-reason" key={note}>
+                {note}
+              </p>
+            ))}
+          </div>
+        ) : null}
+
+        {(listing.safeExtractionWarnings?.length ?? 0) > 0 ? (
+          <p className="fit-reason fit-reason-concern">
+            Needs verification: {listing.safeExtractionWarnings?.[0]}
+          </p>
+        ) : null}
+
         <div className="listing-card-meta">
           <span>
             Posted{" "}
