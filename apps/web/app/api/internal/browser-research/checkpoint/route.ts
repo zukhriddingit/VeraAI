@@ -8,7 +8,6 @@ import {
 } from "../../../../../lib/zillow-research-checkpoint-service.ts";
 import { getHostedApplication } from "../../../../../lib/server/application.ts";
 import {
-  assertSameOriginMutation,
   CrossOriginMutationError,
   MutationRequestError,
   readBoundedJson
@@ -46,6 +45,29 @@ export function requireCheckpointBearer(authorization: string | null, expectedTo
   }
 }
 
+export function assertCheckpointRequestOrigin(request: Request): void {
+  const supplied = request.headers.get("origin");
+  if (supplied === null) throw new CrossOriginMutationError();
+  try {
+    const requestOrigin = new URL(request.url).origin;
+    const suppliedUrl = new URL(supplied);
+    if (
+      suppliedUrl.origin !== supplied ||
+      suppliedUrl.pathname !== "/" ||
+      suppliedUrl.search ||
+      suppliedUrl.hash ||
+      suppliedUrl.username ||
+      suppliedUrl.password ||
+      suppliedUrl.origin !== requestOrigin
+    ) {
+      throw new CrossOriginMutationError();
+    }
+  } catch (error) {
+    if (error instanceof CrossOriginMutationError) throw error;
+    throw new CrossOriginMutationError();
+  }
+}
+
 function failure(code: string, status: number): Response {
   return Response.json(
     { code, message: "Browser research authorization stopped safely." },
@@ -58,7 +80,7 @@ export async function POST(request: Request): Promise<Response> {
     const token = process.env.VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN?.trim() ?? "";
     if (token.length < 32) return failure("checkpoint_not_configured", 503);
     requireCheckpointBearer(request.headers.get("authorization"), token);
-    assertSameOriginMutation(request);
+    assertCheckpointRequestOrigin(request);
     const founder = VeraUserIdSchema.safeParse(
       process.env.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim()
     );
