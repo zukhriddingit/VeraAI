@@ -97,6 +97,8 @@ function happyFetch(
   options: {
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
+    readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
+    readonly replaceStableTabBetweenTabCheckAndSnapshot?: boolean;
     readonly replaceStableTabAfterLocation?: boolean;
   } = {}
 ) {
@@ -104,6 +106,7 @@ function happyFetch(
   let currentUrl = resultUrl;
   let currentTargetId = "shared-tab-1";
   let stableTabId = options.stableTabId;
+  let rotateTargetBeforeNextSnapshot = false;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -119,10 +122,11 @@ function happyFetch(
     }
     const parsed = new URL(url);
     if (parsed.pathname === "/tabs") {
-      return jsonResponse({
+      const targetId = currentTargetId;
+      const response = jsonResponse({
         tabs: [
           {
-            targetId: currentTargetId,
+            targetId,
             ...(stableTabId === undefined
               ? {}
               : { tabId: stableTabId, suggestedTargetId: stableTabId }),
@@ -131,6 +135,14 @@ function happyFetch(
           }
         ]
       });
+      if (rotateTargetBeforeNextSnapshot) {
+        currentTargetId = "navigation-target-between-check-and-snapshot";
+        if (options.replaceStableTabBetweenTabCheckAndSnapshot) {
+          stableTabId = "replacement-tab-between-check-and-snapshot";
+        }
+        rotateTargetBeforeNextSnapshot = false;
+      }
+      return response;
     }
     if (parsed.pathname === "/snapshot") {
       return jsonResponse(snapshotForState(stage, currentUrl, currentTargetId));
@@ -140,6 +152,9 @@ function happyFetch(
       const actionTargetId = currentTargetId;
       if (action.kind === "type" && action.ref === "e1") {
         if (options.rotateTargetAfterLocation) currentTargetId = "navigation-target-2";
+        if (options.rotateTargetBetweenTabCheckAndSnapshot) {
+          rotateTargetBeforeNextSnapshot = true;
+        }
         if (options.replaceStableTabAfterLocation) stableTabId = "replacement-tab-99";
       }
       if (action.kind === "click" && action.ref === "e2") stage = "price";
@@ -367,6 +382,51 @@ describe("Vera Zillow research execution", () => {
     expect(browserActionTargets).toEqual(
       expect.arrayContaining(["shared-tab-1", "navigation-target-2"])
     );
+  });
+
+  it("rechecks consent and retries one snapshot across a navigation target race", async () => {
+    const { fetchImplementation } = happyFetch({
+      stableTabId: "chrome-tab-42",
+      rotateTargetBetweenTabCheckAndSnapshot: true
+    });
+    const result = await researchZillowRentals(consentInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-07-30T12:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "snapshot", result: "stopped" }),
+        expect.objectContaining({ action: "snapshot", result: "completed" })
+      ])
+    );
+  });
+
+  it("fails closed when the stable Chrome tab changes during the snapshot retry", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      stableTabId: "chrome-tab-42",
+      rotateTargetBetweenTabCheckAndSnapshot: true,
+      replaceStableTabBetweenTabCheckAndSnapshot: true
+    });
+    const result = await researchZillowRentals(consentInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-07-30T12:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      manualAction: "shared_tab_changed",
+      listings: []
+    });
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([expect.objectContaining({ action: "snapshot", result: "stopped" })])
+    );
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/act").map((call) => call.body)
+    ).toHaveLength(1);
   });
 
   it("keeps an explicitly approved starting target authorized through consent-tab rotation", async () => {
