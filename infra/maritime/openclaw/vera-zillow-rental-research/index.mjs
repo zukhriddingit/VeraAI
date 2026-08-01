@@ -546,7 +546,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
   await activateControl(priceButton, { kind: "click" }, state, dependencies);
   document = await takeSnapshot(state, dependencies);
   const maximumPrice = findReviewedControl(document, {
-    roles: ["textbox", "combobox"],
+    roles: ["textbox", "combobox", "spinbutton"],
     names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^No Max$/iu]
   });
   if (!maximumPrice) throw layoutChanged();
