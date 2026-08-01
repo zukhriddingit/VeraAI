@@ -422,9 +422,7 @@ describe("Vera Zillow research execution", () => {
       listings: []
     });
     expect(result.safeActionTrail).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ action: "snapshot", result: "stopped" })
-      ])
+      expect.arrayContaining([expect.objectContaining({ action: "snapshot", result: "stopped" })])
     );
     expect(
       calls.filter((call) => new URL(call.url).pathname === "/act").map((call) => call.body)
