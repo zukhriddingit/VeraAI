@@ -68,9 +68,9 @@ function snapshotForState(stage: string, currentUrl: string, targetId = "shared-
       format: "ai",
       targetId,
       url: resultUrl,
-      snapshot: '- combobox "Max price" [ref=e4]\n- button "Done" [ref=e5]',
+      snapshot: '- spinbutton "Max price" [ref=e4]\n- button "Done" [ref=e5]',
       refs: {
-        e4: { role: "combobox", name: "Max price" },
+        e4: { role: "spinbutton", name: "Max price" },
         e5: { role: "button", name: "Done" }
       }
     };
