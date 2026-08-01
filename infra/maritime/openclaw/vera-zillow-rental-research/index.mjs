@@ -361,37 +361,40 @@ async function prepareBrowserAction(action, state, dependencies, observedReferen
 }
 
 async function takeSnapshot(state, dependencies) {
-  const tab = await prepareBrowserAction("snapshot", state, dependencies);
-  const query = new URLSearchParams({
-    profile: BROWSER_PROFILE,
-    format: "ai",
-    targetId: tab.targetId,
-    maxChars: String(SNAPSHOT_MAX_CHARS),
-    compact: "true",
-    interactive: "false",
-    urls: "true",
-    timeoutMs: String(REQUEST_TIMEOUT_MS)
-  });
-  const payload = await browserGet(
-    `/snapshot?${query.toString()}`,
-    SNAPSHOT_MAX_BYTES,
-    state,
-    dependencies
-  );
-  state.browserActions += 1;
-  const document = parseZillowSnapshot(payload);
-  if (
-    document.targetId !== tab.targetId ||
-    document.page.kind !== tab.page.kind ||
-    document.page.url !== tab.page.url
-  ) {
-    throw new VeraZillowResearchError("shared_tab_changed", {
-      manualAction: "shared_tab_changed"
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const tab = await prepareBrowserAction("snapshot", state, dependencies);
+    const query = new URLSearchParams({
+      profile: BROWSER_PROFILE,
+      format: "ai",
+      targetId: tab.targetId,
+      maxChars: String(SNAPSHOT_MAX_CHARS),
+      compact: "true",
+      interactive: "false",
+      urls: "true",
+      timeoutMs: String(REQUEST_TIMEOUT_MS)
     });
+    const payload = await browserGet(
+      `/snapshot?${query.toString()}`,
+      SNAPSHOT_MAX_BYTES,
+      state,
+      dependencies
+    );
+    state.browserActions += 1;
+    const document = parseZillowSnapshot(payload);
+    if (
+      document.targetId === tab.targetId &&
+      document.page.kind === tab.page.kind &&
+      document.page.url === tab.page.url
+    ) {
+      state.activeUrl = document.page.url;
+      recordAction(state, "snapshot", dependencies);
+      return document;
+    }
+    recordAction(state, "snapshot", dependencies, null, "stopped");
   }
-  state.activeUrl = document.page.url;
-  recordAction(state, "snapshot", dependencies);
-  return document;
+  throw new VeraZillowResearchError("shared_tab_changed", {
+    manualAction: "shared_tab_changed"
+  });
 }
 
 function validateActionResponse(payload, targetId) {
