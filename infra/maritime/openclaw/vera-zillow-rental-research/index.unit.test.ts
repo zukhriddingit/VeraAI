@@ -40,6 +40,8 @@ const consentInput = {
 } as const;
 const resultUrl = "https://www.zillow.com/boston-ma/rentals/";
 const detailUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
+type RoomMarkerShape =
+  "single" | "adjacent" | "separated" | "reversed" | "mismatched" | "additional";
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -55,7 +57,8 @@ function snapshotForState(
   currentPriceControls = false,
   currentRoomControls = false,
   omitBathroomMarker = false,
-  duplicateBedroomControl = false
+  duplicateBedroomControl = false,
+  roomMarkerShape: RoomMarkerShape = "single"
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -100,20 +103,32 @@ function snapshotForState(
   }
   if (stage === "beds") {
     if (currentRoomControls) {
+      const bedroomMarkers = {
+        single: ["- text: Bedrooms"],
+        adjacent: ['- group "Bedrooms":', "- text: Bedrooms"],
+        separated: ['- group "Bedrooms":', "- generic: Bedroom choices", "- text: Bedrooms"],
+        reversed: ["- text: Bedrooms", '- group "Bedrooms":'],
+        mismatched: ['- group "Bedrooms":', "- text: Bedroom choices"],
+        additional: ['- group "Bedrooms":', "- text: Bedrooms", "- text: Bedrooms"]
+      } satisfies Record<RoomMarkerShape, string[]>;
+      const bathroomMarkers =
+        roomMarkerShape === "single"
+          ? ["- text: Bathrooms"]
+          : ['- group "Bathrooms":', "- text: Bathrooms"];
       return {
         ok: true,
         format: "ai",
         targetId,
         url: resultUrl,
         snapshot: [
-          "- text: Bedrooms",
+          ...bedroomMarkers[roomMarkerShape],
           '- button "Any" [ref=e60]',
           '- button "1+" [ref=e61]',
           '- button "2+" [ref=e62]',
           ...(duplicateBedroomControl ? ['- button "2+" [ref=e65]'] : []),
           '- button "3+" [ref=e63]',
           '- checkbox "Use exact match" [ref=e64]',
-          ...(omitBathroomMarker ? [] : ["- text: Bathrooms"]),
+          ...(omitBathroomMarker ? [] : bathroomMarkers),
           '- button "Any" [ref=e70]',
           '- button "1+" [ref=e71]',
           '- button "1.5+" [ref=e72]',
@@ -158,6 +173,7 @@ function happyFetch(
     readonly currentRoomControls?: boolean;
     readonly duplicateBedroomControl?: boolean;
     readonly omitBathroomMarker?: boolean;
+    readonly roomMarkerShape?: RoomMarkerShape;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -216,7 +232,8 @@ function happyFetch(
           options.currentPriceControls,
           options.currentRoomControls,
           options.omitBathroomMarker,
-          options.duplicateBedroomControl
+          options.duplicateBedroomControl,
+          options.roomMarkerShape
         )
       );
     }
@@ -442,6 +459,68 @@ describe("Vera Zillow research execution", () => {
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
   });
+
+  it("coalesces only Zillow's adjacent same-name room section markers", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentRoomControls: true,
+      roomMarkerShape: "adjacent"
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-01T10:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actions = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "click", ref: "e62" }),
+        expect.objectContaining({ kind: "click", ref: "e71" })
+      ])
+    );
+    expect(JSON.stringify(actions)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it.each(["separated", "reversed", "mismatched", "additional"] as const)(
+    "fails closed for %s Zillow room section markers",
+    async (roomMarkerShape) => {
+      const { calls, fetchImplementation } = happyFetch({
+        currentRoomControls: true,
+        roomMarkerShape
+      });
+      const result = await researchZillowRentals(input, {
+        fetch: fetchImplementation,
+        now: () => new Date("2026-08-01T10:00:00.000Z"),
+        monotonicNow: () => 1_000
+      });
+
+      expect(result).toMatchObject({
+        state: "manual_action_required",
+        pageState: "layout_changed",
+        manualAction: "layout_changed",
+        listings: []
+      });
+      const roomActions = calls
+        .filter((call) => new URL(call.url).pathname === "/act")
+        .map((call) => call.body)
+        .filter(
+          (body) =>
+            typeof body === "object" &&
+            body !== null &&
+            "ref" in body &&
+            ["e61", "e62", "e63", "e65", "e71", "e72", "e73"].includes(String(body.ref))
+        );
+      expect(roomActions).toEqual([]);
+      expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+        /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+      );
+    }
+  );
 
   it.each([
     ["missing bathroom marker", { omitBathroomMarker: true }],
