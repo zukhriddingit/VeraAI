@@ -203,24 +203,45 @@ export function findReviewedControl(document, input) {
 
 function semanticLine(line) {
   const body = line.trim().replace(/^-\s+/u, "");
-  const quoted = body.match(/^[a-z]+\s+"([^"]{1,300})"/u);
-  const labeled = body.match(/^(?:text|generic|paragraph):\s*(.{1,300})$/u);
-  const name = cleanObservedText(quoted?.[1] ?? labeled?.[1] ?? "", 300);
+  const quoted = body.match(/^([a-z]+)\s+"([^"]{1,300})"/u);
+  const labeled = body.match(/^(text|generic|paragraph):\s*(.{1,300})$/u);
+  const role = quoted?.[1] ?? labeled?.[1] ?? "";
+  const name = cleanObservedText(quoted?.[2] ?? labeled?.[2] ?? "", 300);
   const ref = line.match(/\[ref=((?:e\d+|\d{1,9}))\]/iu)?.[1] ?? null;
-  return { name, ref };
+  return { name, ref, role };
 }
 
-function uniqueMarkerIndex(lines, patterns, after = -1) {
-  const matches = lines
-    .map((line, index) => ({ index, name: semanticLine(line).name }))
-    .filter(({ index, name }) => index > after && patterns.some((pattern) => pattern.test(name)));
-  return matches.length === 1 ? matches[0].index : -1;
+function uniqueMarkerBoundary(lines, patterns, after = -1, side = "start") {
+  const semanticLines = lines.map((line, index) => ({ index, ...semanticLine(line) }));
+  const matches = semanticLines.filter(
+    ({ index, name }) => index > after && patterns.some((pattern) => pattern.test(name))
+  );
+  if (matches.length === 2) {
+    const [parent, child] = matches;
+    if (
+      child.index === parent.index + 1 &&
+      parent.role === "group" &&
+      child.role === "text" &&
+      parent.name === child.name
+    ) {
+      return side === "start" ? child.index : parent.index;
+    }
+    return -1;
+  }
+  if (matches.length !== 1) return -1;
+
+  const [match] = matches;
+  const previous = semanticLines[match.index - 1];
+  const next = semanticLines[match.index + 1];
+  if (match.role === "group" && next?.role === "text") return -1;
+  if (match.role === "text" && previous?.role === "group") return -1;
+  return match.index;
 }
 
 export function findReviewedControlInSection(document, input) {
   const lines = document.snapshot.split(/\r?\n/u);
-  const start = uniqueMarkerIndex(lines, input.startNames);
-  const end = uniqueMarkerIndex(lines, input.endNames, start);
+  const start = uniqueMarkerBoundary(lines, input.startNames);
+  const end = uniqueMarkerBoundary(lines, input.endNames, start, "end");
   if (start < 0 || end <= start) return null;
   const allowedRefs = new Set(
     lines
