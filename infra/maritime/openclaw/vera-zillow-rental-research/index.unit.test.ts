@@ -52,7 +52,10 @@ function snapshotForState(
   stage: string,
   currentUrl: string,
   targetId = "shared-tab-1",
-  currentPriceControls = false
+  currentPriceControls = false,
+  currentRoomControls = false,
+  omitBathroomMarker = false,
+  duplicateBedroomControl = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -96,6 +99,42 @@ function snapshotForState(
     };
   }
   if (stage === "beds") {
+    if (currentRoomControls) {
+      return {
+        ok: true,
+        format: "ai",
+        targetId,
+        url: resultUrl,
+        snapshot: [
+          "- text: Bedrooms",
+          '- button "Any" [ref=e60]',
+          '- button "1+" [ref=e61]',
+          '- button "2+" [ref=e62]',
+          ...(duplicateBedroomControl ? ['- button "2+" [ref=e65]'] : []),
+          '- button "3+" [ref=e63]',
+          '- checkbox "Use exact match" [ref=e64]',
+          ...(omitBathroomMarker ? [] : ["- text: Bathrooms"]),
+          '- button "Any" [ref=e70]',
+          '- button "1+" [ref=e71]',
+          '- button "1.5+" [ref=e72]',
+          '- button "2+" [ref=e73]',
+          '- button "See 739 rentals available" [ref=e5]'
+        ].join("\n"),
+        refs: {
+          e60: { role: "button", name: "Any" },
+          e61: { role: "button", name: "1+" },
+          e62: { role: "button", name: "2+" },
+          ...(duplicateBedroomControl ? { e65: { role: "button", name: "2+" } } : {}),
+          e63: { role: "button", name: "3+" },
+          e64: { role: "checkbox", name: "Use exact match" },
+          e70: { role: "button", name: "Any" },
+          e71: { role: "button", name: "1+" },
+          e72: { role: "button", name: "1.5+" },
+          e73: { role: "button", name: "2+" },
+          e5: { role: "button", name: "See 739 rentals available" }
+        }
+      };
+    }
     return {
       ok: true,
       format: "ai",
@@ -116,6 +155,9 @@ function snapshotForState(
 function happyFetch(
   options: {
     readonly currentPriceControls?: boolean;
+    readonly currentRoomControls?: boolean;
+    readonly duplicateBedroomControl?: boolean;
+    readonly omitBathroomMarker?: boolean;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -167,7 +209,15 @@ function happyFetch(
     }
     if (parsed.pathname === "/snapshot") {
       return jsonResponse(
-        snapshotForState(stage, currentUrl, currentTargetId, options.currentPriceControls)
+        snapshotForState(
+          stage,
+          currentUrl,
+          currentTargetId,
+          options.currentPriceControls,
+          options.currentRoomControls,
+          options.omitBathroomMarker,
+          options.duplicateBedroomControl
+        )
       );
     }
     if (parsed.pathname === "/act") {
@@ -368,6 +418,56 @@ describe("Vera Zillow research execution", () => {
     expect(JSON.stringify(actionBodies)).not.toMatch(
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
+  });
+
+  it("selects bare room values only inside their reviewed Zillow sections", async () => {
+    const { calls, fetchImplementation } = happyFetch({ currentRoomControls: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-01T06:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actions = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body);
+    expect(actions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "click", ref: "e62" }),
+        expect.objectContaining({ kind: "click", ref: "e71" })
+      ])
+    );
+    expect(JSON.stringify(actions)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it.each([
+    ["missing bathroom marker", { omitBathroomMarker: true }],
+    ["duplicate bedroom value", { duplicateBedroomControl: true }]
+  ])("fails closed for %s in Zillow's bare room controls", async (_label, option) => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentRoomControls: true,
+      ...option
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-01T06:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      pageState: "layout_changed",
+      manualAction: "layout_changed",
+      listings: []
+    });
+    const numericRefs = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => (call.body as { ref?: string }).ref)
+      .filter((ref) => ["e62", "e65", "e71"].includes(ref ?? ""));
+    expect(numericRefs).toEqual([]);
   });
 
   it("pins the one shared tab behind the safe consent reference", async () => {

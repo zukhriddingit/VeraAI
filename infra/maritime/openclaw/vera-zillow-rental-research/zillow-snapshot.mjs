@@ -201,6 +201,44 @@ export function findReviewedControl(document, input) {
   return candidate ?? null;
 }
 
+function semanticLine(line) {
+  const body = line.trim().replace(/^-\s+/u, "");
+  const quoted = body.match(/^[a-z]+\s+"([^"]{1,300})"/u);
+  const labeled = body.match(/^(?:text|generic|paragraph):\s*(.{1,300})$/u);
+  const name = cleanObservedText(quoted?.[1] ?? labeled?.[1] ?? "", 300);
+  const ref = line.match(/\[ref=((?:e\d+|\d{1,9}))\]/iu)?.[1] ?? null;
+  return { name, ref };
+}
+
+function uniqueMarkerIndex(lines, patterns, after = -1) {
+  const matches = lines
+    .map((line, index) => ({ index, name: semanticLine(line).name }))
+    .filter(({ index, name }) => index > after && patterns.some((pattern) => pattern.test(name)));
+  return matches.length === 1 ? matches[0].index : -1;
+}
+
+export function findReviewedControlInSection(document, input) {
+  const lines = document.snapshot.split(/\r?\n/u);
+  const start = uniqueMarkerIndex(lines, input.startNames);
+  const end = uniqueMarkerIndex(lines, input.endNames, start);
+  if (start < 0 || end <= start) return null;
+  const allowedRefs = new Set(
+    lines
+      .slice(start + 1, end)
+      .map((line) => semanticLine(line).ref)
+      .filter((ref) => ref !== null)
+  );
+  const roles = new Set(input.roles);
+  const candidates = document.refs.filter(
+    (entry) =>
+      allowedRefs.has(entry.ref) &&
+      roles.has(entry.role) &&
+      input.names.some((pattern) => pattern.test(entry.name)) &&
+      !FORBIDDEN_CONTROL.test(entry.name)
+  );
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
 function extractAmount(text) {
   const match = text.match(/\$\s*([1-9][\d,]{2,8})(?:\s*\+)?(?:\s*\/\s*mo(?:nth)?)?/iu);
   if (!match) return null;

@@ -16,6 +16,7 @@ import {
   extractDetailEvidence,
   extractResultCards,
   findReviewedControl,
+  findReviewedControlInSection,
   parseZillowSnapshot,
   validateZillowUrl
 } from "./zillow-snapshot.mjs";
@@ -508,6 +509,10 @@ function layoutChanged() {
   });
 }
 
+function bareRoomValue(value) {
+  return new RegExp(`^${String(value).replace(".", "\\.")}\\+$`, "u");
+}
+
 async function clickFilterApplyIfPresent(document, state, dependencies) {
   const apply = findReviewedControl(document, {
     roles: ["button"],
@@ -574,7 +579,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     await activateControl(bedsButton, { kind: "click" }, state, dependencies);
     document = await takeSnapshot(state, dependencies);
     if (state.input.profile.minimumBedrooms > 0) {
-      const bedrooms = findReviewedControl(document, {
+      const bedroomControl = {
         roles: ["button", "radio"],
         names: [
           new RegExp(
@@ -582,12 +587,20 @@ async function applySavedProfile(initialDocument, state, dependencies) {
             "iu"
           )
         ]
-      });
+      };
+      const bedrooms =
+        findReviewedControl(document, bedroomControl) ??
+        findReviewedControlInSection(document, {
+          roles: ["button", "radio"],
+          names: [bareRoomValue(state.input.profile.minimumBedrooms)],
+          startNames: [/^Bedrooms$/iu],
+          endNames: [/^Bathrooms$/iu]
+        });
       if (!bedrooms) throw layoutChanged();
       await activateControl(bedrooms, { kind: "click" }, state, dependencies);
     }
     if (state.input.profile.minimumBathrooms !== undefined) {
-      const bathrooms = findReviewedControl(document, {
+      const bathroomControl = {
         roles: ["button", "radio"],
         names: [
           new RegExp(
@@ -595,7 +608,15 @@ async function applySavedProfile(initialDocument, state, dependencies) {
             "iu"
           )
         ]
-      });
+      };
+      const bathrooms =
+        findReviewedControl(document, bathroomControl) ??
+        findReviewedControlInSection(document, {
+          roles: ["button", "radio"],
+          names: [bareRoomValue(state.input.profile.minimumBathrooms)],
+          startNames: [/^Bathrooms$/iu],
+          endNames: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
+        });
       if (!bathrooms) throw layoutChanged();
       await activateControl(bathrooms, { kind: "click" }, state, dependencies);
     }
