@@ -48,7 +48,12 @@ function jsonResponse(value: unknown, status = 200): Response {
   });
 }
 
-function snapshotForState(stage: string, currentUrl: string, targetId = "shared-tab-1") {
+function snapshotForState(
+  stage: string,
+  currentUrl: string,
+  targetId = "shared-tab-1",
+  currentPriceControls = false
+) {
   if (currentUrl === detailUrl) {
     return {
       ok: true,
@@ -63,6 +68,21 @@ function snapshotForState(stage: string, currentUrl: string, targetId = "shared-
     };
   }
   if (stage === "price") {
+    if (currentPriceControls) {
+      return {
+        ok: true,
+        format: "ai",
+        targetId,
+        url: resultUrl,
+        snapshot:
+          '- textbox "price min" [ref=e8]\n- textbox "price max" [ref=e4]\n- button "See 16,292 rentals available" [ref=e5]',
+        refs: {
+          e8: { role: "textbox", name: "price min" },
+          e4: { role: "textbox", name: "price max" },
+          e5: { role: "button", name: "See 16,292 rentals available" }
+        }
+      };
+    }
     return {
       ok: true,
       format: "ai",
@@ -95,6 +115,7 @@ function snapshotForState(stage: string, currentUrl: string, targetId = "shared-
 
 function happyFetch(
   options: {
+    readonly currentPriceControls?: boolean;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -145,7 +166,9 @@ function happyFetch(
       return response;
     }
     if (parsed.pathname === "/snapshot") {
-      return jsonResponse(snapshotForState(stage, currentUrl, currentTargetId));
+      return jsonResponse(
+        snapshotForState(stage, currentUrl, currentTargetId, options.currentPriceControls)
+      );
     }
     if (parsed.pathname === "/act") {
       const action = body as { kind?: string; ref?: string };
@@ -318,6 +341,33 @@ describe("Vera Zillow research execution", () => {
         .filter((call) => new URL(call.url).pathname === "/act")
         .map((call) => (call.body as { kind: string }).kind)
     ).toEqual(expect.arrayContaining(["type", "click"]));
+  });
+
+  it("applies Zillow's reviewed price max field and result-count apply button", async () => {
+    const { calls, fetchImplementation } = happyFetch({ currentPriceControls: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-01T05:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      pageState: "ready",
+      listings: [expect.objectContaining({ sourceListingId: "123456" })]
+    });
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body);
+    expect(actionBodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "type", ref: "e4", text: "3500" }),
+        expect.objectContaining({ kind: "click", ref: "e5" })
+      ])
+    );
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
   });
 
   it("pins the one shared tab behind the safe consent reference", async () => {

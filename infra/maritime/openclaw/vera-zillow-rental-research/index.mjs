@@ -508,12 +508,12 @@ function layoutChanged() {
   });
 }
 
-async function clickDoneIfPresent(document, state, dependencies) {
-  const done = findReviewedControl(document, {
+async function clickFilterApplyIfPresent(document, state, dependencies) {
+  const apply = findReviewedControl(document, {
     roles: ["button"],
-    names: [/^Done$/iu, /^Save$/iu]
+    names: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
   });
-  if (done) await activateControl(done, { kind: "click" }, state, dependencies);
+  if (apply) await activateControl(apply, { kind: "click" }, state, dependencies);
 }
 
 async function applySavedProfile(initialDocument, state, dependencies) {
@@ -550,7 +550,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
   document = await takeSnapshot(state, dependencies);
   const maximumPrice = findReviewedControl(document, {
     roles: ["textbox", "combobox", "spinbutton"],
-    names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^No Max$/iu]
+    names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
   });
   if (!maximumPrice) throw layoutChanged();
   await activateControl(
@@ -559,7 +559,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     state,
     dependencies
   );
-  await clickDoneIfPresent(document, state, dependencies);
+  await clickFilterApplyIfPresent(document, state, dependencies);
   document = await takeSnapshot(state, dependencies);
 
   if (
@@ -599,7 +599,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
       if (!bathrooms) throw layoutChanged();
       await activateControl(bathrooms, { kind: "click" }, state, dependencies);
     }
-    await clickDoneIfPresent(document, state, dependencies);
+    await clickFilterApplyIfPresent(document, state, dependencies);
     document = await takeSnapshot(state, dependencies);
   }
 
@@ -623,7 +623,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     });
     if (!propertyType) throw layoutChanged();
     await activateControl(propertyType, { kind: "click" }, state, dependencies);
-    await clickDoneIfPresent(document, state, dependencies);
+    await clickFilterApplyIfPresent(document, state, dependencies);
     document = await takeSnapshot(state, dependencies);
   }
 
