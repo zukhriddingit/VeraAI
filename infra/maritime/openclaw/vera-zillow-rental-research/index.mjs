@@ -513,6 +513,106 @@ function bareRoomValue(value) {
   return new RegExp(`^${String(value).replace(".", "\\.")}\\+$`, "u");
 }
 
+function findUniqueReviewedControl(document, input) {
+  const roles = new Set(input.roles);
+  const candidates = document.refs.filter(
+    (entry) => roles.has(entry.role) && input.names.some((pattern) => pattern.test(entry.name))
+  );
+  return candidates.length === 1 ? candidates[0] : null;
+}
+
+function findConsolidatedApplyControl(document) {
+  for (const names of [[/^See [\d,]+ rentals? available$/iu], [/^Done$/iu], [/^Save$/iu]]) {
+    const matches = document.refs.filter(
+      (entry) => entry.role === "button" && names.some((pattern) => pattern.test(entry.name))
+    );
+    if (matches.length === 1) return matches[0];
+    if (matches.length > 1 && !/^Save$/iu.test(matches[0].name)) throw layoutChanged();
+  }
+  return null;
+}
+
+async function applyConsolidatedFilters(filtersButton, initialDocument, state, dependencies) {
+  await activateControl(filtersButton, { kind: "click" }, state, dependencies);
+  const document = await takeSnapshot(state, dependencies);
+  const maximumPrice = findUniqueReviewedControl(document, {
+    roles: ["textbox", "combobox", "spinbutton"],
+    names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
+  });
+  if (!maximumPrice) throw layoutChanged();
+  await activateControl(
+    maximumPrice,
+    { kind: "type", text: String(state.input.profile.maximumRentUsd) },
+    state,
+    dependencies
+  );
+
+  if (state.input.profile.minimumBedrooms > 0) {
+    const bedrooms =
+      findUniqueReviewedControl(document, {
+        roles: ["button", "radio"],
+        names: [
+          new RegExp(
+            `^${String(state.input.profile.minimumBedrooms).replace(".", "\\.")}\\+? (?:Beds?|Bedrooms?)$`,
+            "iu"
+          )
+        ]
+      }) ??
+      findReviewedControlInSection(document, {
+        roles: ["button", "radio"],
+        names: [bareRoomValue(state.input.profile.minimumBedrooms)],
+        startNames: [/^Bedrooms$/iu],
+        endNames: [/^Bathrooms$/iu]
+      });
+    if (!bedrooms) throw layoutChanged();
+    await activateControl(bedrooms, { kind: "click" }, state, dependencies);
+  }
+
+  if (state.input.profile.minimumBathrooms !== undefined) {
+    const bathrooms =
+      findUniqueReviewedControl(document, {
+        roles: ["button", "radio"],
+        names: [
+          new RegExp(
+            `^${String(state.input.profile.minimumBathrooms).replace(".", "\\.")}\\+? (?:Baths?|Bathrooms?)$`,
+            "iu"
+          )
+        ]
+      }) ??
+      findReviewedControlInSection(document, {
+        roles: ["button", "radio"],
+        names: [bareRoomValue(state.input.profile.minimumBathrooms)],
+        startNames: [/^Bathrooms$/iu],
+        endNames:
+          state.input.profile.rentalPropertyType === undefined
+            ? [/^See [\d,]+ rentals? available$/iu]
+            : [/^Property type$/iu, /^Home type$/iu]
+      });
+    if (!bathrooms) throw layoutChanged();
+    await activateControl(bathrooms, { kind: "click" }, state, dependencies);
+  }
+
+  if (state.input.profile.rentalPropertyType !== undefined) {
+    const labels = {
+      apartment: [/^Apartments?$/iu],
+      house: [/^Houses?$/iu],
+      townhouse: [/^Townhomes?|Townhouses?$/iu],
+      condo: [/^Condos?(?:\/Co-ops?)?$/iu]
+    };
+    const propertyType = findUniqueReviewedControl(document, {
+      roles: ["checkbox", "button"],
+      names: labels[state.input.profile.rentalPropertyType]
+    });
+    if (!propertyType) throw layoutChanged();
+    await activateControl(propertyType, { kind: "click" }, state, dependencies);
+  }
+
+  const apply = findConsolidatedApplyControl(document);
+  if (!apply) throw layoutChanged();
+  await activateControl(apply, { kind: "click" }, state, dependencies);
+  return takeSnapshot(state, dependencies);
+}
+
 async function clickFilterApplyIfPresent(document, state, dependencies) {
   const apply = findReviewedControl(document, {
     roles: ["button"],
@@ -550,7 +650,14 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     roles: ["button"],
     names: [/^Price$/iu, /^Any price$/iu, /^\$[\d,]+\s*-\s*(?:\$[\d,]+|No Max)$/iu]
   });
-  if (!priceButton) throw layoutChanged();
+  if (!priceButton) {
+    const filtersButton = findUniqueReviewedControl(document, {
+      roles: ["button"],
+      names: [/^Filters$/iu]
+    });
+    if (!filtersButton) throw layoutChanged();
+    return applyConsolidatedFilters(filtersButton, document, state, dependencies);
+  }
   await activateControl(priceButton, { kind: "click" }, state, dependencies);
   document = await takeSnapshot(state, dependencies);
   const maximumPrice = findReviewedControl(document, {

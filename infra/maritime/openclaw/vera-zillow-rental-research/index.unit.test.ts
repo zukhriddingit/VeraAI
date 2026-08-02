@@ -38,6 +38,13 @@ const consentInput = {
     value: "explicitly_shared_zillow_rental_tab"
   }
 } as const;
+const consolidatedInput = {
+  ...input,
+  profile: {
+    ...input.profile,
+    rentalPropertyType: "apartment"
+  }
+} as const;
 const resultUrl = "https://www.zillow.com/boston-ma/rentals/";
 const detailUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
 type RoomMarkerShape =
@@ -58,7 +65,13 @@ function snapshotForState(
   currentRoomControls = false,
   omitBathroomMarker = false,
   duplicateBedroomControl = false,
-  roomMarkerShape: RoomMarkerShape = "single"
+  roomMarkerShape: RoomMarkerShape = "single",
+  consolidatedFilters = false,
+  duplicateConsolidatedFilters = false,
+  omitConsolidatedMaximum = false,
+  duplicateConsolidatedMaximum = false,
+  omitConsolidatedApply = false,
+  duplicateConsolidatedApply = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -164,6 +177,79 @@ function snapshotForState(
       }
     };
   }
+  if (stage === "filters") {
+    return {
+      ok: true,
+      format: "ai",
+      targetId,
+      url: resultUrl,
+      snapshot: [
+        '- textbox "price min" [ref=e8]',
+        ...(omitConsolidatedMaximum ? [] : ['- textbox "price max" [ref=e4]']),
+        ...(duplicateConsolidatedMaximum ? ['- textbox "price max" [ref=e40]'] : []),
+        '- group "Bedrooms":',
+        "- text: Bedrooms",
+        '- button "Any" [ref=e60]',
+        '- button "1+" [ref=e61]',
+        '- button "2+" [ref=e62]',
+        '- group "Bathrooms":',
+        "- text: Bathrooms",
+        '- button "Any" [ref=e70]',
+        '- button "1+" [ref=e71]',
+        '- button "2+" [ref=e73]',
+        '- group "Property type":',
+        '- checkbox "Apartments" [ref=e80]',
+        '- button "Save" [ref=e81]',
+        '- button "Save" [ref=e82]',
+        ...(omitConsolidatedApply ? [] : ['- button "See 3,506 rentals available" [ref=e5]']),
+        ...(duplicateConsolidatedApply ? ['- button "See 3,506 rentals available" [ref=e50]'] : [])
+      ].join("\n"),
+      refs: {
+        e8: { role: "textbox", name: "price min" },
+        ...(omitConsolidatedMaximum ? {} : { e4: { role: "textbox", name: "price max" } }),
+        ...(duplicateConsolidatedMaximum ? { e40: { role: "textbox", name: "price max" } } : {}),
+        e60: { role: "button", name: "Any" },
+        e61: { role: "button", name: "1+" },
+        e62: { role: "button", name: "2+" },
+        e70: { role: "button", name: "Any" },
+        e71: { role: "button", name: "1+" },
+        e73: { role: "button", name: "2+" },
+        e80: { role: "checkbox", name: "Apartments" },
+        e81: { role: "button", name: "Save" },
+        e82: { role: "button", name: "Save" },
+        ...(omitConsolidatedApply
+          ? {}
+          : { e5: { role: "button", name: "See 3,506 rentals available" } }),
+        ...(duplicateConsolidatedApply
+          ? { e50: { role: "button", name: "See 3,506 rentals available" } }
+          : {})
+      }
+    };
+  }
+  if (consolidatedFilters) {
+    return {
+      ...readyFixture,
+      targetId,
+      snapshot: [
+        '- searchbox "Search" [ref=e1]',
+        '- button "Filters" [ref=e9]',
+        ...(duplicateConsolidatedFilters ? ['- button "Filters" [ref=e90]'] : []),
+        '- link "12 Beacon St, Boston, MA 02108" [ref=e10]',
+        '  - text "$3,200/mo"',
+        '  - text "2 beds 1 bath 900 sq ft"',
+        '  - text "In-unit laundry"',
+        "",
+        "Links:",
+        `1. 12 Beacon St, Boston, MA 02108 -> ${detailUrl}`
+      ].join("\n"),
+      refs: {
+        e1: { role: "searchbox", name: "Search" },
+        e9: { role: "button", name: "Filters" },
+        ...(duplicateConsolidatedFilters ? { e90: { role: "button", name: "Filters" } } : {}),
+        e10: { role: "link", name: "12 Beacon St, Boston, MA 02108" }
+      }
+    };
+  }
   return { ...readyFixture, targetId };
 }
 
@@ -174,6 +260,12 @@ function happyFetch(
     readonly duplicateBedroomControl?: boolean;
     readonly omitBathroomMarker?: boolean;
     readonly roomMarkerShape?: RoomMarkerShape;
+    readonly consolidatedFilters?: boolean;
+    readonly duplicateConsolidatedFilters?: boolean;
+    readonly omitConsolidatedMaximum?: boolean;
+    readonly duplicateConsolidatedMaximum?: boolean;
+    readonly omitConsolidatedApply?: boolean;
+    readonly duplicateConsolidatedApply?: boolean;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -233,7 +325,13 @@ function happyFetch(
           options.currentRoomControls,
           options.omitBathroomMarker,
           options.duplicateBedroomControl,
-          options.roomMarkerShape
+          options.roomMarkerShape,
+          options.consolidatedFilters,
+          options.duplicateConsolidatedFilters,
+          options.omitConsolidatedMaximum,
+          options.duplicateConsolidatedMaximum,
+          options.omitConsolidatedApply,
+          options.duplicateConsolidatedApply
         )
       );
     }
@@ -249,6 +347,7 @@ function happyFetch(
       }
       if (action.kind === "click" && action.ref === "e2") stage = "price";
       if (action.kind === "click" && action.ref === "e3") stage = "beds";
+      if (action.kind === "click" && action.ref === "e9") stage = "filters";
       if (action.kind === "click" && action.ref === "e5") stage = "results";
       return jsonResponse({ ok: true, targetId: actionTargetId, url: currentUrl });
     }
@@ -433,6 +532,80 @@ describe("Vera Zillow research execution", () => {
       ])
     );
     expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("applies the exact saved profile through Zillow's consolidated Filters dialog", async () => {
+    const { calls, fetchImplementation } = happyFetch({ consolidatedFilters: true });
+    const result = await researchZillowRentals(consolidatedInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-02T05:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      pageState: "ready",
+      listings: [expect.objectContaining({ sourceListingId: "123456" })]
+    });
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body);
+    expect(actionBodies).toEqual([
+      expect.objectContaining({ kind: "type", ref: "e1", text: "Boston, MA" }),
+      expect.objectContaining({ kind: "click", ref: "e9" }),
+      expect.objectContaining({ kind: "type", ref: "e4", text: "3500" }),
+      expect.objectContaining({ kind: "click", ref: "e62" }),
+      expect.objectContaining({ kind: "click", ref: "e71" }),
+      expect.objectContaining({ kind: "click", ref: "e80" }),
+      expect.objectContaining({ kind: "click", ref: "e5" })
+    ]);
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("supports the consolidated dialog without an optional property-type filter", async () => {
+    const { calls, fetchImplementation } = happyFetch({ consolidatedFilters: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-02T05:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionRefs = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => (call.body as { ref?: string }).ref);
+    expect(actionRefs).toEqual(expect.arrayContaining(["e9", "e4", "e62", "e71", "e5"]));
+    expect(actionRefs).not.toContain("e80");
+  });
+
+  it.each([
+    ["duplicate Filters buttons", { duplicateConsolidatedFilters: true }],
+    ["missing maximum-rent control", { omitConsolidatedMaximum: true }],
+    ["duplicate maximum-rent controls", { duplicateConsolidatedMaximum: true }],
+    ["missing apply control", { omitConsolidatedApply: true }],
+    ["duplicate apply controls", { duplicateConsolidatedApply: true }]
+  ])("fails closed for %s in Zillow's consolidated dialog", async (_label, option) => {
+    const { calls, fetchImplementation } = happyFetch({
+      consolidatedFilters: true,
+      ...option
+    });
+    const result = await researchZillowRentals(consolidatedInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-02T05:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      pageState: "layout_changed",
+      manualAction: "layout_changed",
+      listings: []
+    });
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
   });
