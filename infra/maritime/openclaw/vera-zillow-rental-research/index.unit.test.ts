@@ -188,12 +188,12 @@ function snapshotForState(
         ...(omitConsolidatedMaximum ? [] : ['- textbox "price max" [ref=e4]']),
         ...(duplicateConsolidatedMaximum ? ['- textbox "price max" [ref=e40]'] : []),
         '- group "Bedrooms":',
-        '- text: Bedrooms',
+        "- text: Bedrooms",
         '- button "Any" [ref=e60]',
         '- button "1+" [ref=e61]',
         '- button "2+" [ref=e62]',
         '- group "Bathrooms":',
-        '- text: Bathrooms',
+        "- text: Bathrooms",
         '- button "Any" [ref=e70]',
         '- button "1+" [ref=e71]',
         '- button "2+" [ref=e73]',
@@ -201,19 +201,13 @@ function snapshotForState(
         '- checkbox "Apartments" [ref=e80]',
         '- button "Save" [ref=e81]',
         '- button "Save" [ref=e82]',
-        ...(omitConsolidatedApply
-          ? []
-          : ['- button "See 3,506 rentals available" [ref=e5]']),
-        ...(duplicateConsolidatedApply
-          ? ['- button "See 3,506 rentals available" [ref=e50]']
-          : [])
+        ...(omitConsolidatedApply ? [] : ['- button "See 3,506 rentals available" [ref=e5]']),
+        ...(duplicateConsolidatedApply ? ['- button "See 3,506 rentals available" [ref=e50]'] : [])
       ].join("\n"),
       refs: {
         e8: { role: "textbox", name: "price min" },
         ...(omitConsolidatedMaximum ? {} : { e4: { role: "textbox", name: "price max" } }),
-        ...(duplicateConsolidatedMaximum
-          ? { e40: { role: "textbox", name: "price max" } }
-          : {}),
+        ...(duplicateConsolidatedMaximum ? { e40: { role: "textbox", name: "price max" } } : {}),
         e60: { role: "button", name: "Any" },
         e61: { role: "button", name: "1+" },
         e62: { role: "button", name: "2+" },
@@ -251,9 +245,7 @@ function snapshotForState(
       refs: {
         e1: { role: "searchbox", name: "Search" },
         e9: { role: "button", name: "Filters" },
-        ...(duplicateConsolidatedFilters
-          ? { e90: { role: "button", name: "Filters" } }
-          : {}),
+        ...(duplicateConsolidatedFilters ? { e90: { role: "button", name: "Filters" } } : {}),
         e10: { role: "link", name: "12 Beacon St, Boston, MA 02108" }
       }
     };

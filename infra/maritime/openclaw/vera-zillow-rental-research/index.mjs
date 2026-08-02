@@ -522,11 +522,7 @@ function findUniqueReviewedControl(document, input) {
 }
 
 function findConsolidatedApplyControl(document) {
-  for (const names of [
-    [/^See [\d,]+ rentals? available$/iu],
-    [/^Done$/iu],
-    [/^Save$/iu]
-  ]) {
+  for (const names of [[/^See [\d,]+ rentals? available$/iu], [/^Done$/iu], [/^Save$/iu]]) {
     const matches = document.refs.filter(
       (entry) => entry.role === "button" && names.some((pattern) => pattern.test(entry.name))
     );
