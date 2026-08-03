@@ -771,6 +771,51 @@ async function clickFilterApplyIfPresent(document, state, dependencies) {
   if (apply) await activateControl(apply, { kind: "click" }, state, dependencies);
 }
 
+function filterApplyStillVisible(document, apply) {
+  const names = /^Done$/iu.test(apply.name)
+    ? [/^Done$/iu]
+    : /^Save$/iu.test(apply.name)
+      ? [/^Save$/iu]
+      : [/^See [\d,]+ rentals? available$/iu];
+  return findReviewedControl(document, { roles: ["button"], names }) !== null;
+}
+
+async function applyRoomFiltersAndObserve(document, state, dependencies) {
+  const apply = findReviewedControl(document, {
+    roles: ["button"],
+    names: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
+  });
+  if (!apply) return takeSnapshot(state, dependencies);
+  try {
+    await activateControl(apply, { kind: "click" }, state, dependencies);
+    return takeSnapshot(state, dependencies);
+  } catch (error) {
+    const ambiguousCompletion =
+      error instanceof VeraZillowResearchError && error.code === "browser_offline";
+    if (!ambiguousCompletion) throw error;
+    recordAction(
+      state,
+      "set_reviewed_filter",
+      dependencies,
+      `${apply.ref}:${apply.name}`,
+      "stopped"
+    );
+    const observed = await takeSnapshot(state, dependencies);
+    if (filterApplyStillVisible(observed, apply) || extractResultCards(observed, 1).length === 0) {
+      throw error;
+    }
+    // The click is never repeated. A fresh result snapshot is the only accepted
+    // evidence that Zillow completed an action whose response was lost.
+    recordAction(
+      state,
+      "set_reviewed_filter",
+      dependencies,
+      `${apply.ref}:${apply.name}:observed_postcondition`
+    );
+    return observed;
+  }
+}
+
 async function applySavedProfile(initialDocument, state, dependencies) {
   let document = await closeStaleMoreFilters(initialDocument, state, dependencies);
   document = await closeStaleRentalTypePopover(document, state, dependencies);
@@ -897,8 +942,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     // Bedroom and bathroom selections can rerender the dialog and invalidate
     // its prior Done/Save reference.
     document = await takeSnapshot(state, dependencies);
-    await clickFilterApplyIfPresent(document, state, dependencies);
-    document = await takeSnapshot(state, dependencies);
+    document = await applyRoomFiltersAndObserve(document, state, dependencies);
   }
 
   if (state.input.profile.rentalPropertyType !== undefined) {
