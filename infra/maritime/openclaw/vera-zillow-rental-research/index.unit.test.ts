@@ -47,6 +47,7 @@ const consolidatedInput = {
 } as const;
 const resultUrl = "https://www.zillow.com/boston-ma/rentals/";
 const detailUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
+const apartmentsDetailUrl = "https://www.zillow.com/apartments/allston-ma/gardner-st-34/CgHpdm/";
 type RoomMarkerShape =
   "single" | "adjacent" | "separated" | "reversed" | "mismatched" | "additional";
 
@@ -76,7 +77,8 @@ function snapshotForState(
   omitStaleClose = false,
   duplicateStaleClose = false,
   forRentFilters = false,
-  duplicateForRentFilters = false
+  duplicateForRentFilters = false,
+  semanticCardActivation = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -88,6 +90,28 @@ function snapshotForState(
         '- heading "12 Beacon St, Boston, MA 02108" [ref=e20]\n- text "$3,200/mo"\n- text "2 beds 1 bath 900 sq ft"\n- text "Available now"\n- text "In-unit laundry Dishwasher"',
       refs: {
         e20: { role: "heading", name: "12 Beacon St, Boston, MA 02108" }
+      }
+    };
+  }
+  if (currentUrl === apartmentsDetailUrl) {
+    return {
+      ok: true,
+      format: "ai",
+      targetId,
+      url: apartmentsDetailUrl,
+      snapshot: [
+        '- heading "Gardner St, 34" [ref=e200] [level=2]',
+        '- heading "34 Gardner St, Allston, MA 02134" [ref=e201] [level=3]',
+        '- heading "Available units" [ref=e202] [level=3]',
+        '- button "1 bed $2,500+" [ref=e203]',
+        '- text "1 bd 1 ba"',
+        '- text "In-unit laundry Dishwasher"'
+      ].join("\n"),
+      refs: {
+        e200: { role: "heading", name: "Gardner St, 34" },
+        e201: { role: "heading", name: "34 Gardner St, Allston, MA 02134" },
+        e202: { role: "heading", name: "Available units" },
+        e203: { role: "button", name: "1 bed $2,500+" }
       }
     };
   }
@@ -126,15 +150,21 @@ function snapshotForState(
       targetId,
       url: resultUrl,
       snapshot: [
-        '- heading "More filters"',
-        ...(duplicateStaleMoreFilters ? ['- heading "More filters"'] : []),
-        ...(omitStaleClose ? [] : ['- button "Close" [ref=e91]']),
-        ...(duplicateStaleClose ? ['- button "Close" [ref=e910]'] : []),
-        '- heading "Top amenities"',
-        '- checkbox "For rent by owner" [ref=e93]',
-        '- button "See 3,475 rentals available" [ref=e94]'
+        '      - button "Close" [ref=e90]',
+        '  - dialog "More filters":',
+        '    - heading "More filters" [ref=e900] [level=4]',
+        ...(duplicateStaleMoreFilters ? ['    - heading "More filters" [ref=e901] [level=4]'] : []),
+        '    - heading "Top amenities" [ref=e902] [level=5]',
+        '      - checkbox "For rent by owner" [ref=e93]',
+        '      - button "See 3,475 rentals available" [ref=e94]',
+        ...(omitStaleClose ? [] : ['    - button "Close" [ref=e91] [nth=1]']),
+        ...(duplicateStaleClose ? ['    - button "Close" [ref=e910] [nth=2]'] : [])
       ].join("\n"),
       refs: {
+        e90: { role: "button", name: "Close" },
+        e900: { role: "heading", name: "More filters" },
+        ...(duplicateStaleMoreFilters ? { e901: { role: "heading", name: "More filters" } } : {}),
+        e902: { role: "heading", name: "Top amenities" },
         ...(omitStaleClose ? {} : { e91: { role: "button", name: "Close" } }),
         ...(duplicateStaleClose ? { e910: { role: "button", name: "Close" } } : {}),
         e93: { role: "checkbox", name: "For rent by owner" },
@@ -304,6 +334,30 @@ function snapshotForState(
       }
     };
   }
+  if (semanticCardActivation) {
+    return {
+      ...readyFixture,
+      targetId,
+      snapshot: [
+        '- searchbox "Search" [ref=e1]',
+        '- button "Price" [ref=e2]',
+        '- button "Beds & Baths" [ref=e3]',
+        '- link "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134" [ref=e10]',
+        '  - text "$2,500/mo"',
+        '  - text "1 bd 1 ba"',
+        '  - text "In-unit laundry"'
+      ].join("\n"),
+      refs: {
+        e1: { role: "searchbox", name: "Search" },
+        e2: { role: "button", name: "Price" },
+        e3: { role: "button", name: "Beds & Baths" },
+        e10: {
+          role: "link",
+          name: "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134"
+        }
+      }
+    };
+  }
   return { ...readyFixture, targetId };
 }
 
@@ -326,6 +380,7 @@ function happyFetch(
     readonly duplicateStaleClose?: boolean;
     readonly forRentFilters?: boolean;
     readonly duplicateForRentFilters?: boolean;
+    readonly semanticCardActivation?: boolean;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -396,7 +451,8 @@ function happyFetch(
           options.omitStaleClose,
           options.duplicateStaleClose,
           options.forRentFilters,
-          options.duplicateForRentFilters
+          options.duplicateForRentFilters,
+          options.semanticCardActivation
         )
       );
     }
@@ -416,6 +472,9 @@ function happyFetch(
       if (action.kind === "click" && action.ref === "e91") stage = "results";
       if (action.kind === "click" && action.ref === "e92") stage = "filters";
       if (action.kind === "click" && action.ref === "e5") stage = "results";
+      if (action.kind === "click" && action.ref === "e10" && options.semanticCardActivation) {
+        currentUrl = apartmentsDetailUrl;
+      }
       return jsonResponse({ ok: true, targetId: actionTargetId, url: currentUrl });
     }
     if (parsed.pathname === "/navigate") {
@@ -466,9 +525,14 @@ describe("Zillow semantic snapshot parser", () => {
   it("accepts only the reviewed result and detail paths", () => {
     expect(validateZillowUrl(resultUrl, "result")).toMatchObject({ kind: "result" });
     expect(validateZillowUrl(detailUrl, "detail")).toMatchObject({ kind: "detail" });
+    expect(validateZillowUrl(apartmentsDetailUrl, "detail")).toMatchObject({
+      kind: "detail"
+    });
     for (const unsafe of [
       "https://zillow.com/boston-ma/rentals/",
       "https://www.zillow.com/for-sale/",
+      "https://www.zillow.com/apartments/allston-ma/gardner-st-34/",
+      "https://www.zillow.com/apartments/allston-ma/gardner-st-34/CgHpdm/photos/",
       "https://www.zillow.com/boston-ma/rentals/#map",
       "https://www.zillow.com/boston-ma/rentals/?session=secret"
     ]) {
@@ -488,6 +552,40 @@ describe("Zillow semantic snapshot parser", () => {
         bathrooms: 1,
         squareFeet: 900,
         amenities: ["In-unit laundry"]
+      })
+    ]);
+  });
+
+  it("extracts bounded card candidates from URL-free semantic link references", () => {
+    const document = parseZillowSnapshot({
+      ok: true,
+      format: "ai",
+      targetId: "shared-tab-1",
+      url: resultUrl,
+      snapshot: [
+        '- link "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134" [ref=e10]',
+        '  - text "$2,500/mo"',
+        '  - text "1 bd 1 ba"',
+        '  - text "In-unit laundry"'
+      ].join("\n"),
+      refs: {
+        e10: {
+          role: "link",
+          name: "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134"
+        }
+      }
+    });
+
+    expect(extractResultCards(document, 10)).toEqual([
+      expect.objectContaining({
+        sourceListingId: null,
+        canonicalObservedUrl: null,
+        address: "34 Gardner St APT 2, Boston, MA 02134",
+        rentUsd: 2_500,
+        bedrooms: 1,
+        bathrooms: 1,
+        amenities: ["In-unit laundry"],
+        resultRef: "e10"
       })
     ]);
   });
@@ -574,6 +672,59 @@ describe("Vera Zillow research execution", () => {
         .filter((call) => new URL(call.url).pathname === "/act")
         .map((call) => (call.body as { kind: string }).kind)
     ).toEqual(expect.arrayContaining(["type", "click"]));
+    expect(
+      browserCalls
+        .filter((call) => new URL(call.url).pathname === "/snapshot")
+        .every((call) => new URL(call.url).searchParams.get("urls") === "false")
+    ).toBe(true);
+  });
+
+  it("activates one vetted semantic card link and preserves its observed apartments URL", async () => {
+    const { calls, fetchImplementation } = happyFetch({ semanticCardActivation: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T06:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      pageState: "ready",
+      resultCardsObserved: 1,
+      detailPagesOpened: 1,
+      listings: [
+        {
+          sourceListingId: null,
+          canonicalObservedUrl: apartmentsDetailUrl,
+          finalDetailPageUrl: apartmentsDetailUrl,
+          address: "34 Gardner St, Allston, MA 02134",
+          rentUsd: 2_500,
+          bedrooms: 1,
+          bathrooms: 1
+        }
+      ]
+    });
+    expect(result.listings[0]?.sourceFieldProvenance).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          field: "canonical_observed_url",
+          observedFrom: "detail_page",
+          sourceUrl: apartmentsDetailUrl
+        })
+      ])
+    );
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body);
+    expect(actionBodies).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "click", ref: "e10" })])
+    );
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/navigate").map((call) => call.body)
+    ).toEqual([expect.objectContaining({ url: resultUrl })]);
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
   });
 
   it("applies Zillow's reviewed price max field and result-count apply button", async () => {
