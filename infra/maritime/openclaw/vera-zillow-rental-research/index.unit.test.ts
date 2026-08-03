@@ -444,6 +444,7 @@ function happyFetch(
     readonly snapshotFailuresAfterRoomApply?: number;
     readonly refreshRoomApplyReference?: boolean;
     readonly roomApplyStaleResponses?: number;
+    readonly roomApplyStaleStatus?: number;
     readonly roomApplyMismatchedReference?: boolean;
     readonly roomApplyUnknownFailure?: boolean;
     readonly roomApplyResponseLostAfterCompletion?: boolean;
@@ -566,7 +567,7 @@ function happyFetch(
           {
             error: `Error: Unknown ref "${action.ref}". Run a new snapshot and use a ref from that snapshot.`
           },
-          500
+          options.roomApplyStaleStatus ?? 500
         );
       }
       if (
@@ -584,7 +585,7 @@ function happyFetch(
               ? "unrecognized browser failure"
               : `Error: Unknown ref "${responseReference}". Run a new snapshot and use a ref from that snapshot.`
           },
-          500
+          options.roomApplyStaleStatus ?? 500
         );
       }
       if (action.kind === "click" && ["e5", "e75", "e76", "e77"].includes(action.ref ?? "")) {
@@ -1429,6 +1430,30 @@ describe("Vera Zillow research execution", () => {
     expect(checkpoints).toHaveLength(browserCalls.length);
   });
 
+  it("refreshes and retries an exact stale room-apply response across an error status", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 1,
+      roomApplyStaleStatus: 400
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T19:45:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75", "e76"]);
+  });
+
   it("fails closed after one fresh-reference retry also becomes stale", async () => {
     const { calls, fetchImplementation } = happyFetch({
       refreshRoomApplyReference: true,
@@ -1456,6 +1481,7 @@ describe("Vera Zillow research execution", () => {
     const { calls, fetchImplementation } = happyFetch({
       refreshRoomApplyReference: true,
       roomApplyStaleResponses: 1,
+      roomApplyStaleStatus: 400,
       roomApplyUnknownFailure: true
     });
     const result = await researchZillowRentals(input, {
@@ -1480,6 +1506,7 @@ describe("Vera Zillow research execution", () => {
     const { calls, fetchImplementation } = happyFetch({
       refreshRoomApplyReference: true,
       roomApplyStaleResponses: 1,
+      roomApplyStaleStatus: 400,
       roomApplyMismatchedReference: true
     });
     const result = await researchZillowRentals(input, {

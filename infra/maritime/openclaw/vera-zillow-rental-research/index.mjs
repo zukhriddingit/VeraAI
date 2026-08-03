@@ -167,7 +167,8 @@ async function browserPost(path, body, maxBytes, state, dependencies) {
   if (!response.ok) {
     if (
       path === "/act" &&
-      response.status === 500 &&
+      response.status >= 400 &&
+      response.status <= 599 &&
       body.kind === "click" &&
       typeof body.ref === "string" &&
       /^e\d+$/u.test(body.ref)
