@@ -5,7 +5,10 @@ const RESULT_PATH_PATTERNS = [
   /^\/[a-z0-9-]+\/rentals\/?$/u,
   /^\/[a-z0-9-]+\/homes\/for_rent\/?$/u
 ];
-const DETAIL_PATH_PATTERN = /^\/homedetails\/(?:[^/?#]+\/)*[1-9][0-9]*_zpid\/?$/u;
+const DETAIL_PATH_PATTERNS = [
+  /^\/homedetails\/(?:[^/?#]+\/)*[1-9][0-9]*_zpid\/?$/u,
+  /^\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u
+];
 const SENSITIVE_QUERY_KEYS = new Set([
   "password",
   "token",
@@ -95,7 +98,7 @@ export function validateZillowUrl(rawUrl, expectedKind = "either") {
     }
   }
   const isResult = RESULT_PATH_PATTERNS.some((pattern) => pattern.test(url.pathname));
-  const isDetail = DETAIL_PATH_PATTERN.test(url.pathname);
+  const isDetail = DETAIL_PATH_PATTERNS.some((pattern) => pattern.test(url.pathname));
   if (
     (expectedKind === "result" && !isResult) ||
     (expectedKind === "detail" && !isDetail) ||
@@ -302,6 +305,10 @@ function extractAmenities(text) {
 function extractAddress(preferred, text) {
   const label = cleanObservedText(preferred.replace(/\s+\|\s+Zillow.*$/iu, ""), 300);
   if (/^\d{1,6}\s+\S.{2,280}$/u.test(label)) return label;
+  const embedded = label.match(
+    /(?:^|[|,]\s*)(\d{1,6}\s+[^,|]{2,120},\s*[^,|]{2,60},\s*[A-Z]{2}(?:\s+\d{5})?)(?:$|[|])/u
+  );
+  if (embedded) return cleanObservedText(embedded[1], 300);
   const quoted = text.match(
     /["'](\d{1,6}\s+[^"'\n]{2,180}(?:,\s*[A-Za-z .'-]{2,60}){1,2}(?:\s+\d{5})?)["']/u
   );
@@ -316,6 +323,18 @@ function snapshotWindow(snapshot, linkName) {
   if (index === -1) return normalizedName;
   return lines
     .slice(Math.max(0, index - 10), Math.min(lines.length, index + 11))
+    .join(" ")
+    .slice(0, 8_000);
+}
+
+function snapshotWindowByReference(snapshot, reference) {
+  const main = snapshot.split("\n\nLinks:\n", 1)[0] ?? snapshot;
+  const lines = main.split(/\r?\n/u);
+  const marker = `[ref=${reference}]`;
+  const index = lines.findIndex((line) => line.includes(marker));
+  if (index === -1) return "";
+  return lines
+    .slice(Math.max(0, index - 10), Math.min(lines.length, index + 21))
     .join(" ")
     .slice(0, 8_000);
 }
@@ -343,6 +362,36 @@ export function extractResultCards(document, maximum) {
       availability: extractAvailability(text),
       amenities: extractAmenities(text),
       resultRef: link.ref ?? null
+    });
+    if (cards.length >= maximum) break;
+  }
+  if (cards.length > 0) return cards;
+
+  for (const reference of document.refs) {
+    if (reference.role !== "link" || FORBIDDEN_CONTROL.test(reference.name)) continue;
+    const text = snapshotWindowByReference(document.snapshot, reference.ref);
+    if (!text) continue;
+    const address = extractAddress(reference.name, text);
+    const rentUsd = extractAmount(text);
+    const bedrooms = extractRoomCount(text, "bedrooms");
+    const bathrooms = extractRoomCount(text, "bathrooms");
+    if (address === null || rentUsd === null || bedrooms === null || bathrooms === null) continue;
+    const key = `${address}\u0000${String(rentUsd)}\u0000${String(bedrooms)}\u0000${String(bathrooms)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    cards.push({
+      sourceListingId: null,
+      canonicalObservedUrl: null,
+      finalDetailPageUrl: null,
+      address,
+      rentUsd,
+      bedrooms,
+      bathrooms,
+      squareFeet: extractSquareFeet(text),
+      availability: extractAvailability(text),
+      amenities: extractAmenities(text),
+      resultRef: reference.ref,
+      observedLinkName: reference.name
     });
     if (cards.length >= maximum) break;
   }

@@ -371,7 +371,7 @@ async function takeSnapshot(state, dependencies) {
       maxChars: String(SNAPSHOT_MAX_CHARS),
       compact: "true",
       interactive: "false",
-      urls: "true",
+      urls: "false",
       timeoutMs: String(REQUEST_TIMEOUT_MS)
     });
     const payload = await browserGet(
@@ -502,6 +502,47 @@ async function navigateToObserved(observedUrl, action, state, dependencies) {
   return page.url;
 }
 
+async function activateObservedListing(card, document, state, dependencies) {
+  if (typeof card.resultRef !== "string" || typeof card.observedLinkName !== "string") {
+    throw layoutChanged();
+  }
+  const control = document.refs.find(
+    (candidate) =>
+      candidate.ref === card.resultRef &&
+      candidate.role === "link" &&
+      candidate.name === card.observedLinkName
+  );
+  if (!control) throw layoutChanged();
+  assertSafeControl(control);
+  const tab = await prepareBrowserAction(
+    "open_observed_listing",
+    state,
+    dependencies,
+    `${control.ref}:${control.name}`
+  );
+  const payload = await browserPost(
+    "/act",
+    { kind: "click", targetId: tab.targetId, ref: control.ref },
+    ACTION_MAX_BYTES,
+    state,
+    dependencies
+  );
+  state.browserActions += 1;
+  const page = validateActionResponse(payload, tab.targetId);
+  if (page && page.kind !== "detail") {
+    throw new VeraZillowResearchError("unexpected_zillow_redirect", {
+      pageState: "blocked",
+      manualAction: "blocked"
+    });
+  }
+  if (page) {
+    state.activeUrl = page.url;
+    state.observedUrls.add(page.url);
+  }
+  recordAction(state, "open_observed_listing", dependencies, `${control.ref}:${control.name}`);
+  return page?.url ?? null;
+}
+
 function layoutChanged() {
   return new VeraZillowResearchError("layout_changed", {
     pageState: "layout_changed",
@@ -532,29 +573,74 @@ function findConsolidatedApplyControl(document) {
   return null;
 }
 
-function countExactSemanticMarker(document, input) {
-  const pattern = /^\s*-\s+([a-z]+)\s+"([^"]{1,300})"(?:\s+\[ref=[^\]]+\])?\s*$/u;
-  return document.snapshot.split(/\r?\n/u).filter((line) => {
-    const match = pattern.exec(line);
-    return (
-      match !== null &&
-      match[1].toLocaleLowerCase("en-US") === input.role.toLocaleLowerCase("en-US") &&
-      match[2].toLocaleLowerCase("en-US") === input.name.toLocaleLowerCase("en-US")
-    );
-  }).length;
+function semanticTreeMarker(line, index) {
+  const match = line.match(
+    /^(\s*)-\s+([a-z]+)\s+"([^"]{1,300})"(?:\s+\[ref=([^\]]+)\])?(?:\s+\[[^\]]+\])*:?\s*$/u
+  );
+  if (!match) return null;
+  return {
+    index,
+    indent: match[1].length,
+    role: match[2].toLocaleLowerCase("en-US"),
+    name: match[3],
+    ref: match[4] ?? null
+  };
+}
+
+function findUniqueDialogContainedControl(document, input) {
+  const lines = document.snapshot.split(/\r?\n/u);
+  const markers = lines
+    .map((line, index) => semanticTreeMarker(line, index))
+    .filter((marker) => marker !== null);
+  const dialogs = markers.filter(
+    (marker) =>
+      marker.role === "dialog" &&
+      marker.name.toLocaleLowerCase("en-US") === input.dialogName.toLocaleLowerCase("en-US")
+  );
+  if (dialogs.length === 0) return null;
+  if (dialogs.length !== 1) throw layoutChanged();
+  const dialog = dialogs[0];
+  let end = lines.length;
+  for (let index = dialog.index + 1; index < lines.length; index += 1) {
+    if (lines[index].trim().length === 0) continue;
+    const indentation = /^\s*/u.exec(lines[index])?.[0].length ?? 0;
+    if (indentation <= dialog.indent) {
+      end = index;
+      break;
+    }
+  }
+  const subtree = markers.filter((marker) => marker.index > dialog.index && marker.index < end);
+  const headings = subtree.filter(
+    (marker) =>
+      marker.role === "heading" &&
+      marker.name.toLocaleLowerCase("en-US") === input.dialogName.toLocaleLowerCase("en-US")
+  );
+  const controls = subtree.filter(
+    (marker) =>
+      marker.indent === dialog.indent + 2 &&
+      marker.role === input.role &&
+      marker.name.toLocaleLowerCase("en-US") === input.name.toLocaleLowerCase("en-US") &&
+      marker.ref !== null
+  );
+  if (headings.length !== 1 || controls.length !== 1) throw layoutChanged();
+  const control = document.refs.find(
+    (entry) =>
+      entry.ref === controls[0].ref &&
+      entry.role === input.role &&
+      entry.name.toLocaleLowerCase("en-US") === input.name.toLocaleLowerCase("en-US")
+  );
+  if (!control) throw layoutChanged();
+  return control;
 }
 
 async function closeStaleMoreFilters(document, state, dependencies) {
-  const headingCount = countExactSemanticMarker(document, {
-    role: "heading",
-    name: "More filters"
+  const closeButton = findUniqueDialogContainedControl(document, {
+    dialogName: "More filters",
+    role: "button",
+    name: "Close"
   });
-  const closeButtons = document.refs.filter(
-    (entry) => entry.role === "button" && /^Close$/iu.test(entry.name)
-  );
-  if (headingCount === 0 && closeButtons.length === 0) return document;
-  if (headingCount !== 1 || closeButtons.length !== 1) throw layoutChanged();
-  await activateControl(closeButtons[0], { kind: "click" }, state, dependencies);
+  if (!closeButton) return document;
+  await activateControl(closeButton, { kind: "click" }, state, dependencies);
   return takeSnapshot(state, dependencies);
 }
 
@@ -791,15 +877,29 @@ async function applySavedProfile(initialDocument, state, dependencies) {
   return document;
 }
 
+function cardIdentity(card) {
+  return (
+    card.canonicalObservedUrl ??
+    [
+      card.observedLinkName ?? "",
+      card.address ?? "",
+      card.rentUsd ?? "",
+      card.bedrooms ?? "",
+      card.bathrooms ?? ""
+    ].join("\u0000")
+  );
+}
+
 function mergeCards(existing, observed) {
-  const merged = new Map(existing.map((card) => [card.canonicalObservedUrl, card]));
+  const merged = new Map(existing.map((card) => [cardIdentity(card), card]));
   for (const card of observed) {
-    if (!merged.has(card.canonicalObservedUrl)) merged.set(card.canonicalObservedUrl, card);
+    const key = cardIdentity(card);
+    if (!merged.has(key)) merged.set(key, card);
   }
   return [...merged.values()];
 }
 
-function provenanceFor(listing, observedAt) {
+function provenanceFor(listing, observedAt, canonicalObservedFrom = "result_card") {
   const entries = [];
   const add = (field, observedFrom, sourceUrl, confidenceBasisPoints = 9_500) => {
     if (entries.some((entry) => entry.field === field)) return;
@@ -812,9 +912,9 @@ function provenanceFor(listing, observedAt) {
       observedAt
     });
   };
-  add("canonical_observed_url", "result_card", listing.canonicalObservedUrl, 10_000);
+  add("canonical_observed_url", canonicalObservedFrom, listing.canonicalObservedUrl, 10_000);
   if (listing.sourceListingId !== null) {
-    add("source_listing_id", "result_card", listing.canonicalObservedUrl, 10_000);
+    add("source_listing_id", canonicalObservedFrom, listing.canonicalObservedUrl, 10_000);
   }
   const detailUrl = listing.finalDetailPageUrl;
   if (detailUrl !== null) add("final_detail_page_url", "detail_page", detailUrl, 10_000);
@@ -873,7 +973,11 @@ function finalizedListing(card, detail, observedAt) {
       "One or more core listing facts were not visible in the bounded semantic snapshot."
     );
   }
-  listing.sourceFieldProvenance = provenanceFor(listing, observedAt);
+  listing.sourceFieldProvenance = provenanceFor(
+    listing,
+    observedAt,
+    card.canonicalObservedFrom ?? "result_card"
+  );
   return listing;
 }
 
@@ -944,7 +1048,9 @@ export async function researchZillowRentals(
     const resultPage = validateZillowUrl(document.page.url, "result").url;
     state.observedUrls.add(resultPage);
     let cards = extractResultCards(document, input.maxResults);
-    for (const card of cards) state.observedUrls.add(card.canonicalObservedUrl);
+    for (const card of cards) {
+      if (card.canonicalObservedUrl !== null) state.observedUrls.add(card.canonicalObservedUrl);
+    }
 
     while (cards.length < input.maxResults && state.resultPageExpansions < MAX_RESULT_EXPANSIONS) {
       const last = cards.at(-1);
@@ -957,28 +1063,50 @@ export async function researchZillowRentals(
         0,
         input.maxResults
       );
-      for (const card of cards) state.observedUrls.add(card.canonicalObservedUrl);
+      for (const card of cards) {
+        if (card.canonicalObservedUrl !== null) state.observedUrls.add(card.canonicalObservedUrl);
+      }
     }
     if (cards.length === 0) throw layoutChanged();
     state.resultCardsObserved = Math.min(cards.length, input.maxResults);
 
     for (let index = 0; index < cards.length; index += 1) {
-      const card = cards[index];
+      let card = cards[index];
       let detail = null;
       if (index < input.maxDetailPages) {
-        await navigateToObserved(
-          card.canonicalObservedUrl,
-          "open_observed_listing",
-          state,
-          dependencies
-        );
+        if (card.canonicalObservedUrl === null) {
+          const refreshed = extractResultCards(document, input.maxResults).find(
+            (candidate) => cardIdentity(candidate) === cardIdentity(card)
+          );
+          if (!refreshed) throw layoutChanged();
+          card = refreshed;
+          await activateObservedListing(card, document, state, dependencies);
+        } else {
+          await navigateToObserved(
+            card.canonicalObservedUrl,
+            "open_observed_listing",
+            state,
+            dependencies
+          );
+        }
         const detailDocument = await takeSnapshot(state, dependencies);
         if (detailDocument.page.kind !== "detail") throw layoutChanged();
         detail = extractDetailEvidence(detailDocument);
+        state.observedUrls.add(detail.finalDetailPageUrl);
+        if (card.canonicalObservedUrl === null) {
+          card = {
+            ...card,
+            sourceListingId:
+              detail.finalDetailPageUrl.match(/\/([1-9][0-9]*)_zpid\/?(?:\?|$)/u)?.[1] ?? null,
+            canonicalObservedUrl: detail.finalDetailPageUrl,
+            canonicalObservedFrom: "detail_page"
+          };
+        }
         state.detailPagesOpened += 1;
         await navigateToObserved(resultPage, "return_to_results", state, dependencies);
         document = await takeSnapshot(state, dependencies);
       }
+      if (card.canonicalObservedUrl === null) continue;
       state.listings.push(finalizedListing(card, detail, safeNow(dependencies)));
     }
 
