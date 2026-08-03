@@ -834,7 +834,11 @@ async function applySavedProfile(initialDocument, state, dependencies) {
   ) {
     const bedsButton = findReviewedControl(document, {
       roles: ["button"],
-      names: [/^Beds?(?: & Baths?)?$/iu, /^Beds?\/Baths?$/iu]
+      names: [
+        /^Beds?(?: & Baths?)?$/iu,
+        /^Beds?\/Baths?$/iu,
+        /^[1-9]\d*(?:\.\d)?\+ bd, [1-9]\d*(?:\.\d)?\+ ba$/u
+      ]
     });
     if (!bedsButton) throw layoutChanged();
     await activateControl(bedsButton, { kind: "click" }, state, dependencies);
