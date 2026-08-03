@@ -441,6 +441,7 @@ function happyFetch(
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
     readonly replaceStableTabBetweenTabCheckAndSnapshot?: boolean;
     readonly replaceStableTabAfterLocation?: boolean;
+    readonly snapshotFailuresAfterRoomApply?: number;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -450,6 +451,7 @@ function happyFetch(
   let currentTargetId = "shared-tab-1";
   let stableTabId = options.stableTabId;
   let rotateTargetBeforeNextSnapshot = false;
+  let pendingSnapshotFailures = 0;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -488,6 +490,10 @@ function happyFetch(
       return response;
     }
     if (parsed.pathname === "/snapshot") {
+      if (pendingSnapshotFailures > 0) {
+        pendingSnapshotFailures -= 1;
+        return jsonResponse({ error: "browser temporarily unavailable" }, 503);
+      }
       return jsonResponse(
         snapshotForState(
           stage,
@@ -535,7 +541,12 @@ function happyFetch(
         if (rentalTypePopoverOpen) rentalTypePopoverOpen = false;
         else stage = "filters";
       }
-      if (action.kind === "click" && action.ref === "e5") stage = "results";
+      if (action.kind === "click" && action.ref === "e5") {
+        if (stage === "beds") {
+          pendingSnapshotFailures = options.snapshotFailuresAfterRoomApply ?? 0;
+        }
+        stage = "results";
+      }
       if (action.kind === "click" && action.ref === "e10" && options.semanticCardActivation) {
         currentUrl = apartmentsDetailUrl;
       }
@@ -1288,6 +1299,42 @@ describe("Vera Zillow research execution", () => {
         expect.objectContaining({ action: "snapshot", result: "completed" })
       ])
     );
+  });
+
+  it("retries one bounded snapshot when Zillow is transiently unavailable after filter apply", async () => {
+    const { fetchImplementation } = happyFetch({ snapshotFailuresAfterRoomApply: 1 });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T08:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "snapshot", result: "stopped" }),
+        expect.objectContaining({ action: "snapshot", result: "completed" })
+      ])
+    );
+  });
+
+  it("fails closed after the one bounded transient snapshot retry is exhausted", async () => {
+    const { calls, fetchImplementation } = happyFetch({ snapshotFailuresAfterRoomApply: 2 });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T08:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      manualAction: "browser_offline",
+      listings: []
+    });
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([expect.objectContaining({ action: "snapshot", result: "stopped" })])
+    );
+    expect(calls.filter((call) => new URL(call.url).pathname === "/navigate")).toEqual([]);
   });
 
   it("fails closed when the stable Chrome tab changes during the snapshot retry", async () => {
