@@ -8,9 +8,9 @@ retrying any ambiguous browser action.
 **Files:**
 - Modify: `infra/maritime/openclaw/vera-zillow-rental-research/index.unit.test.ts`
 
-- [x] Model a fresh room-apply reference that receives the exact stale-reference 503.
+- [x] Model a fresh room-apply reference that receives OpenClaw's exact HTTP 500 unknown-ref error.
 - [x] Assert a new snapshot supplies a changed reference and exactly one retry completes.
-- [x] Assert a second stale response and an unknown 503 both fail closed without another retry.
+- [x] Assert a second stale response, unknown HTTP 500, and mismatched ref fail closed.
 
 ### Task 2: Implement the exact bounded recovery
 

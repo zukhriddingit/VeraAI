@@ -444,6 +444,7 @@ function happyFetch(
     readonly snapshotFailuresAfterRoomApply?: number;
     readonly refreshRoomApplyReference?: boolean;
     readonly roomApplyStaleResponses?: number;
+    readonly roomApplyMismatchedReference?: boolean;
     readonly roomApplyUnknownFailure?: boolean;
     readonly roomApplyResponseLostAfterCompletion?: boolean;
     readonly roomApplyResponseLostWithoutCompletion?: boolean;
@@ -561,7 +562,12 @@ function happyFetch(
         action.kind === "click" &&
         action.ref === "e5"
       ) {
-        return jsonResponse({ error: "stale semantic reference" }, 503);
+        return jsonResponse(
+          {
+            error: `Error: Unknown ref "${action.ref}". Run a new snapshot and use a ref from that snapshot.`
+          },
+          500
+        );
       }
       if (
         stage === "beds" &&
@@ -571,13 +577,14 @@ function happyFetch(
         roomApplyStaleResponses < (options.roomApplyStaleResponses ?? 0)
       ) {
         roomApplyStaleResponses += 1;
+        const responseReference = options.roomApplyMismatchedReference ? "e999" : action.ref;
         return jsonResponse(
           {
             error: options.roomApplyUnknownFailure
               ? "unrecognized browser failure"
-              : "stale semantic reference"
+              : `Error: Unknown ref "${responseReference}". Run a new snapshot and use a ref from that snapshot.`
           },
-          503
+          500
         );
       }
       if (action.kind === "click" && ["e5", "e75", "e76", "e77"].includes(action.ref ?? "")) {
@@ -1454,6 +1461,30 @@ describe("Vera Zillow research execution", () => {
     const result = await researchZillowRentals(input, {
       fetch: fetchImplementation,
       now: () => new Date("2026-08-03T18:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({ state: "failed", listings: [] });
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75"]);
+  });
+
+  it("does not retry an unknown-ref response for a different semantic reference", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 1,
+      roomApplyMismatchedReference: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T19:15:00.000Z"),
       monotonicNow: () => 1_000
     });
 
