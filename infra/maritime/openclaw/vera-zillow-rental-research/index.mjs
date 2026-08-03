@@ -817,7 +817,16 @@ function findRoomApplyControl(document) {
   });
 }
 
-function findUniqueMatchingRoomApplyControl(document, previousApply) {
+function findFreshRoomApplyControl(document, previousApply) {
+  const exact = document.refs.filter(
+    (entry) =>
+      entry.ref === previousApply.ref &&
+      entry.role === previousApply.role &&
+      entry.name === previousApply.name
+  );
+  if (exact.length > 1) throw layoutChanged();
+  if (exact.length === 1) return exact[0];
+
   const candidates = document.refs.filter(
     (entry) => entry.role === "button" && entry.name === previousApply.name
   );
@@ -852,12 +861,11 @@ async function applyRoomFiltersAndObserve(document, state, dependencies) {
         "stopped"
       );
       const refreshed = await takeSnapshot(state, dependencies);
-      const refreshedApply = findUniqueMatchingRoomApplyControl(refreshed, apply);
+      const refreshedApply = findFreshRoomApplyControl(refreshed, apply);
       if (!refreshedApply) throw error;
-      // OpenClaw can assign the same semantic ref in two successive snapshots.
-      // The exact stale response proves the first click did not execute, while
-      // the fresh snapshot re-establishes exactly one target with the same
-      // reviewed label. Retry once even when its ref string is unchanged.
+      // The exact stale response proves the first click did not execute. Prefer
+      // the same ref/role/name tuple from the fresh snapshot, then permit only a
+      // unique reviewed-label fallback if OpenClaw changed the semantic ref.
       await activateControl(refreshedApply, { kind: "click" }, state, dependencies);
       return takeSnapshot(state, dependencies);
     }
