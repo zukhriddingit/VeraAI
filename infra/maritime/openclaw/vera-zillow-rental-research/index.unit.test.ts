@@ -445,6 +445,7 @@ function happyFetch(
     readonly refreshRoomApplyReference?: boolean;
     readonly roomApplyStaleResponses?: number;
     readonly roomApplyStaleStatus?: number;
+    readonly roomApplyStaleVisibleResponse?: boolean;
     readonly roomApplyMismatchedReference?: boolean;
     readonly roomApplyUnknownFailure?: boolean;
     readonly roomApplyResponseLostAfterCompletion?: boolean;
@@ -586,7 +587,9 @@ function happyFetch(
           {
             error: options.roomApplyUnknownFailure
               ? "unrecognized browser failure"
-              : `Error: Unknown ref "${responseReference}". Run a new snapshot and use a ref from that snapshot.`
+              : options.roomApplyStaleVisibleResponse
+                ? `Error: Element "${responseReference}" not found or not visible. Run a new snapshot to see current page elements.`
+                : `Error: Unknown ref "${responseReference}". Run a new snapshot and use a ref from that snapshot.`
           },
           options.roomApplyStaleStatus ?? 500
         );
@@ -1467,6 +1470,58 @@ describe("Vera Zillow research execution", () => {
       )
       .map((call) => (call.body as { ref: string }).ref);
     expect(applyReferences).toEqual(["e75", "e76"]);
+  });
+
+  it("refreshes and retries once after OpenClaw's exact not-visible stale-ref response", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 1,
+      roomApplyStaleVisibleResponse: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T21:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75", "e76"]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("does not retry a not-visible response naming a different semantic reference", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 1,
+      roomApplyStaleVisibleResponse: true,
+      roomApplyMismatchedReference: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T21:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({ state: "failed", listings: [] });
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75"]);
   });
 
   it("fails closed after one fresh-reference retry also becomes stale", async () => {

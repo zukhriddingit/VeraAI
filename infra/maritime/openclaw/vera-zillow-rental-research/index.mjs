@@ -188,8 +188,10 @@ async function browserPost(path, body, maxBytes, state, dependencies) {
         typeof payload === "object" &&
         payload !== null &&
         Object.keys(payload).length === 1 &&
-        payload.error ===
-          `Error: Unknown ref "${body.ref}". Run a new snapshot and use a ref from that snapshot.`
+        (payload.error ===
+          `Error: Unknown ref "${body.ref}". Run a new snapshot and use a ref from that snapshot.` ||
+          payload.error ===
+            `Error: Element "${body.ref}" not found or not visible. Run a new snapshot to see current page elements.`)
       ) {
         throw new VeraZillowResearchError("stale_browser_reference");
       }
