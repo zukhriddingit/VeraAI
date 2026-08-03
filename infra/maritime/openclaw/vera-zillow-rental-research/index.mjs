@@ -165,6 +165,22 @@ async function browserPost(path, body, maxBytes, state, dependencies) {
     });
   }
   if (!response.ok) {
+    if (path === "/act" && response.status === 503) {
+      let payload;
+      try {
+        payload = await readBoundedJson(response, maxBytes);
+      } catch {
+        throw new VeraZillowResearchError("browser_action_failed");
+      }
+      if (
+        typeof payload === "object" &&
+        payload !== null &&
+        Object.keys(payload).length === 1 &&
+        payload.error === "stale semantic reference"
+      ) {
+        throw new VeraZillowResearchError("stale_browser_reference");
+      }
+    }
     throw new VeraZillowResearchError("browser_action_failed");
   }
   return readBoundedJson(response, maxBytes);
@@ -764,11 +780,15 @@ async function applyConsolidatedFilters(filtersButton, initialDocument, state, d
 }
 
 async function clickFilterApplyIfPresent(document, state, dependencies) {
-  const apply = findReviewedControl(document, {
+  const apply = findRoomApplyControl(document);
+  if (apply) await activateControl(apply, { kind: "click" }, state, dependencies);
+}
+
+function findRoomApplyControl(document) {
+  return findReviewedControl(document, {
     roles: ["button"],
     names: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
   });
-  if (apply) await activateControl(apply, { kind: "click" }, state, dependencies);
 }
 
 function filterApplyStillVisible(document, apply) {
@@ -781,15 +801,28 @@ function filterApplyStillVisible(document, apply) {
 }
 
 async function applyRoomFiltersAndObserve(document, state, dependencies) {
-  const apply = findReviewedControl(document, {
-    roles: ["button"],
-    names: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
-  });
+  const apply = findRoomApplyControl(document);
   if (!apply) return takeSnapshot(state, dependencies);
   try {
     await activateControl(apply, { kind: "click" }, state, dependencies);
     return takeSnapshot(state, dependencies);
   } catch (error) {
+    const staleReference =
+      error instanceof VeraZillowResearchError && error.code === "stale_browser_reference";
+    if (staleReference) {
+      recordAction(
+        state,
+        "set_reviewed_filter",
+        dependencies,
+        `${apply.ref}:${apply.name}`,
+        "stopped"
+      );
+      const refreshed = await takeSnapshot(state, dependencies);
+      const refreshedApply = findRoomApplyControl(refreshed);
+      if (!refreshedApply || refreshedApply.ref === apply.ref) throw error;
+      await activateControl(refreshedApply, { kind: "click" }, state, dependencies);
+      return takeSnapshot(state, dependencies);
+    }
     const ambiguousCompletion =
       error instanceof VeraZillowResearchError && error.code === "browser_offline";
     if (!ambiguousCompletion) throw error;
