@@ -83,7 +83,8 @@ function snapshotForState(
   selectedRoomLabel = false,
   staleRentalTypePopover = false,
   incompleteRentalTypePopover = false,
-  roomApplyReference = "e5"
+  roomApplyReference = "e5",
+  priceAdditionalSafeApply = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -141,10 +142,15 @@ function snapshotForState(
       format: "ai",
       targetId,
       url: resultUrl,
-      snapshot: '- spinbutton "Max price" [ref=e4]\n- button "Done" [ref=e5]',
+      snapshot: [
+        '- spinbutton "Max price" [ref=e4]',
+        '- button "Done" [ref=e5]',
+        ...(priceAdditionalSafeApply ? ['- button "Save" [ref=e55]'] : [])
+      ].join("\n"),
       refs: {
         e4: { role: "spinbutton", name: "Max price" },
-        e5: { role: "button", name: "Done" }
+        e5: { role: "button", name: "Done" },
+        ...(priceAdditionalSafeApply ? { e55: { role: "button", name: "Save" } } : {})
       }
     };
   }
@@ -454,6 +460,7 @@ function happyFetch(
     readonly roomApplyTimeoutAfterCompletion?: boolean;
     readonly roomApplyTimeoutWithoutCompletion?: boolean;
     readonly roomApplyTimeoutFirstLine?: string;
+    readonly priceAdditionalSafeApply?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -538,7 +545,8 @@ function happyFetch(
             ? options.reuseRoomApplyReferenceAfterStale
               ? "e75"
               : `e${String(75 + roomApplyStaleResponses)}`
-            : "e5"
+            : "e5",
+          options.priceAdditionalSafeApply
         )
       );
     }
@@ -1530,6 +1538,27 @@ describe("Vera Zillow research execution", () => {
         expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
       ])
     );
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("does not treat distinct reviewed price-panel apply labels as an ambiguous retry target", async () => {
+    const { calls, fetchImplementation } = happyFetch({ priceAdditionalSafeApply: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T22:45:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const priceApplyClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e5"
+    );
+    expect(priceApplyClicks.length).toBeGreaterThan(0);
     expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
