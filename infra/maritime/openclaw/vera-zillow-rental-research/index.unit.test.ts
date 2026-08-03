@@ -443,6 +443,8 @@ function happyFetch(
     readonly replaceStableTabAfterLocation?: boolean;
     readonly snapshotFailuresAfterRoomApply?: number;
     readonly refreshRoomApplyReference?: boolean;
+    readonly roomApplyResponseLostAfterCompletion?: boolean;
+    readonly roomApplyResponseLostWithoutCompletion?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -557,10 +559,20 @@ function happyFetch(
         return jsonResponse({ error: "stale semantic reference" }, 503);
       }
       if (action.kind === "click" && ["e5", "e75"].includes(action.ref ?? "")) {
-        if (stage === "beds") {
+        const isRoomApply = stage === "beds";
+        if (isRoomApply) {
           pendingSnapshotFailures = options.snapshotFailuresAfterRoomApply ?? 0;
         }
-        stage = "results";
+        if (!(isRoomApply && options.roomApplyResponseLostWithoutCompletion)) {
+          stage = "results";
+        }
+        if (
+          isRoomApply &&
+          (options.roomApplyResponseLostAfterCompletion ||
+            options.roomApplyResponseLostWithoutCompletion)
+        ) {
+          throw new TypeError("browser response lost");
+        }
       }
       if (action.kind === "click" && action.ref === "e10" && options.semanticCardActivation) {
         currentUrl = apartmentsDetailUrl;
@@ -1347,6 +1359,55 @@ describe("Vera Zillow research execution", () => {
       .map((call) => (call.body as { ref?: string }).ref);
     expect(actionReferences).toEqual(expect.arrayContaining(["e6", "e7", "e75"]));
     expect(actionReferences.indexOf("e75")).toBeGreaterThan(actionReferences.indexOf("e7"));
+  });
+
+  it("observes room-filter completion without repeating a click whose response was lost", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      roomApplyResponseLostAfterCompletion: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T14:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
+      ])
+    );
+    const applyClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e5"
+    );
+    expect(applyClicks).toHaveLength(2);
+  });
+
+  it("fails closed without repeating room apply when its completion cannot be observed", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      roomApplyResponseLostWithoutCompletion: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T14:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      manualAction: "browser_offline",
+      listings: []
+    });
+    const applyClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e5"
+    );
+    expect(applyClicks).toHaveLength(2);
   });
 
   it("fails closed after the one bounded transient snapshot retry is exhausted", async () => {
