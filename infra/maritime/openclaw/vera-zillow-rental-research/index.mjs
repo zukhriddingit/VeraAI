@@ -681,7 +681,7 @@ async function closeStaleRentalTypePopover(document, state, dependencies) {
 
 async function applyConsolidatedFilters(filtersButton, initialDocument, state, dependencies) {
   await activateControl(filtersButton, { kind: "click" }, state, dependencies);
-  const document = await takeSnapshot(state, dependencies);
+  let document = await takeSnapshot(state, dependencies);
   const maximumPrice = findUniqueReviewedControl(document, {
     roles: ["textbox", "combobox", "spinbutton"],
     names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
@@ -754,6 +754,9 @@ async function applyConsolidatedFilters(filtersButton, initialDocument, state, d
     await activateControl(propertyType, { kind: "click" }, state, dependencies);
   }
 
+  // Zillow can replace semantic references after a filter selection. Refresh the
+  // reviewed dialog before activating its bounded apply control.
+  document = await takeSnapshot(state, dependencies);
   const apply = findConsolidatedApplyControl(document);
   if (!apply) throw layoutChanged();
   await activateControl(apply, { kind: "click" }, state, dependencies);
@@ -891,6 +894,9 @@ async function applySavedProfile(initialDocument, state, dependencies) {
       if (!bathrooms) throw layoutChanged();
       await activateControl(bathrooms, { kind: "click" }, state, dependencies);
     }
+    // Bedroom and bathroom selections can rerender the dialog and invalidate
+    // its prior Done/Save reference.
+    document = await takeSnapshot(state, dependencies);
     await clickFilterApplyIfPresent(document, state, dependencies);
     document = await takeSnapshot(state, dependencies);
   }

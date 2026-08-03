@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   checkZillowResearchAction,
+  createZillowResearchCheckpointDependencies,
   parseZillowResearchCheckpointEnvironment,
   type ZillowResearchCheckpointDependencies
 } from "./zillow-research-checkpoint-service.ts";
@@ -176,6 +177,22 @@ describe("checkZillowResearchAction", () => {
 });
 
 describe("parseZillowResearchCheckpointEnvironment", () => {
+  it("creates IDs through a bound Web Crypto call", () => {
+    const dependencies = createZillowResearchCheckpointDependencies(
+      founderUserId,
+      fixture().dependencies.repositories,
+      {
+        VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderUserId,
+        VERA_ZILLOW_BROWSER_RESEARCH_ENABLED: "1",
+        VERA_BROWSER_DISABLED: "0"
+      }
+    );
+
+    expect(dependencies.createId()).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u
+    );
+  });
+
   it("is founder-bound, source-disabled by default, and browser-disabled by default", () => {
     expect(
       parseZillowResearchCheckpointEnvironment({

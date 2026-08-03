@@ -82,7 +82,8 @@ function snapshotForState(
   selectedPriceLabel = false,
   selectedRoomLabel = false,
   staleRentalTypePopover = false,
-  incompleteRentalTypePopover = false
+  incompleteRentalTypePopover = false,
+  roomApplyReference = "e5"
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -208,7 +209,7 @@ function snapshotForState(
           '- button "1+" [ref=e71]',
           '- button "1.5+" [ref=e72]',
           '- button "2+" [ref=e73]',
-          '- button "See 739 rentals available" [ref=e5]'
+          `- button "See 739 rentals available" [ref=${roomApplyReference}]`
         ].join("\n"),
         refs: {
           e60: { role: "button", name: "Any" },
@@ -221,7 +222,7 @@ function snapshotForState(
           e71: { role: "button", name: "1+" },
           e72: { role: "button", name: "1.5+" },
           e73: { role: "button", name: "2+" },
-          e5: { role: "button", name: "See 739 rentals available" }
+          [roomApplyReference]: { role: "button", name: "See 739 rentals available" }
         }
       };
     }
@@ -230,12 +231,11 @@ function snapshotForState(
       format: "ai",
       targetId,
       url: resultUrl,
-      snapshot:
-        '- button "2 Bedrooms" [ref=e6]\n- button "1 Bathrooms" [ref=e7]\n- button "Done" [ref=e5]',
+      snapshot: `- button "2 Bedrooms" [ref=e6]\n- button "1 Bathrooms" [ref=e7]\n- button "Done" [ref=${roomApplyReference}]`,
       refs: {
         e6: { role: "button", name: "2 Bedrooms" },
         e7: { role: "button", name: "1 Bathrooms" },
-        e5: { role: "button", name: "Done" }
+        [roomApplyReference]: { role: "button", name: "Done" }
       }
     };
   }
@@ -442,6 +442,7 @@ function happyFetch(
     readonly replaceStableTabBetweenTabCheckAndSnapshot?: boolean;
     readonly replaceStableTabAfterLocation?: boolean;
     readonly snapshotFailuresAfterRoomApply?: number;
+    readonly refreshRoomApplyReference?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -452,6 +453,7 @@ function happyFetch(
   let stableTabId = options.stableTabId;
   let rotateTargetBeforeNextSnapshot = false;
   let pendingSnapshotFailures = 0;
+  let roomSelectionChanged = false;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -519,7 +521,8 @@ function happyFetch(
           options.selectedPriceLabel,
           options.selectedRoomLabel,
           rentalTypePopoverOpen && options.staleRentalTypePopover === true,
-          rentalTypePopoverOpen && options.incompleteRentalTypePopover === true
+          rentalTypePopoverOpen && options.incompleteRentalTypePopover === true,
+          options.refreshRoomApplyReference && roomSelectionChanged ? "e75" : "e5"
         )
       );
     }
@@ -541,7 +544,19 @@ function happyFetch(
         if (rentalTypePopoverOpen) rentalTypePopoverOpen = false;
         else stage = "filters";
       }
-      if (action.kind === "click" && action.ref === "e5") {
+      if (action.kind === "click" && ["e6", "e7", "e62", "e71"].includes(action.ref ?? "")) {
+        roomSelectionChanged = true;
+      }
+      if (
+        options.refreshRoomApplyReference &&
+        stage === "beds" &&
+        roomSelectionChanged &&
+        action.kind === "click" &&
+        action.ref === "e5"
+      ) {
+        return jsonResponse({ error: "stale semantic reference" }, 503);
+      }
+      if (action.kind === "click" && ["e5", "e75"].includes(action.ref ?? "")) {
         if (stage === "beds") {
           pendingSnapshotFailures = options.snapshotFailuresAfterRoomApply ?? 0;
         }
@@ -1316,6 +1331,22 @@ describe("Vera Zillow research execution", () => {
         expect.objectContaining({ action: "snapshot", result: "completed" })
       ])
     );
+  });
+
+  it("refreshes Zillow's semantic dialog reference before applying room filters", async () => {
+    const { calls, fetchImplementation } = happyFetch({ refreshRoomApplyReference: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T08:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionReferences = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => (call.body as { ref?: string }).ref);
+    expect(actionReferences).toEqual(expect.arrayContaining(["e6", "e7", "e75"]));
+    expect(actionReferences.indexOf("e75")).toBeGreaterThan(actionReferences.indexOf("e7"));
   });
 
   it("fails closed after the one bounded transient snapshot retry is exhausted", async () => {
