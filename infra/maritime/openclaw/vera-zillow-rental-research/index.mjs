@@ -811,10 +811,15 @@ async function clickFilterApplyIfPresent(document, state, dependencies) {
 }
 
 function findRoomApplyControl(document) {
-  return findReviewedControl(document, {
-    roles: ["button"],
-    names: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
-  });
+  const candidates = document.refs.filter(
+    (entry) =>
+      entry.role === "button" &&
+      [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu].some((pattern) =>
+        pattern.test(entry.name)
+      )
+  );
+  if (candidates.length > 1) throw layoutChanged();
+  return candidates[0] ?? null;
 }
 
 function filterApplyStillVisible(document, apply) {
@@ -845,7 +850,11 @@ async function applyRoomFiltersAndObserve(document, state, dependencies) {
       );
       const refreshed = await takeSnapshot(state, dependencies);
       const refreshedApply = findRoomApplyControl(refreshed);
-      if (!refreshedApply || refreshedApply.ref === apply.ref) throw error;
+      if (!refreshedApply) throw error;
+      // OpenClaw can assign the same semantic ref in two successive snapshots.
+      // The exact stale response proves the first click did not execute, while
+      // the fresh snapshot re-establishes one reviewed apply target. Retry once
+      // even when that newly observed ref string is unchanged.
       await activateControl(refreshedApply, { kind: "click" }, state, dependencies);
       return takeSnapshot(state, dependencies);
     }

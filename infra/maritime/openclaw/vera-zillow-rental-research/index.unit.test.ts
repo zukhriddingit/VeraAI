@@ -443,6 +443,7 @@ function happyFetch(
     readonly replaceStableTabAfterLocation?: boolean;
     readonly snapshotFailuresAfterRoomApply?: number;
     readonly refreshRoomApplyReference?: boolean;
+    readonly reuseRoomApplyReferenceAfterStale?: boolean;
     readonly roomApplyStaleResponses?: number;
     readonly roomApplyStaleStatus?: number;
     readonly roomApplyStaleVisibleResponse?: boolean;
@@ -534,7 +535,9 @@ function happyFetch(
           rentalTypePopoverOpen && options.staleRentalTypePopover === true,
           rentalTypePopoverOpen && options.incompleteRentalTypePopover === true,
           options.refreshRoomApplyReference && roomSelectionChanged
-            ? `e${String(75 + roomApplyStaleResponses)}`
+            ? options.reuseRoomApplyReferenceAfterStale
+              ? "e75"
+              : `e${String(75 + roomApplyStaleResponses)}`
             : "e5"
         )
       );
@@ -1494,6 +1497,39 @@ describe("Vera Zillow research execution", () => {
       )
       .map((call) => (call.body as { ref: string }).ref);
     expect(applyReferences).toEqual(["e75", "e76"]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("retries once when a fresh snapshot reuses the exact reviewed room-apply ref", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      reuseRoomApplyReferenceAfterStale: true,
+      roomApplyStaleResponses: 1,
+      roomApplyStaleVisibleResponse: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T22:15:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          (call.body as { ref?: string }).ref === "e75"
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75", "e75"]);
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
+      ])
+    );
     expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
