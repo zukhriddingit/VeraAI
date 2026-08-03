@@ -84,7 +84,8 @@ function snapshotForState(
   staleRentalTypePopover = false,
   incompleteRentalTypePopover = false,
   roomApplyReference = "e5",
-  priceAdditionalSafeApply = false
+  priceAdditionalSafeApply = false,
+  roomApplyDuplicateMatchingLabel = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -237,11 +238,17 @@ function snapshotForState(
       format: "ai",
       targetId,
       url: resultUrl,
-      snapshot: `- button "2 Bedrooms" [ref=e6]\n- button "1 Bathrooms" [ref=e7]\n- button "Done" [ref=${roomApplyReference}]`,
+      snapshot: [
+        '- button "2 Bedrooms" [ref=e6]',
+        '- button "1 Bathrooms" [ref=e7]',
+        `- button "Done" [ref=${roomApplyReference}]`,
+        ...(roomApplyDuplicateMatchingLabel ? ['- button "Done" [ref=e58]'] : [])
+      ].join("\n"),
       refs: {
         e6: { role: "button", name: "2 Bedrooms" },
         e7: { role: "button", name: "1 Bathrooms" },
-        [roomApplyReference]: { role: "button", name: "Done" }
+        [roomApplyReference]: { role: "button", name: "Done" },
+        ...(roomApplyDuplicateMatchingLabel ? { e58: { role: "button", name: "Done" } } : {})
       }
     };
   }
@@ -461,6 +468,7 @@ function happyFetch(
     readonly roomApplyTimeoutWithoutCompletion?: boolean;
     readonly roomApplyTimeoutFirstLine?: string;
     readonly priceAdditionalSafeApply?: boolean;
+    readonly roomApplyDuplicateMatchingLabel?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -546,7 +554,8 @@ function happyFetch(
               ? "e75"
               : `e${String(75 + roomApplyStaleResponses)}`
             : "e5",
-          options.priceAdditionalSafeApply
+          options.priceAdditionalSafeApply,
+          options.roomApplyDuplicateMatchingLabel
         )
       );
     }
@@ -1538,6 +1547,35 @@ describe("Vera Zillow research execution", () => {
         expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
       ])
     );
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("prefers the exact freshly observed room-apply ref when unrelated controls share its label", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      reuseRoomApplyReferenceAfterStale: true,
+      roomApplyStaleResponses: 1,
+      roomApplyStaleVisibleResponse: true,
+      roomApplyDuplicateMatchingLabel: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T22:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          (call.body as { ref?: string }).ref === "e75"
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75", "e75"]);
     expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
