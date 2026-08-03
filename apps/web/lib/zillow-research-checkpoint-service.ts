@@ -56,7 +56,7 @@ export function createZillowResearchCheckpointDependencies(
     userId,
     repositories,
     environment: parseZillowResearchCheckpointEnvironment(environment),
-    createId: crypto.randomUUID,
+    createId: () => crypto.randomUUID(),
     now: () => new Date().toISOString()
   };
 }
