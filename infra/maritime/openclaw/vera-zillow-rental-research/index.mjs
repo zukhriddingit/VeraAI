@@ -532,6 +532,32 @@ function findConsolidatedApplyControl(document) {
   return null;
 }
 
+function countExactSemanticMarker(document, input) {
+  const pattern = /^\s*-\s+([a-z]+)\s+"([^"]{1,300})"(?:\s+\[ref=[^\]]+\])?\s*$/u;
+  return document.snapshot.split(/\r?\n/u).filter((line) => {
+    const match = pattern.exec(line);
+    return (
+      match !== null &&
+      match[1].toLocaleLowerCase("en-US") === input.role.toLocaleLowerCase("en-US") &&
+      match[2].toLocaleLowerCase("en-US") === input.name.toLocaleLowerCase("en-US")
+    );
+  }).length;
+}
+
+async function closeStaleMoreFilters(document, state, dependencies) {
+  const headingCount = countExactSemanticMarker(document, {
+    role: "heading",
+    name: "More filters"
+  });
+  const closeButtons = document.refs.filter(
+    (entry) => entry.role === "button" && /^Close$/iu.test(entry.name)
+  );
+  if (headingCount === 0 && closeButtons.length === 0) return document;
+  if (headingCount !== 1 || closeButtons.length !== 1) throw layoutChanged();
+  await activateControl(closeButtons[0], { kind: "click" }, state, dependencies);
+  return takeSnapshot(state, dependencies);
+}
+
 async function applyConsolidatedFilters(filtersButton, initialDocument, state, dependencies) {
   await activateControl(filtersButton, { kind: "click" }, state, dependencies);
   const document = await takeSnapshot(state, dependencies);
@@ -622,7 +648,7 @@ async function clickFilterApplyIfPresent(document, state, dependencies) {
 }
 
 async function applySavedProfile(initialDocument, state, dependencies) {
-  let document = initialDocument;
+  let document = await closeStaleMoreFilters(initialDocument, state, dependencies);
   if (document.page.kind !== "result") throw layoutChanged();
 
   const location = findReviewedControl(document, {
@@ -651,6 +677,13 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     names: [/^Price$/iu, /^Any price$/iu, /^\$[\d,]+\s*-\s*(?:\$[\d,]+|No Max)$/iu]
   });
   if (!priceButton) {
+    const forRentButtons = document.refs.filter(
+      (entry) => entry.role === "button" && /^For rent$/iu.test(entry.name)
+    );
+    if (forRentButtons.length > 1) throw layoutChanged();
+    if (forRentButtons.length === 1) {
+      return applyConsolidatedFilters(forRentButtons[0], document, state, dependencies);
+    }
     const filtersButton = findUniqueReviewedControl(document, {
       roles: ["button"],
       names: [/^Filters$/iu]

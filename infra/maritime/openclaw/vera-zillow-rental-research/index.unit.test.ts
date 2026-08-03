@@ -71,7 +71,12 @@ function snapshotForState(
   omitConsolidatedMaximum = false,
   duplicateConsolidatedMaximum = false,
   omitConsolidatedApply = false,
-  duplicateConsolidatedApply = false
+  duplicateConsolidatedApply = false,
+  duplicateStaleMoreFilters = false,
+  omitStaleClose = false,
+  duplicateStaleClose = false,
+  forRentFilters = false,
+  duplicateForRentFilters = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -111,6 +116,29 @@ function snapshotForState(
       refs: {
         e4: { role: "spinbutton", name: "Max price" },
         e5: { role: "button", name: "Done" }
+      }
+    };
+  }
+  if (stage === "more-filters") {
+    return {
+      ok: true,
+      format: "ai",
+      targetId,
+      url: resultUrl,
+      snapshot: [
+        '- heading "More filters"',
+        ...(duplicateStaleMoreFilters ? ['- heading "More filters"'] : []),
+        ...(omitStaleClose ? [] : ['- button "Close" [ref=e91]']),
+        ...(duplicateStaleClose ? ['- button "Close" [ref=e910]'] : []),
+        '- heading "Top amenities"',
+        '- checkbox "For rent by owner" [ref=e93]',
+        '- button "See 3,475 rentals available" [ref=e94]'
+      ].join("\n"),
+      refs: {
+        ...(omitStaleClose ? {} : { e91: { role: "button", name: "Close" } }),
+        ...(duplicateStaleClose ? { e910: { role: "button", name: "Close" } } : {}),
+        e93: { role: "checkbox", name: "For rent by owner" },
+        e94: { role: "button", name: "See 3,475 rentals available" }
       }
     };
   }
@@ -250,6 +278,32 @@ function snapshotForState(
       }
     };
   }
+  if (forRentFilters) {
+    return {
+      ...readyFixture,
+      targetId,
+      snapshot: [
+        '- searchbox "Search" [ref=e1]',
+        '- button "For rent" [ref=e92]',
+        ...(duplicateForRentFilters ? ['- button "For rent" [ref=e920]'] : []),
+        '- button "Filters" [ref=e9]',
+        '- link "12 Beacon St, Boston, MA 02108" [ref=e10]',
+        '  - text "$3,200/mo"',
+        '  - text "2 beds 1 bath 900 sq ft"',
+        '  - text "In-unit laundry"',
+        "",
+        "Links:",
+        `1. 12 Beacon St, Boston, MA 02108 -> ${detailUrl}`
+      ].join("\n"),
+      refs: {
+        e1: { role: "searchbox", name: "Search" },
+        e92: { role: "button", name: "For rent" },
+        ...(duplicateForRentFilters ? { e920: { role: "button", name: "For rent" } } : {}),
+        e9: { role: "button", name: "Filters" },
+        e10: { role: "link", name: "12 Beacon St, Boston, MA 02108" }
+      }
+    };
+  }
   return { ...readyFixture, targetId };
 }
 
@@ -266,6 +320,12 @@ function happyFetch(
     readonly duplicateConsolidatedMaximum?: boolean;
     readonly omitConsolidatedApply?: boolean;
     readonly duplicateConsolidatedApply?: boolean;
+    readonly staleMoreFilters?: boolean;
+    readonly duplicateStaleMoreFilters?: boolean;
+    readonly omitStaleClose?: boolean;
+    readonly duplicateStaleClose?: boolean;
+    readonly forRentFilters?: boolean;
+    readonly duplicateForRentFilters?: boolean;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -273,7 +333,7 @@ function happyFetch(
     readonly replaceStableTabAfterLocation?: boolean;
   } = {}
 ) {
-  let stage = "results";
+  let stage = options.staleMoreFilters ? "more-filters" : "results";
   let currentUrl = resultUrl;
   let currentTargetId = "shared-tab-1";
   let stableTabId = options.stableTabId;
@@ -331,7 +391,12 @@ function happyFetch(
           options.omitConsolidatedMaximum,
           options.duplicateConsolidatedMaximum,
           options.omitConsolidatedApply,
-          options.duplicateConsolidatedApply
+          options.duplicateConsolidatedApply,
+          options.duplicateStaleMoreFilters,
+          options.omitStaleClose,
+          options.duplicateStaleClose,
+          options.forRentFilters,
+          options.duplicateForRentFilters
         )
       );
     }
@@ -348,6 +413,8 @@ function happyFetch(
       if (action.kind === "click" && action.ref === "e2") stage = "price";
       if (action.kind === "click" && action.ref === "e3") stage = "beds";
       if (action.kind === "click" && action.ref === "e9") stage = "filters";
+      if (action.kind === "click" && action.ref === "e91") stage = "results";
+      if (action.kind === "click" && action.ref === "e92") stage = "filters";
       if (action.kind === "click" && action.ref === "e5") stage = "results";
       return jsonResponse({ ok: true, targetId: actionTargetId, url: currentUrl });
     }
@@ -580,6 +647,111 @@ describe("Vera Zillow research execution", () => {
       .map((call) => (call.body as { ref?: string }).ref);
     expect(actionRefs).toEqual(expect.arrayContaining(["e9", "e4", "e62", "e71", "e5"]));
     expect(actionRefs).not.toContain("e80");
+  });
+
+  it("closes a stale More filters panel and enters Zillow's exact For rent criteria", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      staleMoreFilters: true,
+      forRentFilters: true
+    });
+    const result = await researchZillowRentals(consolidatedInput, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T05:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      pageState: "ready",
+      listings: [expect.objectContaining({ sourceListingId: "123456" })]
+    });
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body);
+    expect(actionBodies).toEqual([
+      expect.objectContaining({ kind: "click", ref: "e91" }),
+      expect.objectContaining({ kind: "type", ref: "e1", text: "Boston, MA" }),
+      expect.objectContaining({ kind: "click", ref: "e92" }),
+      expect.objectContaining({ kind: "type", ref: "e4", text: "3500" }),
+      expect.objectContaining({ kind: "click", ref: "e62" }),
+      expect.objectContaining({ kind: "click", ref: "e71" }),
+      expect.objectContaining({ kind: "click", ref: "e80" }),
+      expect.objectContaining({ kind: "click", ref: "e5" })
+    ]);
+    expect(actionBodies).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ ref: "e9" })])
+    );
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("prefers the unique exact For rent entry over the legacy Filters fallback", async () => {
+    const { calls, fetchImplementation } = happyFetch({ forRentFilters: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T05:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionRefs = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => (call.body as { ref?: string }).ref);
+    expect(actionRefs).toContain("e92");
+    expect(actionRefs).not.toContain("e9");
+  });
+
+  it.each([
+    ["duplicate More filters headings", { duplicateStaleMoreFilters: true }],
+    ["missing Close control", { omitStaleClose: true }],
+    ["duplicate Close controls", { duplicateStaleClose: true }]
+  ])("fails closed for a stale panel with %s", async (_label, option) => {
+    const { calls, fetchImplementation } = happyFetch({
+      staleMoreFilters: true,
+      forRentFilters: true,
+      ...option
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T05:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      pageState: "layout_changed",
+      manualAction: "layout_changed",
+      listings: []
+    });
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/act").map((call) => call.body)
+    ).toEqual([]);
+  });
+
+  it("fails closed for duplicate exact For rent entry controls", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      forRentFilters: true,
+      duplicateForRentFilters: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T05:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      pageState: "layout_changed",
+      manualAction: "layout_changed",
+      listings: []
+    });
+    const actionRefs = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => (call.body as { ref?: string }).ref);
+    expect(actionRefs).not.toContain("e9");
+    expect(actionRefs).not.toContain("e92");
+    expect(actionRefs).not.toContain("e920");
   });
 
   it.each([
