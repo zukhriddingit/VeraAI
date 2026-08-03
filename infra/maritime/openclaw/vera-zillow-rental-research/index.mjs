@@ -165,7 +165,13 @@ async function browserPost(path, body, maxBytes, state, dependencies) {
     });
   }
   if (!response.ok) {
-    if (path === "/act" && response.status === 503) {
+    if (
+      path === "/act" &&
+      response.status === 500 &&
+      body.kind === "click" &&
+      typeof body.ref === "string" &&
+      /^e\d+$/u.test(body.ref)
+    ) {
       let payload;
       try {
         payload = await readBoundedJson(response, maxBytes);
@@ -176,7 +182,8 @@ async function browserPost(path, body, maxBytes, state, dependencies) {
         typeof payload === "object" &&
         payload !== null &&
         Object.keys(payload).length === 1 &&
-        payload.error === "stale semantic reference"
+        payload.error ===
+          `Error: Unknown ref "${body.ref}". Run a new snapshot and use a ref from that snapshot.`
       ) {
         throw new VeraZillowResearchError("stale_browser_reference");
       }
