@@ -644,6 +644,35 @@ async function closeStaleMoreFilters(document, state, dependencies) {
   return takeSnapshot(state, dependencies);
 }
 
+function findOpenRentalTypePopoverToggle(document) {
+  const reviewedRadioNames = ["For sale", "For rent", "Sold"];
+  const radios = document.refs.filter(
+    (entry) => entry.role === "radio" && reviewedRadioNames.includes(entry.name)
+  );
+  if (radios.length === 0) return null;
+  if (
+    radios.length !== reviewedRadioNames.length ||
+    reviewedRadioNames.some((name) => radios.filter((entry) => entry.name === name).length !== 1)
+  ) {
+    throw layoutChanged();
+  }
+  const toggle = findUniqueReviewedControl(document, {
+    roles: ["button"],
+    names: [/^For rent$/iu]
+  });
+  if (!toggle) throw layoutChanged();
+  return toggle;
+}
+
+async function closeStaleRentalTypePopover(document, state, dependencies) {
+  const toggle = findOpenRentalTypePopoverToggle(document);
+  if (!toggle) return document;
+  await activateControl(toggle, { kind: "click" }, state, dependencies);
+  const updated = await takeSnapshot(state, dependencies);
+  if (findOpenRentalTypePopoverToggle(updated) !== null) throw layoutChanged();
+  return updated;
+}
+
 async function applyConsolidatedFilters(filtersButton, initialDocument, state, dependencies) {
   await activateControl(filtersButton, { kind: "click" }, state, dependencies);
   const document = await takeSnapshot(state, dependencies);
@@ -735,6 +764,7 @@ async function clickFilterApplyIfPresent(document, state, dependencies) {
 
 async function applySavedProfile(initialDocument, state, dependencies) {
   let document = await closeStaleMoreFilters(initialDocument, state, dependencies);
+  document = await closeStaleRentalTypePopover(document, state, dependencies);
   if (document.page.kind !== "result") throw layoutChanged();
 
   const location = findReviewedControl(document, {
@@ -760,7 +790,12 @@ async function applySavedProfile(initialDocument, state, dependencies) {
 
   const priceButton = findReviewedControl(document, {
     roles: ["button"],
-    names: [/^Price$/iu, /^Any price$/iu, /^\$[\d,]+\s*-\s*(?:\$[\d,]+|No Max)$/iu]
+    names: [
+      /^Price$/iu,
+      /^Any price$/iu,
+      /^Up to \$[1-9][\d,]*(?:\.\d)?K$/u,
+      /^\$[\d,]+\s*-\s*(?:\$[\d,]+|No Max)$/iu
+    ]
   });
   if (!priceButton) {
     const forRentButtons = document.refs.filter(

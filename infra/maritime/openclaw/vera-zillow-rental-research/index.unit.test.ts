@@ -78,7 +78,10 @@ function snapshotForState(
   duplicateStaleClose = false,
   forRentFilters = false,
   duplicateForRentFilters = false,
-  semanticCardActivation = false
+  semanticCardActivation = false,
+  selectedPriceLabel = false,
+  staleRentalTypePopover = false,
+  incompleteRentalTypePopover = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -334,6 +337,48 @@ function snapshotForState(
       }
     };
   }
+  if (selectedPriceLabel || staleRentalTypePopover || incompleteRentalTypePopover) {
+    return {
+      ...readyFixture,
+      targetId,
+      snapshot: [
+        '- searchbox "Search" [ref=e1]',
+        '- button "For rent" [ref=e92]',
+        '- button "Up to $2.9K" [ref=e2]',
+        '- button "Beds & Baths" [ref=e3]',
+        ...(staleRentalTypePopover || incompleteRentalTypePopover
+          ? [
+              '- radio "For sale" [ref=e93]',
+              '- radio "For rent" [ref=e94]',
+              ...(incompleteRentalTypePopover ? [] : ['- radio "Sold" [ref=e95]']),
+              '- button "Apply" [ref=e96]'
+            ]
+          : []),
+        '- link "12 Beacon St, Boston, MA 02108" [ref=e10]',
+        '  - text "$3,200/mo"',
+        '  - text "2 beds 1 bath 900 sq ft"',
+        '  - text "In-unit laundry"',
+        "",
+        "Links:",
+        `1. 12 Beacon St, Boston, MA 02108 -> ${detailUrl}`
+      ].join("\n"),
+      refs: {
+        e1: { role: "searchbox", name: "Search" },
+        e92: { role: "button", name: "For rent" },
+        e2: { role: "button", name: "Up to $2.9K" },
+        e3: { role: "button", name: "Beds & Baths" },
+        ...(staleRentalTypePopover || incompleteRentalTypePopover
+          ? {
+              e93: { role: "radio", name: "For sale" },
+              e94: { role: "radio", name: "For rent" },
+              ...(incompleteRentalTypePopover ? {} : { e95: { role: "radio", name: "Sold" } }),
+              e96: { role: "button", name: "Apply" }
+            }
+          : {}),
+        e10: { role: "link", name: "12 Beacon St, Boston, MA 02108" }
+      }
+    };
+  }
   if (semanticCardActivation) {
     return {
       ...readyFixture,
@@ -381,6 +426,9 @@ function happyFetch(
     readonly forRentFilters?: boolean;
     readonly duplicateForRentFilters?: boolean;
     readonly semanticCardActivation?: boolean;
+    readonly selectedPriceLabel?: boolean;
+    readonly staleRentalTypePopover?: boolean;
+    readonly incompleteRentalTypePopover?: boolean;
     readonly stableTabId?: string;
     readonly rotateTargetAfterLocation?: boolean;
     readonly rotateTargetBetweenTabCheckAndSnapshot?: boolean;
@@ -389,6 +437,8 @@ function happyFetch(
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
+  let rentalTypePopoverOpen =
+    options.staleRentalTypePopover === true || options.incompleteRentalTypePopover === true;
   let currentUrl = resultUrl;
   let currentTargetId = "shared-tab-1";
   let stableTabId = options.stableTabId;
@@ -452,7 +502,10 @@ function happyFetch(
           options.duplicateStaleClose,
           options.forRentFilters,
           options.duplicateForRentFilters,
-          options.semanticCardActivation
+          options.semanticCardActivation,
+          options.selectedPriceLabel,
+          rentalTypePopoverOpen && options.staleRentalTypePopover === true,
+          rentalTypePopoverOpen && options.incompleteRentalTypePopover === true
         )
       );
     }
@@ -470,7 +523,10 @@ function happyFetch(
       if (action.kind === "click" && action.ref === "e3") stage = "beds";
       if (action.kind === "click" && action.ref === "e9") stage = "filters";
       if (action.kind === "click" && action.ref === "e91") stage = "results";
-      if (action.kind === "click" && action.ref === "e92") stage = "filters";
+      if (action.kind === "click" && action.ref === "e92") {
+        if (rentalTypePopoverOpen) rentalTypePopoverOpen = false;
+        else stage = "filters";
+      }
       if (action.kind === "click" && action.ref === "e5") stage = "results";
       if (action.kind === "click" && action.ref === "e10" && options.semanticCardActivation) {
         currentUrl = apartmentsDetailUrl;
@@ -752,6 +808,74 @@ describe("Vera Zillow research execution", () => {
     expect(JSON.stringify(actionBodies)).not.toMatch(
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
+  });
+
+  it("recognizes Zillow's observed selected-price chip and edits the reviewed price max", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentPriceControls: true,
+      selectedPriceLabel: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T06:50:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body as { kind?: string; ref?: string; text?: string });
+    expect(actionBodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "click", ref: "e2" }),
+        expect.objectContaining({ kind: "type", ref: "e4", text: "3500" })
+      ])
+    );
+    expect(actionBodies.map(({ ref }) => ref)).not.toEqual(expect.arrayContaining(["e92", "e9"]));
+  });
+
+  it("closes only the exact stale rental-type popover before using the selected-price chip", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentPriceControls: true,
+      selectedPriceLabel: true,
+      staleRentalTypePopover: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T06:50:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body as { kind?: string; ref?: string });
+    expect(actionBodies[0]).toMatchObject({ kind: "click", ref: "e92" });
+    expect(actionBodies.map(({ ref }) => ref)).not.toContain("e96");
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("fails closed without clicking when the stale rental-type signature is incomplete", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentPriceControls: true,
+      selectedPriceLabel: true,
+      incompleteRentalTypePopover: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T06:50:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      pageState: "layout_changed",
+      manualAction: "layout_changed",
+      listings: []
+    });
+    expect(calls.filter((call) => new URL(call.url).pathname === "/act")).toHaveLength(0);
   });
 
   it("applies the exact saved profile through Zillow's consolidated Filters dialog", async () => {
