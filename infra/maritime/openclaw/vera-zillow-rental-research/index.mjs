@@ -30,6 +30,11 @@ const ACTION_MAX_BYTES = 64 * 1024;
 const CHECKPOINT_MAX_BYTES = 16 * 1024;
 const SNAPSHOT_MAX_CHARS = 256 * 1024;
 const MAX_BROWSER_ACTIONS = 80;
+const EXACT_CLICK_TIMEOUT_ERRORS = new Set([
+  "TimeoutError: locator.click: Timeout 8000ms exceeded.",
+  "Error: locator.click: Timeout 8000ms exceeded.",
+  "locator.click: Timeout 8000ms exceeded."
+]);
 const MANUAL_ACTIONS = new Set([
   "login_required",
   "two_factor_required",
@@ -187,6 +192,17 @@ async function browserPost(path, body, maxBytes, state, dependencies) {
           `Error: Unknown ref "${body.ref}". Run a new snapshot and use a ref from that snapshot.`
       ) {
         throw new VeraZillowResearchError("stale_browser_reference");
+      }
+      if (
+        response.status === 500 &&
+        typeof payload === "object" &&
+        payload !== null &&
+        Object.keys(payload).length === 1 &&
+        typeof payload.error === "string" &&
+        payload.error.length <= ACTION_MAX_BYTES &&
+        EXACT_CLICK_TIMEOUT_ERRORS.has(payload.error.split(/\r?\n/u, 1)[0] ?? "")
+      ) {
+        throw new VeraZillowResearchError("browser_action_timeout_ambiguous");
       }
     }
     throw new VeraZillowResearchError("browser_action_failed");
@@ -832,7 +848,8 @@ async function applyRoomFiltersAndObserve(document, state, dependencies) {
       return takeSnapshot(state, dependencies);
     }
     const ambiguousCompletion =
-      error instanceof VeraZillowResearchError && error.code === "browser_offline";
+      error instanceof VeraZillowResearchError &&
+      (error.code === "browser_offline" || error.code === "browser_action_timeout_ambiguous");
     if (!ambiguousCompletion) throw error;
     recordAction(
       state,

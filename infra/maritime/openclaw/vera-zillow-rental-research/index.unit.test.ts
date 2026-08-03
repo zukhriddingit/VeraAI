@@ -449,6 +449,9 @@ function happyFetch(
     readonly roomApplyUnknownFailure?: boolean;
     readonly roomApplyResponseLostAfterCompletion?: boolean;
     readonly roomApplyResponseLostWithoutCompletion?: boolean;
+    readonly roomApplyTimeoutAfterCompletion?: boolean;
+    readonly roomApplyTimeoutWithoutCompletion?: boolean;
+    readonly roomApplyTimeoutFirstLine?: string;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -595,6 +598,18 @@ function happyFetch(
         }
         if (!(isRoomApply && options.roomApplyResponseLostWithoutCompletion)) {
           stage = "results";
+        }
+        if (
+          isRoomApply &&
+          (options.roomApplyTimeoutAfterCompletion || options.roomApplyTimeoutWithoutCompletion)
+        ) {
+          if (options.roomApplyTimeoutWithoutCompletion) stage = "beds";
+          return jsonResponse(
+            {
+              error: `${options.roomApplyTimeoutFirstLine ?? "TimeoutError: locator.click: Timeout 8000ms exceeded."}\nCall log:\n - waiting for the reviewed room apply control`
+            },
+            500
+          );
         }
         if (
           isRoomApply &&
@@ -1539,6 +1554,73 @@ describe("Vera Zillow research execution", () => {
 
     expect(result.state).toBe("completed");
     expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
+      ])
+    );
+    const applyClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e5"
+    );
+    expect(applyClicks).toHaveLength(2);
+  });
+
+  it("observes room-filter completion after the exact bounded click timeout", async () => {
+    const { calls, fetchImplementation } = happyFetch({ roomApplyTimeoutAfterCompletion: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T20:45:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
+      ])
+    );
+    const applyClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e5"
+    );
+    expect(applyClicks).toHaveLength(2);
+  });
+
+  it("fails closed after the exact click timeout when completion is not observable", async () => {
+    const { calls, fetchImplementation } = happyFetch({ roomApplyTimeoutWithoutCompletion: true });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T20:45:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({ state: "failed", listings: [] });
+    const applyClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e5"
+    );
+    expect(applyClicks).toHaveLength(2);
+  });
+
+  it("does not observe an unrecognized click-timeout response", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      roomApplyTimeoutAfterCompletion: true,
+      roomApplyTimeoutFirstLine: "TimeoutError: locator.click: Timeout 7000ms exceeded."
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T20:45:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({ state: "failed", listings: [] });
+    expect(result.safeActionTrail).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
       ])
