@@ -48,14 +48,15 @@ Add a helper with this contract:
 
 ```js
 async function closeStaleMoreFilters(document, state, dependencies) {
-  const headings = document.refs.filter(
-    (entry) => entry.role === "heading" && /^More filters$/iu.test(entry.name)
-  );
+  const headingCount = countExactSemanticMarker(document, {
+    role: "heading",
+    name: "More filters"
+  });
   const closeButtons = document.refs.filter(
     (entry) => entry.role === "button" && /^Close$/iu.test(entry.name)
   );
-  if (headings.length === 0 && closeButtons.length === 0) return document;
-  if (headings.length !== 1 || closeButtons.length !== 1) throw layoutChanged();
+  if (headingCount === 0 && closeButtons.length === 0) return document;
+  if (headingCount !== 1 || closeButtons.length !== 1) throw layoutChanged();
   await activateControl(closeButtons[0], { kind: "click" }, state, dependencies);
   return takeSnapshot(state, dependencies);
 }
