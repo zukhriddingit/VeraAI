@@ -443,6 +443,8 @@ function happyFetch(
     readonly replaceStableTabAfterLocation?: boolean;
     readonly snapshotFailuresAfterRoomApply?: number;
     readonly refreshRoomApplyReference?: boolean;
+    readonly roomApplyStaleResponses?: number;
+    readonly roomApplyUnknownFailure?: boolean;
     readonly roomApplyResponseLostAfterCompletion?: boolean;
     readonly roomApplyResponseLostWithoutCompletion?: boolean;
   } = {}
@@ -456,6 +458,7 @@ function happyFetch(
   let rotateTargetBeforeNextSnapshot = false;
   let pendingSnapshotFailures = 0;
   let roomSelectionChanged = false;
+  let roomApplyStaleResponses = 0;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -524,7 +527,9 @@ function happyFetch(
           options.selectedRoomLabel,
           rentalTypePopoverOpen && options.staleRentalTypePopover === true,
           rentalTypePopoverOpen && options.incompleteRentalTypePopover === true,
-          options.refreshRoomApplyReference && roomSelectionChanged ? "e75" : "e5"
+          options.refreshRoomApplyReference && roomSelectionChanged
+            ? `e${String(75 + roomApplyStaleResponses)}`
+            : "e5"
         )
       );
     }
@@ -558,7 +563,24 @@ function happyFetch(
       ) {
         return jsonResponse({ error: "stale semantic reference" }, 503);
       }
-      if (action.kind === "click" && ["e5", "e75"].includes(action.ref ?? "")) {
+      if (
+        stage === "beds" &&
+        roomSelectionChanged &&
+        action.kind === "click" &&
+        /^e7[5-9]$/u.test(action.ref ?? "") &&
+        roomApplyStaleResponses < (options.roomApplyStaleResponses ?? 0)
+      ) {
+        roomApplyStaleResponses += 1;
+        return jsonResponse(
+          {
+            error: options.roomApplyUnknownFailure
+              ? "unrecognized browser failure"
+              : "stale semantic reference"
+          },
+          503
+        );
+      }
+      if (action.kind === "click" && ["e5", "e75", "e76", "e77"].includes(action.ref ?? "")) {
         const isRoomApply = stage === "beds";
         if (isRoomApply) {
           pendingSnapshotFailures = options.snapshotFailuresAfterRoomApply ?? 0;
@@ -1364,6 +1386,87 @@ describe("Vera Zillow research execution", () => {
       .map((call) => (call.body as { ref?: string }).ref);
     expect(actionReferences).toEqual(expect.arrayContaining(["e6", "e7", "e75"]));
     expect(actionReferences.indexOf("e75")).toBeGreaterThan(actionReferences.indexOf("e7"));
+  });
+
+  it("refreshes and retries once after an exact stale room-apply response", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 1
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T18:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
+      ])
+    );
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75", "e76"]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+    const browserCalls = calls.filter((call) => call.url.startsWith("http://127.0.0.1:18792/"));
+    const checkpoints = calls.filter((call) => call.url.startsWith("https://vera.example.test/"));
+    expect(checkpoints).toHaveLength(browserCalls.length);
+  });
+
+  it("fails closed after one fresh-reference retry also becomes stale", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 2
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T18:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({ state: "failed", listings: [] });
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75", "e76"]);
+  });
+
+  it("does not retry an unrecognized browser action failure", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      refreshRoomApplyReference: true,
+      roomApplyStaleResponses: 1,
+      roomApplyUnknownFailure: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T18:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({ state: "failed", listings: [] });
+    const applyReferences = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string; ref?: string }).kind === "click" &&
+          /^e7[5-9]$/u.test((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(applyReferences).toEqual(["e75"]);
   });
 
   it("observes room-filter completion without repeating a click whose response was lost", async () => {
