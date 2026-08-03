@@ -779,6 +779,11 @@ describe("Vera Zillow research execution", () => {
         .filter((call) => new URL(call.url).pathname === "/snapshot")
         .every((call) => new URL(call.url).searchParams.get("urls") === "false")
     ).toBe(true);
+    expect(
+      browserCalls
+        .filter((call) => new URL(call.url).pathname === "/snapshot")
+        .every((call) => new URL(call.url).searchParams.get("timeoutMs") === "15000")
+    ).toBe(true);
   });
 
   it("activates one vetted semantic card link and preserves its observed apartments URL", async () => {
