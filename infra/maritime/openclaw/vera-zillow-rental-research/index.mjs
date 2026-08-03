@@ -363,33 +363,39 @@ async function prepareBrowserAction(action, state, dependencies, observedReferen
 
 async function takeSnapshot(state, dependencies) {
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const tab = await prepareBrowserAction("snapshot", state, dependencies);
-    const query = new URLSearchParams({
-      profile: BROWSER_PROFILE,
-      format: "ai",
-      targetId: tab.targetId,
-      maxChars: String(SNAPSHOT_MAX_CHARS),
-      compact: "true",
-      interactive: "false",
-      urls: "false",
-      timeoutMs: String(REQUEST_TIMEOUT_MS)
-    });
-    const payload = await browserGet(
-      `/snapshot?${query.toString()}`,
-      SNAPSHOT_MAX_BYTES,
-      state,
-      dependencies
-    );
-    state.browserActions += 1;
-    const document = parseZillowSnapshot(payload);
-    if (
-      document.targetId === tab.targetId &&
-      document.page.kind === tab.page.kind &&
-      document.page.url === tab.page.url
-    ) {
-      state.activeUrl = document.page.url;
-      recordAction(state, "snapshot", dependencies);
-      return document;
+    try {
+      const tab = await prepareBrowserAction("snapshot", state, dependencies);
+      const query = new URLSearchParams({
+        profile: BROWSER_PROFILE,
+        format: "ai",
+        targetId: tab.targetId,
+        maxChars: String(SNAPSHOT_MAX_CHARS),
+        compact: "true",
+        interactive: "false",
+        urls: "false",
+        timeoutMs: String(REQUEST_TIMEOUT_MS)
+      });
+      const payload = await browserGet(
+        `/snapshot?${query.toString()}`,
+        SNAPSHOT_MAX_BYTES,
+        state,
+        dependencies
+      );
+      state.browserActions += 1;
+      const document = parseZillowSnapshot(payload);
+      if (
+        document.targetId === tab.targetId &&
+        document.page.kind === tab.page.kind &&
+        document.page.url === tab.page.url
+      ) {
+        state.activeUrl = document.page.url;
+        recordAction(state, "snapshot", dependencies);
+        return document;
+      }
+    } catch (error) {
+      const transientSnapshotFailure =
+        error instanceof VeraZillowResearchError && error.code === "browser_offline";
+      if (!transientSnapshotFailure || attempt > 0) throw error;
     }
     recordAction(state, "snapshot", dependencies, null, "stopped");
   }
