@@ -811,10 +811,7 @@ async function clickFilterApplyIfPresent(document, state, dependencies) {
 }
 
 function findRoomApplyControl(document) {
-  return findReviewedControl(document, {
-    roles: ["button"],
-    names: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
-  });
+  return findConsolidatedApplyControl(document);
 }
 
 function findFreshRoomApplyControl(document, previousApply) {
