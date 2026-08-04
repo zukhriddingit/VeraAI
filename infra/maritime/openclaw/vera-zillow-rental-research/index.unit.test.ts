@@ -48,6 +48,8 @@ const consolidatedInput = {
 const resultUrl = "https://www.zillow.com/boston-ma/rentals/";
 const detailUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
 const apartmentsDetailUrl = "https://www.zillow.com/apartments/allston-ma/gardner-st-34/CgHpdm/";
+const apartmentsBedroomDetailUrl =
+  "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#bedrooms-1";
 const buildingUnitDetailUrl =
   "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/#unit-2052246320";
 type RoomMarkerShape =
@@ -759,6 +761,10 @@ describe("Zillow semantic snapshot parser", () => {
     expect(validateZillowUrl(apartmentsDetailUrl, "detail")).toMatchObject({
       kind: "detail"
     });
+    expect(validateZillowUrl(apartmentsBedroomDetailUrl, "detail")).toMatchObject({
+      kind: "detail",
+      url: apartmentsBedroomDetailUrl
+    });
     expect(validateZillowUrl(buildingUnitDetailUrl, "detail")).toMatchObject({
       kind: "detail",
       url: buildingUnitDetailUrl
@@ -768,6 +774,10 @@ describe("Zillow semantic snapshot parser", () => {
       "https://www.zillow.com/for-sale/",
       "https://www.zillow.com/apartments/allston-ma/gardner-st-34/",
       "https://www.zillow.com/apartments/allston-ma/gardner-st-34/CgHpdm/photos/",
+      "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#bedrooms-0",
+      "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#bedrooms-all",
+      "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#units-1",
+      "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#map",
       "https://www.zillow.com/boston-ma/rentals/#map",
       "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/#map",
       "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/#unit-zero",

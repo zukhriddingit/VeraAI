@@ -10,6 +10,8 @@ const DETAIL_PATH_PATTERNS = [
   /^\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u,
   /^\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u
 ];
+const APARTMENT_DETAIL_PATH_PATTERN = /^\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u;
+const APARTMENT_BEDROOM_HASH_PATTERN = /^#bedrooms-[1-9][0-9]*$/u;
 const BUILDING_DETAIL_PATH_PATTERN = /^\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u;
 const BUILDING_UNIT_HASH_PATTERN = /^#unit-[1-9][0-9]*$/u;
 const SENSITIVE_QUERY_KEYS = new Set([
@@ -103,6 +105,8 @@ export function validateZillowUrl(rawUrl, expectedKind = "either") {
   const isDetail = DETAIL_PATH_PATTERNS.some((pattern) => pattern.test(url.pathname));
   const hashAllowed =
     url.hash === "" ||
+    (APARTMENT_DETAIL_PATH_PATTERN.test(url.pathname) &&
+      APARTMENT_BEDROOM_HASH_PATTERN.test(url.hash)) ||
     (BUILDING_DETAIL_PATH_PATTERN.test(url.pathname) && BUILDING_UNIT_HASH_PATTERN.test(url.hash));
   if (!hashAllowed) throw new VeraZillowResearchError("unsafe_zillow_url");
   if (
