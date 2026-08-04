@@ -20,9 +20,9 @@ const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const CHAINGUARD_INDEX =
-  "cgr.dev/chainguard/node@sha256:2b9627fec21321fad828adf6c5ceb91c6f377b772b48a738533a1225c0145a90";
+  "cgr.dev/chainguard/node@sha256:cf7ae5ead5aed79a61404d7b1bbb9b89ea461991b21cb8fcb07d4b6ad4d8b734";
 const CHAINGUARD_AMD64 =
-  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
+  "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2";
 const APPROVED_REPAIRS = Object.freeze([
   {
     name: "@opentelemetry/propagator-jaeger",
@@ -68,10 +68,20 @@ const APPROVED_REPAIRS = Object.freeze([
     name: "fast-uri",
     path: "node_modules/fast-uri",
     fromVersion: "3.1.2",
-    toVersion: "3.1.4",
-    tarball: "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.4.tgz",
+    toVersion: "3.1.5",
+    tarball: "https://registry.npmjs.org/fast-uri/-/fast-uri-3.1.5.tgz",
     integrity:
-      "sha512-8JnbkQ4juDyvYs4mgFGQqg4yCYtFDtUtmp2QIQq11ZZe5CFQ5wcqm1rqDgAh/QdMySuBnPzMUiJUNZG5N/AiQw==",
+      "sha512-gHwA1O9LDIcKunMKhObS/HimwtehO1nPUECKAu5TpKgaO19fcWEl4bliWe1jWxVFvIXztJjjQ4L8XQ1EU9f7Jw==",
+    dependencyNames: []
+  },
+  {
+    name: "ip-address",
+    path: "node_modules/ip-address",
+    fromVersion: "10.2.0",
+    toVersion: "10.3.1",
+    tarball: "https://registry.npmjs.org/ip-address/-/ip-address-10.3.1.tgz",
+    integrity:
+      "sha512-1e9d3kb97NHJTIJDZW9rKqW2h6+dFa50Dy0fpPSMQp2ADje5gvKsXmdiK6dwY5t76TaTt5+P5N1Y/LoToIxP6g==",
     dependencyNames: []
   },
   {
@@ -83,6 +93,26 @@ const APPROVED_REPAIRS = Object.freeze([
     integrity:
       "sha512-xdB1oSLHbz1vRWgCDalrCqEFTWzFlhqFC5tIHLMOSUIjhm3XXQ1qrFy8S/ESr1JYRRXqM3c1QFiMZUJdUTqyMQ==",
     dependencyNames: ["nanoid", "picocolors", "source-map-js"]
+  },
+  {
+    name: "undici",
+    path: "node_modules/undici",
+    fromVersion: "8.5.0",
+    toVersion: "8.9.0",
+    tarball: "https://registry.npmjs.org/undici/-/undici-8.9.0.tgz",
+    integrity:
+      "sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==",
+    dependencyNames: []
+  },
+  {
+    name: "undici",
+    path: "node_modules/jsdom/node_modules/undici",
+    fromVersion: "7.28.0",
+    toVersion: "7.29.0",
+    tarball: "https://registry.npmjs.org/undici/-/undici-7.29.0.tgz",
+    integrity:
+      "sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==",
+    dependencyNames: []
   }
 ]);
 const FORBIDDEN_FINAL_PATHS = Object.freeze([
@@ -145,7 +175,7 @@ export function findRuntimeLockViolations(lock) {
     !isObject(lock.finalRuntime) ||
     lock.finalRuntime.imageIndex !== CHAINGUARD_INDEX ||
     lock.finalRuntime.linuxAmd64Image !== CHAINGUARD_AMD64 ||
-    lock.finalRuntime.observedNodeVersion !== "26.5.0"
+    lock.finalRuntime.observedNodeVersion !== "26.6.0"
   ) {
     violations.push("Gateway runtime lock must pin the reviewed Chainguard amd64 Node image.");
   }
@@ -172,7 +202,7 @@ export function findRuntimeLockViolations(lock) {
     );
   }
   if (!Array.isArray(lock.repairs) || lock.repairs.length !== APPROVED_REPAIRS.length) {
-    violations.push("Runtime repair lock must contain exactly the five approved packages.");
+    violations.push("Runtime repair lock must contain exactly the eight approved packages.");
   } else if (!lock.repairs.every((repair, index) => sameRepair(repair, APPROVED_REPAIRS[index]))) {
     violations.push("Runtime repair lock contains an unapproved package identity or integrity.");
   }

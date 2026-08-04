@@ -9,7 +9,7 @@ import { findRuntimeLockViolations } from "../infra/maritime/openclaw/sanitize-r
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const RUNTIME_IMAGE =
-  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
+  "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2";
 const FINAL_STAGE = `FROM ${RUNTIME_IMAGE} AS final`;
 const FIXED_ENTRYPOINT =
   'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]';

@@ -414,7 +414,7 @@ async function takeSnapshot(state, dependencies) {
         maxChars: String(SNAPSHOT_MAX_CHARS),
         compact: "true",
         interactive: "false",
-        urls: "true",
+        urls: "false",
         timeoutMs: String(REQUEST_TIMEOUT_MS)
       });
       const payload = await browserGet(
@@ -1269,17 +1269,36 @@ export async function researchZillowRentals(
     if (cards.length === 0) throw layoutChanged();
     state.resultCardsObserved = Math.min(cards.length, input.maxResults);
 
+    let staleResultCardsSkipped = 0;
     for (let index = 0; index < cards.length; index += 1) {
       let card = cards[index];
       let detail = null;
-      if (index < input.maxDetailPages) {
+      if (state.detailPagesOpened < input.maxDetailPages) {
         if (card.canonicalObservedUrl === null) {
           const refreshed = extractResultCards(document, input.maxResults).find(
             (candidate) => cardIdentity(candidate) === cardIdentity(card)
           );
           if (!refreshed) throw layoutChanged();
           card = refreshed;
-          card = await activateObservedListingWithFreshRetry(card, document, state, dependencies);
+          try {
+            card = await activateObservedListingWithFreshRetry(card, document, state, dependencies);
+          } catch (error) {
+            const staleReference =
+              error instanceof VeraZillowResearchError && error.code === "stale_browser_reference";
+            if (!staleReference) throw error;
+            staleResultCardsSkipped += 1;
+            recordAction(
+              state,
+              "open_observed_listing",
+              dependencies,
+              `${card.resultRef}:${card.observedLinkName}:skipped_stale_result`,
+              "stopped"
+            );
+            // Both exact stale-ref responses prove that neither click executed.
+            // Refresh consent and references, then try only the next observed card.
+            document = await takeSnapshot(state, dependencies);
+            continue;
+          }
         } else {
           await navigateToObserved(
             card.canonicalObservedUrl,
@@ -1322,10 +1341,16 @@ export async function researchZillowRentals(
       startedAt: state.startedAt,
       completedAt: safeNow(dependencies),
       safeActionTrail: state.safeActionTrail,
-      warnings:
-        state.listings.length < input.maxResults
+      warnings: [
+        ...(staleResultCardsSkipped > 0
+          ? [
+              "One or more Zillow result cards were skipped after exact stale-reference non-execution responses."
+            ]
+          : []),
+        ...(state.listings.length < input.maxResults
           ? ["The bounded Zillow run returned fewer cards than its requested maximum."]
-          : []
+          : [])
+      ]
     });
   } catch (error) {
     return safeFailureOutput(state, error, dependencies);
