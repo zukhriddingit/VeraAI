@@ -186,12 +186,15 @@ function validZillowUrl(value) {
   if (typeof value !== "string" || value.length > 2_048) return false;
   try {
     const url = new URL(value);
+    const exactBuildingUnitFragment =
+      /^\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u.test(url.pathname) &&
+      /^#unit-[1-9][0-9]*$/u.test(url.hash);
     return (
       url.protocol === "https:" &&
       url.hostname.toLowerCase() === "www.zillow.com" &&
       url.username === "" &&
       url.password === "" &&
-      url.hash === ""
+      (url.hash === "" || exactBuildingUnitFragment)
     );
   } catch {
     return false;

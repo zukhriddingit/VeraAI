@@ -48,6 +48,8 @@ const consolidatedInput = {
 const resultUrl = "https://www.zillow.com/boston-ma/rentals/";
 const detailUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
 const apartmentsDetailUrl = "https://www.zillow.com/apartments/allston-ma/gardner-st-34/CgHpdm/";
+const buildingUnitDetailUrl =
+  "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/#unit-2052246320";
 type RoomMarkerShape =
   "single" | "adjacent" | "separated" | "reversed" | "mismatched" | "additional";
 
@@ -103,12 +105,12 @@ function snapshotForState(
       }
     };
   }
-  if (currentUrl === apartmentsDetailUrl) {
+  if (currentUrl === apartmentsDetailUrl || currentUrl === buildingUnitDetailUrl) {
     return {
       ok: true,
       format: "ai",
       targetId,
-      url: apartmentsDetailUrl,
+      url: currentUrl,
       snapshot: [
         '- heading "Gardner St, 34" [ref=e200] [level=2]',
         '- heading "34 Gardner St, Allston, MA 02134" [ref=e201] [level=3]',
@@ -496,6 +498,7 @@ function happyFetch(
     readonly refreshSemanticCardReference?: boolean;
     readonly adjacentSemanticCard?: boolean;
     readonly semanticCardStaleResponses?: number;
+    readonly semanticCardDestination?: string;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -693,7 +696,7 @@ function happyFetch(
         ["e10", "e11"].includes(action.ref ?? "") &&
         options.semanticCardActivation
       ) {
-        currentUrl = apartmentsDetailUrl;
+        currentUrl = options.semanticCardDestination ?? apartmentsDetailUrl;
       }
       if (
         action.kind === "click" &&
@@ -756,12 +759,19 @@ describe("Zillow semantic snapshot parser", () => {
     expect(validateZillowUrl(apartmentsDetailUrl, "detail")).toMatchObject({
       kind: "detail"
     });
+    expect(validateZillowUrl(buildingUnitDetailUrl, "detail")).toMatchObject({
+      kind: "detail",
+      url: buildingUnitDetailUrl
+    });
     for (const unsafe of [
       "https://zillow.com/boston-ma/rentals/",
       "https://www.zillow.com/for-sale/",
       "https://www.zillow.com/apartments/allston-ma/gardner-st-34/",
       "https://www.zillow.com/apartments/allston-ma/gardner-st-34/CgHpdm/photos/",
       "https://www.zillow.com/boston-ma/rentals/#map",
+      "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/#map",
+      "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/#unit-zero",
+      "https://www.zillow.com/b/schoolhouse-at-lower-mills-boston-ma/5XkYbN/photos/",
       "https://www.zillow.com/boston-ma/rentals/?session=secret"
     ]) {
       expect(() => validateZillowUrl(unsafe)).toThrow();
@@ -957,6 +967,37 @@ describe("Vera Zillow research execution", () => {
     ).toEqual([expect.objectContaining({ url: resultUrl })]);
     expect(JSON.stringify(actionBodies)).not.toMatch(
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("accepts only an exact observed Zillow building-unit detail fragment", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      semanticCardActivation: true,
+      semanticCardDestination: buildingUnitDetailUrl
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-04T13:10:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      pageState: "ready",
+      detailPagesOpened: 1,
+      listings: [
+        expect.objectContaining({
+          canonicalObservedUrl: buildingUnitDetailUrl,
+          finalDetailPageUrl: buildingUnitDetailUrl,
+          address: "34 Gardner St, Allston, MA 02134"
+        })
+      ]
+    });
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/navigate").map((call) => call.body)
+    ).toEqual([expect.objectContaining({ url: resultUrl })]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
   });
 
