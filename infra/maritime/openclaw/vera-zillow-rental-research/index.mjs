@@ -414,7 +414,7 @@ async function takeSnapshot(state, dependencies) {
         maxChars: String(SNAPSHOT_MAX_CHARS),
         compact: "true",
         interactive: "false",
-        urls: "false",
+        urls: "true",
         timeoutMs: String(REQUEST_TIMEOUT_MS)
       });
       const payload = await browserGet(
