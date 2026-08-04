@@ -175,7 +175,7 @@ if [[ "${VERA_DO_VALIDATE_WITH_DOCKER:-0}" == "1" ]]; then
     "${validation_image}"
     bash -lc
     'apt-get update -qq &&
-     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq cloud-init >/dev/null &&
+     DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends cloud-init >/dev/null &&
      cloud-init schema -c /work/cloud-init.template.yaml'
   )
   if command -v timeout >/dev/null 2>&1; then
@@ -187,7 +187,7 @@ if [[ "${VERA_DO_VALIDATE_WITH_DOCKER:-0}" == "1" ]]; then
       fi
     done
     [[ "${validation_image_ready}" -eq 1 ]]
-    timeout --kill-after=10s 300s "${docker_validation[@]}"
+    timeout --kill-after=10s 600s "${docker_validation[@]}"
   else
     docker pull "${validation_image}"
     "${docker_validation[@]}"
