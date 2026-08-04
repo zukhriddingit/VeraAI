@@ -13,49 +13,70 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
 import { SearchComposer } from "./search-composer";
+import { STATIC_ACCEPTANCE_SNAPSHOT_WARNING } from "./static-acceptance-warning";
 
 const phaseLabels: Record<RentalResearchProgressPhase, string> = {
-  connecting: "Connecting",
-  checking_login: "Checking login",
-  searching: "Searching",
-  opening_details: "Opening details",
+  connecting_browser: "Connecting browser",
+  checking_sources: "Checking sources",
+  searching_rentcast: "Searching RentCast",
+  searching_zillow: "Searching Zillow",
+  searching_apartments_com: "Searching Apartments.com",
+  searching_facebook_marketplace: "Searching Facebook Marketplace",
   importing: "Importing",
   deduplicating: "Deduplicating",
-  ranking: "Ranking",
+  scoring: "Scoring",
   completed: "Completed"
 };
 
 const sourceLabels: Record<RentalResearchSource, string> = {
   rentcast: "RentCast",
-  zillow: "Zillow"
+  zillow: "Zillow",
+  apartments_com: "Apartments.com",
+  facebook_marketplace: "Facebook Marketplace"
 };
 
 const sourceStateLabels: Record<RentalResearchSourceState, string> = {
   ready: "Ready",
   login_required: "Login required",
+  account_recommended: "Account recommended",
   browser_offline: "Browser offline",
+  tab_required: "Tab required",
   excluded_by_user: "Excluded by user",
   searching: "Searching",
   completed: "Completed",
   partial: "Partial",
+  no_results: "No results",
+  manual_action_required: "Manual action required",
   failed: "Failed"
 };
 
 function sourceNeedsRetry(state: RentalResearchSourceState): boolean {
-  return ["login_required", "browser_offline", "partial", "failed"].includes(state);
+  return [
+    "login_required",
+    "browser_offline",
+    "tab_required",
+    "partial",
+    "manual_action_required",
+    "failed"
+  ].includes(state);
 }
 
 export function LiveSearchPanel({
   profiles: initialProfiles,
-  initialListings
+  initialListings,
+  staticAcceptanceSnapshot = false
 }: {
   profiles: readonly SearchProfile[];
   initialListings: readonly CanonicalListingSummary[];
+  staticAcceptanceSnapshot?: boolean;
 }) {
   const [profiles, setProfiles] = useState<readonly SearchProfile[]>(initialProfiles);
   const [profileId, setProfileId] = useState(initialProfiles[0]?.id ?? "");
   const [selectedSources, setSelectedSources] = useState<readonly RentalResearchSource[]>([
-    "rentcast"
+    "rentcast",
+    "zillow",
+    "apartments_com",
+    "facebook_marketplace"
   ]);
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState<RentalResearchRunStatus | null>(null);
@@ -124,7 +145,7 @@ export function LiveSearchPanel({
     setError(null);
     setStatus(null);
     setRunId(nextRunId);
-    setLocalPhase("connecting");
+    setLocalPhase("connecting_browser");
     try {
       const response = await fetch("/api/live-search", {
         method: "POST",
@@ -171,6 +192,11 @@ export function LiveSearchPanel({
 
   return (
     <>
+      {staticAcceptanceSnapshot ? (
+        <div className="listing-message listing-message-warning" role="alert">
+          <strong>{STATIC_ACCEPTANCE_SNAPSHOT_WARNING}</strong>
+        </div>
+      ) : null}
       <SearchComposer
         profiles={profiles}
         selectedProfileId={profileId}
@@ -191,34 +217,38 @@ export function LiveSearchPanel({
           <p className="eyebrow">Read-only rental research</p>
           <h2 id="live-search-heading">Choose sources</h2>
           <p>
-            RentCast is Vera’s official API source. Zillow is an opt-in founder experiment that
-            reads only one explicitly shared Zillow rental tab through the bounded OpenClaw tool.
+            RentCast is Vera’s official API source. Browser sources are opt-in founder experiments
+            that use one explicitly shared Vera Search tab through bounded OpenClaw research.
           </p>
           <div className="source-selector" role="group" aria-label="Rental sources">
-            {(["rentcast", "zillow"] as const).map((source) => {
-              const selected = selectedSources.includes(source);
-              const current = status?.sources.find((candidate) => candidate.source === source);
-              return (
-                <label className="source-selector-option" key={source}>
-                  <input
-                    type="checkbox"
-                    checked={selected}
-                    disabled={running}
-                    onChange={() => toggleSource(source)}
-                  />
-                  <span>
-                    <strong>{sourceLabels[source]}</strong>
-                    <small>
-                      {current
-                        ? sourceStateLabels[current.state]
-                        : selected
-                          ? "Ready"
-                          : "Excluded by user"}
-                    </small>
-                  </span>
-                </label>
-              );
-            })}
+            {(["rentcast", "zillow", "apartments_com", "facebook_marketplace"] as const).map(
+              (source) => {
+                const selected = selectedSources.includes(source);
+                const current = status?.sources.find((candidate) => candidate.source === source);
+                return (
+                  <label className="source-selector-option" key={source}>
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={running}
+                      onChange={() => toggleSource(source)}
+                    />
+                    <span>
+                      <strong>{sourceLabels[source]}</strong>
+                      <small>
+                        {current
+                          ? sourceStateLabels[current.state]
+                          : selected
+                            ? source === "facebook_marketplace"
+                              ? "Account recommended"
+                              : "Ready"
+                            : "Excluded by user"}
+                      </small>
+                    </span>
+                  </label>
+                );
+              }
+            )}
           </div>
           <label className="live-search-confirmation">
             <input
@@ -228,8 +258,8 @@ export function LiveSearchPanel({
               onChange={(event) => setConfirmed(event.target.checked)}
             />
             <span>
-              I am starting this read-only search now. If Zillow is selected, I have opened and
-              explicitly shared exactly one Zillow rental tab.
+              I am starting this read-only search now. I have explicitly shared exactly one
+              dedicated Vera Search tab; source login remains a manual browser action.
             </span>
           </label>
         </div>
