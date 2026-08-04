@@ -170,6 +170,7 @@ if [[ "${VERA_DO_VALIDATE_WITH_DOCKER:-0}" == "1" ]]; then
   command -v docker >/dev/null 2>&1
   docker_validation=(
     docker run --rm
+    --pull=never
     -v "${asset_directory}:/work:ro"
     "${validation_image}"
     bash -lc
@@ -178,9 +179,17 @@ if [[ "${VERA_DO_VALIDATE_WITH_DOCKER:-0}" == "1" ]]; then
      cloud-init schema -c /work/cloud-init.template.yaml'
   )
   if command -v timeout >/dev/null 2>&1; then
-    # A cold hosted runner can spend most of five minutes pulling the pinned image and installing cloud-init.
-    timeout 600s "${docker_validation[@]}"
+    validation_image_ready=0
+    for _ in 1 2; do
+      if timeout --kill-after=10s 180s docker pull "${validation_image}"; then
+        validation_image_ready=1
+        break
+      fi
+    done
+    [[ "${validation_image_ready}" -eq 1 ]]
+    timeout --kill-after=10s 300s "${docker_validation[@]}"
   else
+    docker pull "${validation_image}"
     "${docker_validation[@]}"
   fi
 fi
