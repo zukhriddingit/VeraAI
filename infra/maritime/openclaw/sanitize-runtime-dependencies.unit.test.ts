@@ -59,13 +59,45 @@ describe("Gateway runtime dependency sanitizer", () => {
         ...lock,
         repairs: [...lock.repairs, { ...lock.repairs[0], name: "unexpected" }]
       })
-    ).toContain("Runtime repair lock must contain exactly the five approved packages.");
+    ).toContain("Runtime repair lock must contain exactly the seven approved packages.");
     expect(
       findRuntimeLockViolations({
         ...lock,
         allowedFinalExecutables: ["/usr/bin/node", "/bin/sh"]
       })
     ).toContain("Runtime repair lock must allow only the Node executable in the final image.");
+  });
+
+  it("pins the fixed Gateway packages disclosed by the current security scan", () => {
+    expect(
+      lock.repairs
+        .filter(({ name }) => ["fast-uri", "ip-address", "undici"].includes(name))
+        .map(({ name, fromVersion, toVersion, dependencyNames }) => ({
+          name,
+          fromVersion,
+          toVersion,
+          dependencyNames
+        }))
+    ).toEqual([
+      {
+        name: "fast-uri",
+        fromVersion: "3.1.2",
+        toVersion: "3.1.5",
+        dependencyNames: []
+      },
+      {
+        name: "ip-address",
+        fromVersion: "10.2.0",
+        toVersion: "10.3.1",
+        dependencyNames: []
+      },
+      {
+        name: "undici",
+        fromVersion: "7.28.0",
+        toVersion: "7.29.0",
+        dependencyNames: []
+      }
+    ]);
   });
 
   it("rejects package name, version, and dependency-surface drift", () => {
@@ -162,7 +194,7 @@ describe("Gateway runtime dependency sanitizer", () => {
       }
     });
 
-    expect(result).toEqual({ status: "repaired", packageCount: 5 });
+    expect(result).toEqual({ status: "repaired", packageCount: 7 });
     for (const repair of syntheticLock.repairs) {
       const manifest = JSON.parse(
         readFileSync(resolve(appRoot, repair.path, "package.json"), "utf8")
