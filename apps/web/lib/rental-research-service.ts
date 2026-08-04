@@ -1330,6 +1330,13 @@ function sourceStatus(
   const rejections = events.filter(
     (item) => item.action === "live_listing_rejected" && item.metadata.provider === source
   );
+  const importIds = new Set(imports.map((item) => item.targetId));
+  const terminalNormalizationFailures = events.filter(
+    (item) =>
+      item.action === "normalization.failed" &&
+      item.metadata.retryable === false &&
+      importIds.has(item.targetId)
+  );
   if (source === "zillow") {
     const finished = events.findLast(
       (item) => item.action === RENTAL_RESEARCH_ACTIONS.sourceFinished
@@ -1350,7 +1357,10 @@ function sourceStatus(
               ? "partial"
               : "failed";
     } else if (job?.status === "completed") {
-      state = finished?.metadata.outputState === "partial" ? "partial" : "completed";
+      state =
+        finished?.metadata.outputState === "partial" || terminalNormalizationFailures.length > 0
+          ? "partial"
+          : "completed";
     } else if (
       job?.status === "retryable_failed" ||
       job?.status === "permanently_failed" ||
@@ -1372,9 +1382,11 @@ function sourceStatus(
       message:
         manualAction !== null
           ? manualInstruction(manualAction)
-          : failed
-            ? "Zillow stopped safely; other source results were preserved."
-            : null
+          : terminalNormalizationFailures.length > 0
+            ? `${terminalNormalizationFailures.length} imported Zillow record(s) could not be normalized; accepted results were preserved.`
+            : failed
+              ? "Zillow stopped safely; other source results were preserved."
+              : null
     };
   }
 
@@ -1411,7 +1423,7 @@ function sourceStatus(
       state =
         finished?.metadata.outputState === "no_results"
           ? "no_results"
-          : finished?.metadata.outputState === "partial"
+          : finished?.metadata.outputState === "partial" || terminalNormalizationFailures.length > 0
             ? "partial"
             : "completed";
     } else if (
@@ -1433,9 +1445,11 @@ function sourceStatus(
       manualAction,
       message:
         job?.manualAction?.instruction ??
-        (failed
-          ? `${sourceLabelsForMessage(source)} stopped safely; other results were preserved.`
-          : null)
+        (terminalNormalizationFailures.length > 0
+          ? `${terminalNormalizationFailures.length} imported ${sourceLabelsForMessage(source)} record(s) could not be normalized; accepted results were preserved.`
+          : failed
+            ? `${sourceLabelsForMessage(source)} stopped safely; other results were preserved.`
+            : null)
     };
   }
 
@@ -1445,8 +1459,9 @@ function sourceStatus(
   );
   let state: RentalResearchSourceStatus["state"] = "ready";
   if (failure) state = imports.length > 0 ? "partial" : "failed";
-  else if (job?.status === "completed") state = "completed";
-  else if (job !== null) state = "searching";
+  else if (job?.status === "completed") {
+    state = terminalNormalizationFailures.length > 0 ? "partial" : "completed";
+  } else if (job !== null) state = "searching";
   return {
     source,
     state,
@@ -1454,7 +1469,12 @@ function sourceStatus(
     importedCount: imports.length,
     rejectedCount: rejections.length,
     manualAction: job?.status === "cancelled_by_policy" ? "cancelled" : null,
-    message: failure ? "RentCast stopped safely; other source results were preserved." : null
+    message:
+      terminalNormalizationFailures.length > 0
+        ? `${terminalNormalizationFailures.length} imported RentCast record(s) could not be normalized; accepted results were preserved.`
+        : failure
+          ? "RentCast stopped safely; other source results were preserved."
+          : null
   };
 }
 
@@ -1469,12 +1489,25 @@ function researchPhase(
   const normalizedIds = new Set(
     events.filter((item) => item.action === "normalization.completed").map((item) => item.targetId)
   );
+  const terminalNormalizationFailureIds = new Set(
+    events
+      .filter((item) => item.action === "normalization.failed" && item.metadata.retryable === false)
+      .map((item) => item.targetId)
+  );
   const allImportsNormalized =
     imports.length > 0 && imports.every((item) => normalizedIds.has(item.targetId));
+  const allImportsTerminal =
+    imports.length > 0 &&
+    imports.every(
+      (item) =>
+        normalizedIds.has(item.targetId) || terminalNormalizationFailureIds.has(item.targetId)
+    );
   if (
     sourcesFinished &&
     (imports.length === 0 ||
-      (allImportsNormalized && events.some((item) => item.action === "live_search_completed")))
+      (allImportsTerminal &&
+        (terminalNormalizationFailureIds.size > 0 ||
+          events.some((item) => item.action === "live_search_completed"))))
   ) {
     return "completed";
   }

@@ -12,10 +12,11 @@ import {
   seedDatabase,
   type VeraDatabaseConnection
 } from "@vera/db/demo";
-import type {
-  BrowserResearchOutput,
-  BrowserResearchPlan,
-  ZillowRentalResearchOutput
+import {
+  ActivityEventSchema,
+  type BrowserResearchOutput,
+  type BrowserResearchPlan,
+  type ZillowRentalResearchOutput
 } from "@vera/domain";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -413,5 +414,105 @@ describe("multi-source browser research service", () => {
         event.correlationId === "run-browser-partial-1" && event.action === "live_listing_imported"
     );
     expect(imports).toHaveLength(1);
+  });
+
+  it("completes partially when an imported source record permanently fails normalization", async () => {
+    const runId = "run-apartments-normalization-partial";
+    const deps = dependencies(
+      async () => output(),
+      async (plan) => {
+        const result = browserOutput(plan);
+        const first = result.listings[0]!;
+        const secondUrl = "https://www.apartments.com/back-bay-boston-ma/def456/";
+        return {
+          ...result,
+          veraRunId: runId,
+          listings: [
+            first,
+            {
+              ...first,
+              sourceListingId: "def456",
+              canonicalObservedUrl: secondUrl,
+              finalDetailPageUrl: secondUrl,
+              address: "30 Newbury St, Boston, MA 02116",
+              rentUsd: 2_950
+            }
+          ],
+          resultCardsObserved: 2,
+          detailPagesOpened: 2
+        };
+      }
+    );
+    await runRentalResearch(
+      {
+        veraRunId: runId,
+        searchProfileId: profile.id,
+        selectedSources: ["apartments_com"],
+        confirmedExternalUsage: true
+      },
+      deps
+    );
+    const imports = (await deps.repositories.activityEvents.list()).filter(
+      (item) => item.correlationId === runId && item.action === "live_listing_imported"
+    );
+    expect(imports).toHaveLength(2);
+    await deps.repositories.activityEvents.append(
+      ActivityEventSchema.parse({
+        id: "normalization-completed-partial-run",
+        correlationId: runId,
+        causationId: imports[0]!.id,
+        actor: "system",
+        action: "normalization.completed",
+        targetType: "raw_listing",
+        targetId: imports[0]!.targetId,
+        policyDecision: "not_applicable",
+        approvalId: null,
+        payloadHash: "a".repeat(64),
+        outcome: "succeeded",
+        errorCategory: null,
+        metadata: { mode: "deterministic_only" },
+        occurredAt: "2026-07-30T12:01:01.000Z"
+      })
+    );
+    await deps.repositories.activityEvents.append(
+      ActivityEventSchema.parse({
+        id: "normalization-failed-partial-run",
+        correlationId: runId,
+        causationId: imports[1]!.id,
+        actor: "system",
+        action: "normalization.failed",
+        targetType: "raw_listing",
+        targetId: imports[1]!.targetId,
+        policyDecision: "not_applicable",
+        approvalId: null,
+        payloadHash: "b".repeat(64),
+        outcome: "failed",
+        errorCategory: "validation",
+        metadata: {
+          errorCode: "normalization_validation_failed",
+          retryable: false,
+          jobState: "dead_letter"
+        },
+        occurredAt: "2026-07-30T12:01:02.000Z"
+      })
+    );
+
+    const status = await getRentalResearchStatus(runId, deps);
+    expect(status).toMatchObject({
+      phase: "completed",
+      partial: true,
+      sources: [
+        { source: "rentcast", state: "excluded_by_user" },
+        { source: "zillow", state: "excluded_by_user" },
+        {
+          source: "apartments_com",
+          state: "partial",
+          importedCount: 2,
+          message:
+            "1 imported Apartments.com record(s) could not be normalized; accepted results were preserved."
+        },
+        { source: "facebook_marketplace", state: "excluded_by_user" }
+      ]
+    });
   });
 });
