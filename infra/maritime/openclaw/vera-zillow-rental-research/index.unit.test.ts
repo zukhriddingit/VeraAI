@@ -85,7 +85,8 @@ function snapshotForState(
   incompleteRentalTypePopover = false,
   roomApplyReference = "e5",
   priceAdditionalSafeApply = false,
-  roomApplyDuplicateMatchingLabel = false
+  roomApplyDuplicateMatchingLabel = false,
+  roomApplyUnrelatedSaves = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -204,6 +205,9 @@ function snapshotForState(
         targetId,
         url: resultUrl,
         snapshot: [
+          ...(roomApplyUnrelatedSaves
+            ? ['- button "Save" [ref=e500]', '- button "Save" [ref=e501]']
+            : []),
           ...bedroomMarkers[roomMarkerShape],
           '- button "Any" [ref=e60]',
           '- button "1+" [ref=e61]',
@@ -219,6 +223,12 @@ function snapshotForState(
           `- button "See 739 rentals available" [ref=${roomApplyReference}]`
         ].join("\n"),
         refs: {
+          ...(roomApplyUnrelatedSaves
+            ? {
+                e500: { role: "button", name: "Save" },
+                e501: { role: "button", name: "Save" }
+              }
+            : {}),
           e60: { role: "button", name: "Any" },
           e61: { role: "button", name: "1+" },
           e62: { role: "button", name: "2+" },
@@ -469,6 +479,7 @@ function happyFetch(
     readonly roomApplyTimeoutFirstLine?: string;
     readonly priceAdditionalSafeApply?: boolean;
     readonly roomApplyDuplicateMatchingLabel?: boolean;
+    readonly roomApplyUnrelatedSaves?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -555,7 +566,8 @@ function happyFetch(
               : `e${String(75 + roomApplyStaleResponses)}`
             : "e5",
           options.priceAdditionalSafeApply,
-          options.roomApplyDuplicateMatchingLabel
+          options.roomApplyDuplicateMatchingLabel && roomApplyStaleResponses > 0,
+          options.roomApplyUnrelatedSaves
         )
       );
     }
@@ -1226,6 +1238,26 @@ describe("Vera Zillow research execution", () => {
     expect(JSON.stringify(actions)).not.toMatch(
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
+  });
+
+  it("prioritizes the unique Zillow room apply action over unrelated listing-card Saves", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentRoomControls: true,
+      roomApplyUnrelatedSaves: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-03T23:55:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionRefs = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => (call.body as { ref?: string }).ref);
+    expect(actionRefs).toContain("e5");
+    expect(actionRefs).not.toContain("e500");
+    expect(actionRefs).not.toContain("e501");
   });
 
   it("coalesces only Zillow's adjacent same-name room section markers", async () => {
