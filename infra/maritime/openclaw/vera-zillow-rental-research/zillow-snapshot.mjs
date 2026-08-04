@@ -7,8 +7,11 @@ const RESULT_PATH_PATTERNS = [
 ];
 const DETAIL_PATH_PATTERNS = [
   /^\/homedetails\/(?:[^/?#]+\/)*[1-9][0-9]*_zpid\/?$/u,
-  /^\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u
+  /^\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u,
+  /^\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u
 ];
+const BUILDING_DETAIL_PATH_PATTERN = /^\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u;
+const BUILDING_UNIT_HASH_PATTERN = /^#unit-[1-9][0-9]*$/u;
 const SENSITIVE_QUERY_KEYS = new Set([
   "password",
   "token",
@@ -87,8 +90,7 @@ export function validateZillowUrl(rawUrl, expectedKind = "either") {
     url.hostname.toLowerCase() !== "www.zillow.com" ||
     url.username ||
     url.password ||
-    url.port ||
-    url.hash
+    url.port
   ) {
     throw new VeraZillowResearchError("unsafe_zillow_url");
   }
@@ -99,6 +101,10 @@ export function validateZillowUrl(rawUrl, expectedKind = "either") {
   }
   const isResult = RESULT_PATH_PATTERNS.some((pattern) => pattern.test(url.pathname));
   const isDetail = DETAIL_PATH_PATTERNS.some((pattern) => pattern.test(url.pathname));
+  const hashAllowed =
+    url.hash === "" ||
+    (BUILDING_DETAIL_PATH_PATTERN.test(url.pathname) && BUILDING_UNIT_HASH_PATTERN.test(url.hash));
+  if (!hashAllowed) throw new VeraZillowResearchError("unsafe_zillow_url");
   if (
     (expectedKind === "result" && !isResult) ||
     (expectedKind === "detail" && !isDetail) ||
