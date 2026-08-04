@@ -880,7 +880,7 @@ describe("Vera Zillow research execution", () => {
     expect(
       browserCalls
         .filter((call) => new URL(call.url).pathname === "/snapshot")
-        .every((call) => new URL(call.url).searchParams.get("urls") === "false")
+        .every((call) => new URL(call.url).searchParams.get("urls") === "true")
     ).toBe(true);
     expect(
       browserCalls
