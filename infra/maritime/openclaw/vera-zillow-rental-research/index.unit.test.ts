@@ -86,7 +86,8 @@ function snapshotForState(
   roomApplyReference = "e5",
   priceAdditionalSafeApply = false,
   roomApplyDuplicateMatchingLabel = false,
-  roomApplyUnrelatedSaves = false
+  roomApplyUnrelatedSaves = false,
+  semanticCardReference = "e10"
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -416,7 +417,7 @@ function snapshotForState(
         '- searchbox "Search" [ref=e1]',
         '- button "Price" [ref=e2]',
         '- button "Beds & Baths" [ref=e3]',
-        '- link "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134" [ref=e10]',
+        `- link "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134" [ref=${semanticCardReference}]`,
         '  - text "$2,500/mo"',
         '  - text "1 bd 1 ba"',
         '  - text "In-unit laundry"'
@@ -425,7 +426,7 @@ function snapshotForState(
         e1: { role: "searchbox", name: "Search" },
         e2: { role: "button", name: "Price" },
         e3: { role: "button", name: "Beds & Baths" },
-        e10: {
+        [semanticCardReference]: {
           role: "link",
           name: "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134"
         }
@@ -480,6 +481,7 @@ function happyFetch(
     readonly priceAdditionalSafeApply?: boolean;
     readonly roomApplyDuplicateMatchingLabel?: boolean;
     readonly roomApplyUnrelatedSaves?: boolean;
+    readonly refreshSemanticCardReference?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -492,6 +494,7 @@ function happyFetch(
   let pendingSnapshotFailures = 0;
   let roomSelectionChanged = false;
   let roomApplyStaleResponses = 0;
+  let semanticCardStaleResponses = 0;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -567,7 +570,8 @@ function happyFetch(
             : "e5",
           options.priceAdditionalSafeApply,
           options.roomApplyDuplicateMatchingLabel && roomApplyStaleResponses > 0,
-          options.roomApplyUnrelatedSaves
+          options.roomApplyUnrelatedSaves,
+          options.refreshSemanticCardReference && semanticCardStaleResponses > 0 ? "e11" : "e10"
         )
       );
     }
@@ -654,7 +658,26 @@ function happyFetch(
           throw new TypeError("browser response lost");
         }
       }
-      if (action.kind === "click" && action.ref === "e10" && options.semanticCardActivation) {
+      if (
+        action.kind === "click" &&
+        action.ref === "e10" &&
+        options.semanticCardActivation &&
+        options.refreshSemanticCardReference &&
+        semanticCardStaleResponses === 0
+      ) {
+        semanticCardStaleResponses += 1;
+        return jsonResponse(
+          {
+            error: 'Error: Unknown ref "e10". Run a new snapshot and use a ref from that snapshot.'
+          },
+          500
+        );
+      }
+      if (
+        action.kind === "click" &&
+        ["e10", "e11"].includes(action.ref ?? "") &&
+        options.semanticCardActivation
+      ) {
         currentUrl = apartmentsDetailUrl;
       }
       return jsonResponse({ ok: true, targetId: actionTargetId, url: currentUrl });
@@ -911,6 +934,40 @@ describe("Vera Zillow research execution", () => {
     ).toEqual([expect.objectContaining({ url: resultUrl })]);
     expect(JSON.stringify(actionBodies)).not.toMatch(
       /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("refreshes one exact stale semantic listing ref and retries the same observed card once", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      semanticCardActivation: true,
+      refreshSemanticCardReference: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-04T00:40:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      resultCardsObserved: 1,
+      detailPagesOpened: 1,
+      listings: [expect.objectContaining({ canonicalObservedUrl: apartmentsDetailUrl })],
+      safeActionTrail: expect.arrayContaining([
+        expect.objectContaining({ action: "open_observed_listing", result: "stopped" })
+      ])
+    });
+    const listingClicks = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string }).kind === "click" &&
+          ["e10", "e11"].includes((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(listingClicks).toEqual(["e10", "e11"]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
   });
 

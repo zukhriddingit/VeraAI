@@ -591,6 +591,33 @@ async function activateObservedListing(card, document, state, dependencies) {
   return page?.url ?? null;
 }
 
+async function activateObservedListingWithFreshRetry(card, document, state, dependencies) {
+  try {
+    await activateObservedListing(card, document, state, dependencies);
+    return card;
+  } catch (error) {
+    const staleReference =
+      error instanceof VeraZillowResearchError && error.code === "stale_browser_reference";
+    if (!staleReference) throw error;
+    recordAction(
+      state,
+      "open_observed_listing",
+      dependencies,
+      `${card.resultRef}:${card.observedLinkName}`,
+      "stopped"
+    );
+    const refreshedDocument = await takeSnapshot(state, dependencies);
+    const identity = cardIdentity(card);
+    const refreshedCards = extractResultCards(refreshedDocument, state.input.maxResults).filter(
+      (candidate) => cardIdentity(candidate) === identity
+    );
+    if (refreshedCards.length !== 1) throw layoutChanged();
+    const refreshedCard = refreshedCards[0];
+    await activateObservedListing(refreshedCard, refreshedDocument, state, dependencies);
+    return refreshedCard;
+  }
+}
+
 function layoutChanged() {
   return new VeraZillowResearchError("layout_changed", {
     pageState: "layout_changed",
@@ -1252,7 +1279,7 @@ export async function researchZillowRentals(
           );
           if (!refreshed) throw layoutChanged();
           card = refreshed;
-          await activateObservedListing(card, document, state, dependencies);
+          card = await activateObservedListingWithFreshRetry(card, document, state, dependencies);
         } else {
           await navigateToObserved(
             card.canonicalObservedUrl,
