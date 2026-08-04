@@ -87,7 +87,8 @@ function snapshotForState(
   priceAdditionalSafeApply = false,
   roomApplyDuplicateMatchingLabel = false,
   roomApplyUnrelatedSaves = false,
-  semanticCardReference = "e10"
+  semanticCardReference = "e10",
+  adjacentSemanticCard = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -420,7 +421,15 @@ function snapshotForState(
         `- link "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134" [ref=${semanticCardReference}]`,
         '  - text "$2,500/mo"',
         '  - text "1 bd 1 ba"',
-        '  - text "In-unit laundry"'
+        '  - text "In-unit laundry"',
+        ...(adjacentSemanticCard
+          ? [
+              '- link "12 Beacon St, Boston, MA 02108" [ref=e12]',
+              '  - text "$3,200/mo"',
+              '  - text "2 beds 1 bath 900 sq ft"',
+              '  - text "Dishwasher"'
+            ]
+          : [])
       ].join("\n"),
       refs: {
         e1: { role: "searchbox", name: "Search" },
@@ -429,7 +438,10 @@ function snapshotForState(
         [semanticCardReference]: {
           role: "link",
           name: "Gardner St, 34, 34 Gardner St APT 2, Boston, MA 02134"
-        }
+        },
+        ...(adjacentSemanticCard
+          ? { e12: { role: "link", name: "12 Beacon St, Boston, MA 02108" } }
+          : {})
       }
     };
   }
@@ -482,6 +494,8 @@ function happyFetch(
     readonly roomApplyDuplicateMatchingLabel?: boolean;
     readonly roomApplyUnrelatedSaves?: boolean;
     readonly refreshSemanticCardReference?: boolean;
+    readonly adjacentSemanticCard?: boolean;
+    readonly semanticCardStaleResponses?: number;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -571,7 +585,8 @@ function happyFetch(
           options.priceAdditionalSafeApply,
           options.roomApplyDuplicateMatchingLabel && roomApplyStaleResponses > 0,
           options.roomApplyUnrelatedSaves,
-          options.refreshSemanticCardReference && semanticCardStaleResponses > 0 ? "e11" : "e10"
+          options.refreshSemanticCardReference && semanticCardStaleResponses > 0 ? "e11" : "e10",
+          options.adjacentSemanticCard
         )
       );
     }
@@ -660,15 +675,15 @@ function happyFetch(
       }
       if (
         action.kind === "click" &&
-        action.ref === "e10" &&
+        ["e10", "e11"].includes(action.ref ?? "") &&
         options.semanticCardActivation &&
         options.refreshSemanticCardReference &&
-        semanticCardStaleResponses === 0
+        semanticCardStaleResponses < (options.semanticCardStaleResponses ?? 1)
       ) {
         semanticCardStaleResponses += 1;
         return jsonResponse(
           {
-            error: 'Error: Unknown ref "e10". Run a new snapshot and use a ref from that snapshot.'
+            error: `Error: Unknown ref "${action.ref}". Run a new snapshot and use a ref from that snapshot.`
           },
           500
         );
@@ -679,6 +694,14 @@ function happyFetch(
         options.semanticCardActivation
       ) {
         currentUrl = apartmentsDetailUrl;
+      }
+      if (
+        action.kind === "click" &&
+        action.ref === "e12" &&
+        options.semanticCardActivation &&
+        options.adjacentSemanticCard
+      ) {
+        currentUrl = detailUrl;
       }
       return jsonResponse({ ok: true, targetId: actionTargetId, url: currentUrl });
     }
@@ -880,7 +903,7 @@ describe("Vera Zillow research execution", () => {
     expect(
       browserCalls
         .filter((call) => new URL(call.url).pathname === "/snapshot")
-        .every((call) => new URL(call.url).searchParams.get("urls") === "true")
+        .every((call) => new URL(call.url).searchParams.get("urls") === "false")
     ).toBe(true);
     expect(
       browserCalls
@@ -966,6 +989,43 @@ describe("Vera Zillow research execution", () => {
       )
       .map((call) => (call.body as { ref: string }).ref);
     expect(listingClicks).toEqual(["e10", "e11"]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("skips one twice-stale card and opens only the next observed Zillow result", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      semanticCardActivation: true,
+      refreshSemanticCardReference: true,
+      adjacentSemanticCard: true,
+      semanticCardStaleResponses: 2
+    });
+    const result = await researchZillowRentals(
+      { ...input, maxResults: 2 },
+      {
+        fetch: fetchImplementation,
+        now: () => new Date("2026-08-04T02:15:00.000Z"),
+        monotonicNow: () => 1_000
+      }
+    );
+
+    expect(result).toMatchObject({
+      state: "partial",
+      resultCardsObserved: 2,
+      detailPagesOpened: 1,
+      listings: [expect.objectContaining({ canonicalObservedUrl: detailUrl })],
+      warnings: expect.arrayContaining([expect.stringContaining("stale-reference non-execution")])
+    });
+    const listingClicks = calls
+      .filter(
+        (call) =>
+          new URL(call.url).pathname === "/act" &&
+          (call.body as { kind?: string }).kind === "click" &&
+          ["e10", "e11", "e12"].includes((call.body as { ref?: string }).ref ?? "")
+      )
+      .map((call) => (call.body as { ref: string }).ref);
+    expect(listingClicks).toEqual(["e10", "e11", "e12"]);
     expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
