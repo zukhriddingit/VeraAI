@@ -103,6 +103,16 @@ const APPROVED_REPAIRS = Object.freeze([
     integrity:
       "sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==",
     dependencyNames: []
+  },
+  {
+    name: "undici",
+    path: "node_modules/jsdom/node_modules/undici",
+    fromVersion: "7.28.0",
+    toVersion: "7.29.0",
+    tarball: "https://registry.npmjs.org/undici/-/undici-7.29.0.tgz",
+    integrity:
+      "sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==",
+    dependencyNames: []
   }
 ]);
 const FORBIDDEN_FINAL_PATHS = Object.freeze([
@@ -192,7 +202,7 @@ export function findRuntimeLockViolations(lock) {
     );
   }
   if (!Array.isArray(lock.repairs) || lock.repairs.length !== APPROVED_REPAIRS.length) {
-    violations.push("Runtime repair lock must contain exactly the seven approved packages.");
+    violations.push("Runtime repair lock must contain exactly the eight approved packages.");
   } else if (!lock.repairs.every((repair, index) => sameRepair(repair, APPROVED_REPAIRS[index]))) {
     violations.push("Runtime repair lock contains an unapproved package identity or integrity.");
   }

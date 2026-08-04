@@ -59,7 +59,7 @@ describe("Gateway runtime dependency sanitizer", () => {
         ...lock,
         repairs: [...lock.repairs, { ...lock.repairs[0], name: "unexpected" }]
       })
-    ).toContain("Runtime repair lock must contain exactly the seven approved packages.");
+    ).toContain("Runtime repair lock must contain exactly the eight approved packages.");
     expect(
       findRuntimeLockViolations({
         ...lock,
@@ -95,6 +95,12 @@ describe("Gateway runtime dependency sanitizer", () => {
         name: "undici",
         fromVersion: "8.5.0",
         toVersion: "8.9.0",
+        dependencyNames: []
+      },
+      {
+        name: "undici",
+        fromVersion: "7.28.0",
+        toVersion: "7.29.0",
         dependencyNames: []
       }
     ]);
@@ -194,7 +200,7 @@ describe("Gateway runtime dependency sanitizer", () => {
       }
     });
 
-    expect(result).toEqual({ status: "repaired", packageCount: 7 });
+    expect(result).toEqual({ status: "repaired", packageCount: 8 });
     for (const repair of syntheticLock.repairs) {
       const manifest = JSON.parse(
         readFileSync(resolve(appRoot, repair.path, "package.json"), "utf8")

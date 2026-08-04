@@ -40,7 +40,7 @@ correctly did not occur. It must never be used as the Gateway replacement.
 
 The pending replacement preserves the reviewed OpenClaw 2026.7.1 application from the immutable
 source image above, including source commit
-`2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. It sanitizes exactly seven vulnerable application
+`2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. It sanitizes exactly eight vulnerable application
 package instances, each from a fixed npm tarball with a locked SHA-512 integrity:
 
 - `@opentelemetry/propagator-jaeger` 2.8.0 to 2.9.0;
@@ -49,7 +49,8 @@ package instances, each from a fixed npm tarball with a locked SHA-512 integrity
 - `fast-uri` 3.1.2 to 3.1.5;
 - `ip-address` 10.2.0 to 10.3.1;
 - `postcss` 8.5.16 to 8.5.18; and
-- `undici` 8.5.0 to 8.9.0.
+- root `undici` 8.5.0 to 8.9.0; and
+- the `jsdom`-nested `undici` 7.28.0 to 7.29.0.
 
 The repaired `/app` tree is transplanted into the immutable `linux/amd64` Chainguard Node runtime:
 
