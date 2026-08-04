@@ -7,7 +7,7 @@ export const REMOTE_EXTENSION_OPENCLAW_VERSION = "2026.7.1";
 export const REMOTE_EXTENSION_OPENCLAW_BASE_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 export const REMOTE_EXTENSION_RUNTIME_BASE_IMAGE =
-  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
+  "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2";
 export const REMOTE_EXTENSION_PUBLISHED_RUNTIME_BASE_IMAGE =
   "cgr.dev/chainguard/node@sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f";
 export const REMOTE_EXTENSION_RELEASE_INDEX =

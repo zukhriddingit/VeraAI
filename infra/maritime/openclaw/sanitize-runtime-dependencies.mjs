@@ -20,9 +20,9 @@ const MAX_ARCHIVE_BYTES = 10 * 1024 * 1024;
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const CHAINGUARD_INDEX =
-  "cgr.dev/chainguard/node@sha256:2b9627fec21321fad828adf6c5ceb91c6f377b772b48a738533a1225c0145a90";
+  "cgr.dev/chainguard/node@sha256:cf7ae5ead5aed79a61404d7b1bbb9b89ea461991b21cb8fcb07d4b6ad4d8b734";
 const CHAINGUARD_AMD64 =
-  "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09";
+  "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2";
 const APPROVED_REPAIRS = Object.freeze([
   {
     name: "@opentelemetry/propagator-jaeger",
@@ -165,7 +165,7 @@ export function findRuntimeLockViolations(lock) {
     !isObject(lock.finalRuntime) ||
     lock.finalRuntime.imageIndex !== CHAINGUARD_INDEX ||
     lock.finalRuntime.linuxAmd64Image !== CHAINGUARD_AMD64 ||
-    lock.finalRuntime.observedNodeVersion !== "26.5.0"
+    lock.finalRuntime.observedNodeVersion !== "26.6.0"
   ) {
     violations.push("Gateway runtime lock must pin the reviewed Chainguard amd64 Node image.");
   }

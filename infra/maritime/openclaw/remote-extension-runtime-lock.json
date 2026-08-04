@@ -6,9 +6,9 @@
     "image": "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
   },
   "finalRuntime": {
-    "imageIndex": "cgr.dev/chainguard/node@sha256:2b9627fec21321fad828adf6c5ceb91c6f377b772b48a738533a1225c0145a90",
-    "linuxAmd64Image": "cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09",
-    "observedNodeVersion": "26.5.0",
+    "imageIndex": "cgr.dev/chainguard/node@sha256:cf7ae5ead5aed79a61404d7b1bbb9b89ea461991b21cb8fcb07d4b6ad4d8b734",
+    "linuxAmd64Image": "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2",
+    "observedNodeVersion": "26.6.0",
     "uid": 1000,
     "gid": 1000,
     "entrypoint": ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]

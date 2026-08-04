@@ -42,7 +42,7 @@ COPY --chown=1000:1000 --chmod=0444 \
   vera-zillow-rental-research/zillow-snapshot.mjs \
   /opt/vera/plugins/vera-zillow-rental-research/
 
-FROM cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09 AS final
+FROM cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2 AS final
 
 USER 0:0
 WORKDIR /usr/local/bin
@@ -53,9 +53,9 @@ LABEL org.opencontainers.image.title="Vera OpenClaw Browser Gateway" \
   org.opencontainers.image.description="Hardened founder-only OpenClaw direct-extension Gateway" \
   org.opencontainers.image.source="https://github.com/zukhriddingit/VeraAI" \
   org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}" \
-  org.opencontainers.image.version="2026.7.1-vera.6" \
+  org.opencontainers.image.version="2026.7.1-vera.7" \
   org.opencontainers.image.base.name="cgr.dev/chainguard/node" \
-  org.opencontainers.image.base.digest="sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09" \
+  org.opencontainers.image.base.digest="sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2" \
   io.vera.openclaw.image.digest="sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
 
 COPY --from=openclaw-runtime --chown=1000:1000 /app /app

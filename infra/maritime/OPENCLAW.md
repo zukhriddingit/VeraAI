@@ -40,19 +40,21 @@ correctly did not occur. It must never be used as the Gateway replacement.
 
 The pending replacement preserves the reviewed OpenClaw 2026.7.1 application from the immutable
 source image above, including source commit
-`2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. It sanitizes exactly five vulnerable application
+`2d2ddc43d0dcf71f31283d780f9fe9ff4cc04fe4`. It sanitizes exactly seven vulnerable application
 package instances, each from a fixed npm tarball with a locked SHA-512 integrity:
 
 - `@opentelemetry/propagator-jaeger` 2.8.0 to 2.9.0;
 - `@vitest/browser` 4.1.9 to 4.1.10;
-- `brace-expansion` 5.0.7 to 5.0.8;
-- `fast-uri` 3.1.2 to 3.1.4; and
-- `postcss` 8.5.16 to 8.5.18.
+- `brace-expansion` 5.0.7 to 5.0.9;
+- `fast-uri` 3.1.2 to 3.1.5;
+- `ip-address` 10.2.0 to 10.3.1;
+- `postcss` 8.5.16 to 8.5.18; and
+- `undici` 8.5.0 to 8.9.0.
 
 The repaired `/app` tree is transplanted into the immutable `linux/amd64` Chainguard Node runtime:
 
 ```text
-cgr.dev/chainguard/node@sha256:454b9dd79f2ce42a1e275b5d91a3c0287ed0c5ecb356bb90f3470752a4519f09
+cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2
 ```
 
 `remote-extension-candidate.json` records this zero-finding security replacement as pending without
