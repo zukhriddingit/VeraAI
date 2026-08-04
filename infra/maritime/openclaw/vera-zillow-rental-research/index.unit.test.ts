@@ -85,6 +85,7 @@ function snapshotForState(
   semanticCardActivation = false,
   selectedPriceLabel = false,
   selectedRoomLabel = false,
+  neutralRoomLabel = false,
   staleRentalTypePopover = false,
   incompleteRentalTypePopover = false,
   roomApplyReference = "e5",
@@ -374,6 +375,7 @@ function snapshotForState(
   if (
     selectedPriceLabel ||
     selectedRoomLabel ||
+    neutralRoomLabel ||
     staleRentalTypePopover ||
     incompleteRentalTypePopover
   ) {
@@ -384,7 +386,7 @@ function snapshotForState(
         '- searchbox "Search" [ref=e1]',
         '- button "For rent" [ref=e92]',
         '- button "Up to $2.9K" [ref=e2]',
-        `- button "${selectedRoomLabel ? "1+ bd, 1+ ba" : "Beds & Baths"}" [ref=e3]`,
+        `- button "${neutralRoomLabel ? "0+ bd, Any ba" : selectedRoomLabel ? "1+ bd, 1+ ba" : "Beds & Baths"}" [ref=e3]`,
         ...(staleRentalTypePopover || incompleteRentalTypePopover
           ? [
               '- radio "For sale" [ref=e93]',
@@ -405,7 +407,14 @@ function snapshotForState(
         e1: { role: "searchbox", name: "Search" },
         e92: { role: "button", name: "For rent" },
         e2: { role: "button", name: "Up to $2.9K" },
-        e3: { role: "button", name: selectedRoomLabel ? "1+ bd, 1+ ba" : "Beds & Baths" },
+        e3: {
+          role: "button",
+          name: neutralRoomLabel
+            ? "0+ bd, Any ba"
+            : selectedRoomLabel
+              ? "1+ bd, 1+ ba"
+              : "Beds & Baths"
+        },
         ...(staleRentalTypePopover || incompleteRentalTypePopover
           ? {
               e93: { role: "radio", name: "For sale" },
@@ -478,6 +487,7 @@ function happyFetch(
     readonly semanticCardActivation?: boolean;
     readonly selectedPriceLabel?: boolean;
     readonly selectedRoomLabel?: boolean;
+    readonly neutralRoomLabel?: boolean;
     readonly staleRentalTypePopover?: boolean;
     readonly incompleteRentalTypePopover?: boolean;
     readonly stableTabId?: string;
@@ -584,6 +594,7 @@ function happyFetch(
           options.semanticCardActivation,
           options.selectedPriceLabel,
           options.selectedRoomLabel,
+          options.neutralRoomLabel,
           rentalTypePopoverOpen && options.staleRentalTypePopover === true,
           rentalTypePopoverOpen && options.incompleteRentalTypePopover === true,
           options.refreshRoomApplyReference && roomSelectionChanged
@@ -1202,6 +1213,35 @@ describe("Vera Zillow research execution", () => {
     const result = await researchZillowRentals(input, {
       fetch: fetchImplementation,
       now: () => new Date("2026-08-03T07:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body as { kind?: string; ref?: string });
+    expect(actionBodies).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "click", ref: "e3" }),
+        expect.objectContaining({ kind: "click", ref: "e62" }),
+        expect.objectContaining({ kind: "click", ref: "e71" })
+      ])
+    );
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("recognizes Zillow's observed neutral beds-and-baths chip", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      currentPriceControls: true,
+      currentRoomControls: true,
+      selectedPriceLabel: true,
+      neutralRoomLabel: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-04T16:10:00.000Z"),
       monotonicNow: () => 1_000
     });
 
