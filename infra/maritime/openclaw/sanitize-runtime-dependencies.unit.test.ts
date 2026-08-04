@@ -93,8 +93,8 @@ describe("Gateway runtime dependency sanitizer", () => {
       },
       {
         name: "undici",
-        fromVersion: "7.28.0",
-        toVersion: "7.29.0",
+        fromVersion: "8.5.0",
+        toVersion: "8.9.0",
         dependencyNames: []
       }
     ]);

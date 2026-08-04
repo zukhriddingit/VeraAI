@@ -97,11 +97,11 @@ const APPROVED_REPAIRS = Object.freeze([
   {
     name: "undici",
     path: "node_modules/undici",
-    fromVersion: "7.28.0",
-    toVersion: "7.29.0",
-    tarball: "https://registry.npmjs.org/undici/-/undici-7.29.0.tgz",
+    fromVersion: "8.5.0",
+    toVersion: "8.9.0",
+    tarball: "https://registry.npmjs.org/undici/-/undici-8.9.0.tgz",
     integrity:
-      "sha512-IDxfleLmmbSskfWSUATiN1nfn2rDuvnMOqb5CWR92iIfojA0Ud+ulOAAEQ57LPr9rWmsreUyf5lwyao+7GNNVw==",
+      "sha512-aWZpUj7XoGonMClx4gdDRfgBjqeA+F473aDmROQQbM9n6PRfK/u1q/a0X4wMTgcHfT8H6fpbt98PFuDUwFg2YA==",
     dependencyNames: []
   }
 ]);
