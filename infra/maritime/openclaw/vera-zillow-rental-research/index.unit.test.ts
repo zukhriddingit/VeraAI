@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import plugin, { researchZillowRentals } from "./index.mjs";
-import { validateResearchInput } from "./contract.mjs";
+import { validateResearchInput, validateResearchOutput } from "./contract.mjs";
 import {
   detectManualBlocker,
   extractResultCards,
@@ -107,7 +107,11 @@ function snapshotForState(
       }
     };
   }
-  if (currentUrl === apartmentsDetailUrl || currentUrl === buildingUnitDetailUrl) {
+  if (
+    currentUrl === apartmentsDetailUrl ||
+    currentUrl === apartmentsBedroomDetailUrl ||
+    currentUrl === buildingUnitDetailUrl
+  ) {
     return {
       ok: true,
       format: "ai",
@@ -999,6 +1003,61 @@ describe("Vera Zillow research execution", () => {
         expect.objectContaining({
           canonicalObservedUrl: buildingUnitDetailUrl,
           finalDetailPageUrl: buildingUnitDetailUrl,
+          address: "34 Gardner St, Allston, MA 02134"
+        })
+      ]
+    });
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/navigate").map((call) => call.body)
+    ).toEqual([expect.objectContaining({ url: resultUrl })]);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+    expect(() =>
+      validateResearchOutput({
+        ...result,
+        listings: [
+          {
+            ...result.listings[0],
+            canonicalObservedUrl:
+              "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#map"
+          }
+        ]
+      })
+    ).toThrowError(/invalid_tool_output/u);
+    expect(() =>
+      validateResearchOutput({
+        ...result,
+        listings: [
+          {
+            ...result.listings[0],
+            finalDetailPageUrl:
+              "https://www.zillow.com/apartments/allston-ma/hamilton-union/Cr3t8L/#bedrooms-all"
+          }
+        ]
+      })
+    ).toThrowError(/invalid_tool_output/u);
+  });
+
+  it("preserves an exact observed Zillow apartment bedroom fragment in strict output", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      semanticCardActivation: true,
+      semanticCardDestination: apartmentsBedroomDetailUrl
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-04T14:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      pageState: "ready",
+      detailPagesOpened: 1,
+      listings: [
+        expect.objectContaining({
+          canonicalObservedUrl: apartmentsBedroomDetailUrl,
+          finalDetailPageUrl: apartmentsBedroomDetailUrl,
           address: "34 Gardner St, Allston, MA 02134"
         })
       ]
