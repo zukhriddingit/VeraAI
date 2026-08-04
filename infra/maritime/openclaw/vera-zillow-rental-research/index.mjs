@@ -995,7 +995,7 @@ async function applySavedProfile(initialDocument, state, dependencies) {
       names: [
         /^Beds?(?: & Baths?)?$/iu,
         /^Beds?\/Baths?$/iu,
-        /^[1-9]\d*(?:\.\d)?\+ bd, [1-9]\d*(?:\.\d)?\+ ba$/u
+        /^(?:0|[1-9]\d*)(?:\.\d+)?\+? bd, (?:Any|(?:0|[1-9]\d*)(?:\.\d+)?\+?) ba$/iu
       ]
     });
     if (!bedsButton) throw layoutChanged();

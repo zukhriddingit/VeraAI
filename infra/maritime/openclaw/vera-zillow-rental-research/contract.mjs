@@ -186,6 +186,9 @@ function validZillowUrl(value) {
   if (typeof value !== "string" || value.length > 2_048) return false;
   try {
     const url = new URL(value);
+    const exactApartmentBedroomFragment =
+      /^\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u.test(url.pathname) &&
+      /^#bedrooms-[1-9][0-9]*$/u.test(url.hash);
     const exactBuildingUnitFragment =
       /^\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?$/u.test(url.pathname) &&
       /^#unit-[1-9][0-9]*$/u.test(url.hash);
@@ -194,7 +197,7 @@ function validZillowUrl(value) {
       url.hostname.toLowerCase() === "www.zillow.com" &&
       url.username === "" &&
       url.password === "" &&
-      (url.hash === "" || exactBuildingUnitFragment)
+      (url.hash === "" || exactApartmentBedroomFragment || exactBuildingUnitFragment)
     );
   } catch {
     return false;
