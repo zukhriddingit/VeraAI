@@ -46,6 +46,24 @@ describe("multi-source rental research contracts", () => {
             rejectedCount: 0,
             manualAction: null,
             message: "Zillow stopped safely."
+          },
+          {
+            source: "apartments_com",
+            state: "excluded_by_user",
+            retrievedCount: 0,
+            importedCount: 0,
+            rejectedCount: 0,
+            manualAction: null,
+            message: null
+          },
+          {
+            source: "facebook_marketplace",
+            state: "excluded_by_user",
+            retrievedCount: 0,
+            importedCount: 0,
+            rejectedCount: 0,
+            manualAction: null,
+            message: null
           }
         ],
         partial: true,

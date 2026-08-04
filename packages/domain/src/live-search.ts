@@ -130,25 +130,36 @@ export const RunLiveSearchRequestSchema = z
   })
   .strict();
 
-export const RentalResearchSourceSchema = z.enum(["rentcast", "zillow"]);
+export const RentalResearchSourceSchema = z.enum([
+  "rentcast",
+  "zillow",
+  "apartments_com",
+  "facebook_marketplace"
+]);
 export const RentalResearchSourceStateSchema = z.enum([
   "ready",
   "login_required",
+  "account_recommended",
   "browser_offline",
+  "tab_required",
   "excluded_by_user",
   "searching",
   "completed",
   "partial",
+  "no_results",
+  "manual_action_required",
   "failed"
 ]);
 export const RentalResearchProgressPhaseSchema = z.enum([
-  "connecting",
-  "checking_login",
-  "searching",
-  "opening_details",
+  "connecting_browser",
+  "checking_sources",
+  "searching_rentcast",
+  "searching_zillow",
+  "searching_apartments_com",
+  "searching_facebook_marketplace",
   "importing",
   "deduplicating",
-  "ranking",
+  "scoring",
   "completed"
 ]);
 
@@ -156,7 +167,7 @@ export const RunRentalResearchRequestSchema = z
   .object({
     veraRunId: EntityIdSchema,
     searchProfileId: EntityIdSchema,
-    selectedSources: z.array(RentalResearchSourceSchema).min(1).max(2),
+    selectedSources: z.array(RentalResearchSourceSchema).min(1).max(4),
     confirmedExternalUsage: z.literal(true),
     retryOfSearchRunId: EntityIdSchema.optional()
   })
@@ -183,10 +194,12 @@ export const RentalResearchSourceStatusSchema = z
         "login_required",
         "two_factor_required",
         "captcha_required",
+        "checkpoint_required",
         "consent_required",
         "blocked",
         "layout_changed",
         "browser_offline",
+        "tab_required",
         "no_shared_tab",
         "multiple_shared_tabs",
         "shared_tab_changed",
@@ -202,7 +215,7 @@ export const RentalResearchRunStatusSchema = z
     searchRunId: EntityIdSchema,
     searchProfileId: EntityIdSchema,
     phase: RentalResearchProgressPhaseSchema,
-    sources: z.array(RentalResearchSourceStatusSchema).length(2),
+    sources: z.array(RentalResearchSourceStatusSchema).length(4),
     partial: z.boolean(),
     completedAt: IsoDateTimeSchema.nullable()
   })

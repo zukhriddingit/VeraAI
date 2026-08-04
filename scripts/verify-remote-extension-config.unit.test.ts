@@ -22,6 +22,8 @@ function fixture() {
     pluginPackage: readJson("vera-read-shared-tab/package.json"),
     zillowPluginManifest: readJson("vera-zillow-rental-research/openclaw.plugin.json"),
     zillowPluginPackage: readJson("vera-zillow-rental-research/package.json"),
+    browserResearchPluginManifest: readJson("vera-browser-research/openclaw.plugin.json"),
+    browserResearchPluginPackage: readJson("vera-browser-research/package.json"),
     imageManifest: readJson("remote-extension-image.json"),
     acceptedRollbackManifest: readJson("remote-extension-image.m13a-accepted.json"),
     candidateManifest: readJson("remote-extension-image.m13b-candidate.json"),
@@ -36,6 +38,18 @@ function fixture() {
     ),
     zillowSnapshotSource: readFileSync(
       resolve(directory, "vera-zillow-rental-research/zillow-snapshot.mjs"),
+      "utf8"
+    ),
+    browserResearchPluginSource: readFileSync(
+      resolve(directory, "vera-browser-research/index.mjs"),
+      "utf8"
+    ),
+    browserResearchContractSource: readFileSync(
+      resolve(directory, "vera-browser-research/contract.mjs"),
+      "utf8"
+    ),
+    browserResearchSnapshotSource: readFileSync(
+      resolve(directory, "vera-browser-research/source-snapshot.mjs"),
       "utf8"
     ),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),
@@ -119,7 +133,7 @@ describe("remote extension configuration verifier", () => {
     expect(findRemoteExtensionConfigViolations(input)).toEqual(
       expect.arrayContaining([
         "Remote extension topology must not route through an OpenClaw node.",
-        "The model may receive only the two reviewed Vera-owned tools."
+        "The model may receive only the three reviewed Vera-owned tools."
       ])
     );
   });

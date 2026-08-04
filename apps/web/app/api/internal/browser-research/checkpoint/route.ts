@@ -1,6 +1,15 @@
 import { timingSafeEqual } from "node:crypto";
 
-import { VeraUserIdSchema, ZillowResearchCheckpointRequestSchema } from "@vera/domain";
+import {
+  BrowserResearchCheckpointRequestSchema,
+  VeraUserIdSchema,
+  ZillowResearchCheckpointRequestSchema
+} from "@vera/domain";
+
+import {
+  checkBrowserResearchAction,
+  createBrowserResearchCheckpointDependencies
+} from "../../../../../lib/browser-research-checkpoint-service.ts";
 
 import {
   checkZillowResearchAction,
@@ -113,14 +122,18 @@ export async function POST(request: Request): Promise<Response> {
     );
     if (!founder.success) return failure("founder_not_configured", 503);
 
-    const input = ZillowResearchCheckpointRequestSchema.parse(
-      await readBoundedJson(request, { maxBytes: 4_000 })
-    );
+    const rawInput = await readBoundedJson(request, { maxBytes: 16_000 });
     const repositories = getHostedApplication().repositoryProvider.forUser(founder.data);
-    const result = await checkZillowResearchAction(
-      createZillowResearchCheckpointDependencies(founder.data, repositories, process.env),
-      input
-    );
+    const genericInput = BrowserResearchCheckpointRequestSchema.safeParse(rawInput);
+    const result = genericInput.success
+      ? await checkBrowserResearchAction(
+          createBrowserResearchCheckpointDependencies(founder.data, repositories, process.env),
+          genericInput.data
+        )
+      : await checkZillowResearchAction(
+          createZillowResearchCheckpointDependencies(founder.data, repositories, process.env),
+          ZillowResearchCheckpointRequestSchema.parse(rawInput)
+        );
     return Response.json(result, { status: 200, headers });
   } catch (error) {
     if (

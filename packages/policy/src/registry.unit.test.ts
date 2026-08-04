@@ -298,12 +298,23 @@ describe("initial local manifests", () => {
       "google.calendar.v1",
       "rentcast.rental-listings.v1",
       "zillow.current-tab.v1",
-      "zillow.browser-research.v1"
+      "zillow.browser-research.v1",
+      "zillow.browser-research.v2",
+      "apartments-com.browser-research.v1",
+      "facebook-marketplace.browser-research.v1"
     ]);
     for (const manifest of INITIAL_LOCAL_MANIFESTS) {
       expect(Object.isFrozen(manifest)).toBe(true);
       expect(manifest.schemaVersion).toBe(2);
-      expect(manifest.enabled).toBe(!manifest.connectorId.startsWith("zillow."));
+      expect(manifest.enabled).toBe(
+        ![
+          "zillow.current-tab.v1",
+          "zillow.browser-research.v1",
+          "zillow.browser-research.v2",
+          "apartments-com.browser-research.v1",
+          "facebook-marketplace.browser-research.v1"
+        ].includes(manifest.connectorId)
+      );
       expect(manifest.execution).toBe(
         manifest.connectorId === "google.gmail.listing-alerts.v1" ? "scheduled" : "manual"
       );
@@ -393,6 +404,22 @@ describe("initial local manifests", () => {
       requiresApproval: true,
       minimumIntervalSeconds: null,
       maxConcurrency: 1
+    });
+    expect(manifests["apartments-com.browser-research.v1"]).toMatchObject({
+      source: "apartments_com",
+      policyState: "experimental_personal",
+      enabled: false,
+      execution: "manual",
+      allowedOperations: ["apartments_com.rental_research.v1"],
+      allowedDomains: ["www.apartments.com"]
+    });
+    expect(manifests["facebook-marketplace.browser-research.v1"]).toMatchObject({
+      source: "facebook_marketplace",
+      policyState: "experimental_personal",
+      enabled: false,
+      execution: "manual",
+      allowedOperations: ["facebook_marketplace.rental_research.v1"],
+      allowedDomains: ["www.facebook.com"]
     });
   });
 

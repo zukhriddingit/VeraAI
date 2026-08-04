@@ -17,6 +17,7 @@ export const REMOTE_EXTENSION_RUNTIME_MANIFEST =
 export const REMOTE_EXTENSION_SOURCE_COMMIT = "01bc0adc02808dbaf01089d1464ee8db5fe90593";
 export const REMOTE_EXTENSION_TOOL = "vera_read_shared_tab_snapshot";
 export const ZILLOW_RESEARCH_TOOL = "vera_zillow_rental_research_v1";
+export const BROWSER_RESEARCH_TOOL = "vera_browser_research_v1";
 
 type JsonObject = Record<string, unknown>;
 
@@ -61,6 +62,8 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly pluginPackage: unknown;
   readonly zillowPluginManifest: unknown;
   readonly zillowPluginPackage: unknown;
+  readonly browserResearchPluginManifest: unknown;
+  readonly browserResearchPluginPackage: unknown;
   readonly imageManifest: unknown;
   readonly acceptedRollbackManifest: unknown;
   readonly candidateManifest: unknown;
@@ -68,6 +71,9 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly zillowPluginSource: string;
   readonly zillowContractSource: string;
   readonly zillowSnapshotSource: string;
+  readonly browserResearchPluginSource: string;
+  readonly browserResearchContractSource: string;
+  readonly browserResearchSnapshotSource: string;
   readonly auditDeviceSource: string;
   readonly dockerfile: string;
   readonly supervisorSource: string;
@@ -81,6 +87,8 @@ export function findRemoteExtensionConfigViolations(input: {
     pluginPackage,
     zillowPluginManifest,
     zillowPluginPackage,
+    browserResearchPluginManifest,
+    browserResearchPluginPackage,
     imageManifest,
     acceptedRollbackManifest,
     candidateManifest,
@@ -88,6 +96,9 @@ export function findRemoteExtensionConfigViolations(input: {
     zillowPluginSource,
     zillowContractSource,
     zillowSnapshotSource,
+    browserResearchPluginSource,
+    browserResearchContractSource,
+    browserResearchSnapshotSource,
     auditDeviceSource,
     dockerfile,
     supervisorSource,
@@ -239,6 +250,9 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("vera-zillow-rental-research/index.mjs") ||
     !dockerfile.includes("vera-zillow-rental-research/contract.mjs") ||
     !dockerfile.includes("vera-zillow-rental-research/zillow-snapshot.mjs") ||
+    !dockerfile.includes("vera-browser-research/index.mjs") ||
+    !dockerfile.includes("vera-browser-research/contract.mjs") ||
+    !dockerfile.includes("vera-browser-research/source-snapshot.mjs") ||
     !dockerfile.includes("OPENCLAW_CONFIG_PATH=/opt/vera/config/openclaw.json") ||
     !dockerfile.includes("OPENCLAW_EAGER_BROWSER_CONTROL_SERVER=1") ||
     !dockerfile.includes("OPENCLAW_STATE_DIR=/data/.openclaw") ||
@@ -371,17 +385,20 @@ export function findRemoteExtensionConfigViolations(input: {
     !exact(stringArrayAt(plugins, "allow"), [
       "browser",
       "vera-read-shared-tab",
-      "vera-zillow-rental-research"
+      "vera-zillow-rental-research",
+      "vera-browser-research"
     ]) ||
     !exact(stringArrayAt(plugins, "load", "paths"), [
       "/opt/vera/plugins/vera-read-shared-tab",
-      "/opt/vera/plugins/vera-zillow-rental-research"
+      "/opt/vera/plugins/vera-zillow-rental-research",
+      "/opt/vera/plugins/vera-browser-research"
     ]) ||
     objectAt(plugins, "entries", "browser")?.enabled !== true ||
     objectAt(plugins, "entries", "vera-read-shared-tab")?.enabled !== true ||
-    objectAt(plugins, "entries", "vera-zillow-rental-research")?.enabled !== true
+    objectAt(plugins, "entries", "vera-zillow-rental-research")?.enabled !== true ||
+    objectAt(plugins, "entries", "vera-browser-research")?.enabled !== true
   ) {
-    violations.push("Only the internal browser and two reviewed Vera plugins may be enabled.");
+    violations.push("Only the internal browser and three reviewed Vera plugins may be enabled.");
   }
   const browserHooks = objectAt(plugins, "entries", "browser", "hooks");
   if (
@@ -393,13 +410,17 @@ export function findRemoteExtensionConfigViolations(input: {
 
   const tools = objectAt(config, "tools");
   if (
-    !exact(stringArrayAt(tools, "allow"), [REMOTE_EXTENSION_TOOL, ZILLOW_RESEARCH_TOOL]) ||
+    !exact(stringArrayAt(tools, "allow"), [
+      REMOTE_EXTENSION_TOOL,
+      ZILLOW_RESEARCH_TOOL,
+      BROWSER_RESEARCH_TOOL
+    ]) ||
     !stringArrayAt(tools, "deny")?.includes("browser") ||
     !stringArrayAt(tools, "deny")?.includes("gateway") ||
     !stringArrayAt(tools, "deny")?.includes("exec") ||
     !stringArrayAt(tools, "deny")?.includes("message")
   ) {
-    violations.push("The model may receive only the two reviewed Vera-owned tools.");
+    violations.push("The model may receive only the three reviewed Vera-owned tools.");
   }
 
   const gateway = objectAt(config, "gateway");
@@ -458,6 +479,24 @@ export function findRemoteExtensionConfigViolations(input: {
     !exact(stringArrayAt(zillowPluginPackage, "openclaw", "extensions"), ["./index.mjs"])
   ) {
     violations.push("Zillow plugin package must target only OpenClaw 2026.7.1.");
+  }
+  if (
+    objectAt(browserResearchPluginManifest)?.id !== "vera-browser-research" ||
+    !exact(stringArrayAt(browserResearchPluginManifest, "contracts", "tools"), [
+      BROWSER_RESEARCH_TOOL
+    ]) ||
+    objectAt(browserResearchPluginManifest, "configSchema")?.additionalProperties !== false
+  ) {
+    violations.push(
+      "Generic browser-research manifest must expose exactly one reviewed versioned tool."
+    );
+  }
+  if (
+    objectAt(browserResearchPluginPackage, "peerDependencies")?.openclaw !==
+      REMOTE_EXTENSION_OPENCLAW_VERSION ||
+    !exact(stringArrayAt(browserResearchPluginPackage, "openclaw", "extensions"), ["./index.mjs"])
+  ) {
+    violations.push("Generic browser-research package must target only OpenClaw 2026.7.1.");
   }
 
   if (!/name:\s*"vera_read_shared_tab_snapshot"/u.test(pluginSource)) {
@@ -518,6 +557,47 @@ export function findRemoteExtensionConfigViolations(input: {
     violations.push(
       "Zillow plugin must use only the fixed checkpointed semantic browser-control workflow."
     );
+  }
+  if (
+    !browserResearchPluginSource.includes(`name: TOOL_NAME`) ||
+    !browserResearchContractSource.includes(
+      `export const TOOL_NAME = "${BROWSER_RESEARCH_TOOL}"`
+    ) ||
+    !browserResearchContractSource.includes("additionalProperties: false") ||
+    !browserResearchContractSource.includes("export const MAX_RESULTS = 10") ||
+    !browserResearchContractSource.includes("export const MAX_DETAIL_PAGES = 5") ||
+    !browserResearchContractSource.includes("export const MAX_ACTIONS = 50") ||
+    !browserResearchContractSource.includes("export const MAX_DURATION_MS = 90_000") ||
+    !browserResearchContractSource.includes("timingSafeEqual") ||
+    !browserResearchPluginSource.includes(
+      'const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18792"'
+    ) ||
+    !browserResearchPluginSource.includes('path !== "/navigate" && path !== "/act"') ||
+    !browserResearchPluginSource.includes("VERA_BROWSER_RESEARCH_CHECKPOINT_URL") ||
+    !browserResearchPluginSource.includes("VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN") ||
+    !browserResearchSnapshotSource.includes("FORBIDDEN_CONTROL")
+  ) {
+    violations.push(
+      "Generic browser research must remain signed, semantic, checkpointed, and bounded."
+    );
+  }
+  if (
+    /["'`]\/(?:screenshot|download|upload|cookies?|storage|pdf|dialog)(?:[/?'"`])/iu.test(
+      [
+        browserResearchPluginSource,
+        browserResearchContractSource,
+        browserResearchSnapshotSource
+      ].join("\n")
+    ) ||
+    /\b(?:eval|Function)\s*\(|\b(?:selector|javascript|clickCoords)\s*:/u.test(
+      [
+        browserResearchPluginSource,
+        browserResearchContractSource,
+        browserResearchSnapshotSource
+      ].join("\n")
+    )
+  ) {
+    violations.push("Generic browser research contains a forbidden browser or evaluation surface.");
   }
   const zillowRuntimeSource = [zillowPluginSource, zillowContractSource, zillowSnapshotSource].join(
     "\n"
@@ -597,6 +677,12 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
       resolve(directory, "vera-zillow-rental-research/openclaw.plugin.json")
     ),
     zillowPluginPackage: readJson(resolve(directory, "vera-zillow-rental-research/package.json")),
+    browserResearchPluginManifest: readJson(
+      resolve(directory, "vera-browser-research/openclaw.plugin.json")
+    ),
+    browserResearchPluginPackage: readJson(
+      resolve(directory, "vera-browser-research/package.json")
+    ),
     imageManifest: readJson(resolve(directory, "remote-extension-image.json")),
     acceptedRollbackManifest: readJson(
       resolve(directory, "remote-extension-image.m13a-accepted.json")
@@ -613,6 +699,18 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
     ),
     zillowSnapshotSource: readFileSync(
       resolve(directory, "vera-zillow-rental-research/zillow-snapshot.mjs"),
+      "utf8"
+    ),
+    browserResearchPluginSource: readFileSync(
+      resolve(directory, "vera-browser-research/index.mjs"),
+      "utf8"
+    ),
+    browserResearchContractSource: readFileSync(
+      resolve(directory, "vera-browser-research/contract.mjs"),
+      "utf8"
+    ),
+    browserResearchSnapshotSource: readFileSync(
+      resolve(directory, "vera-browser-research/source-snapshot.mjs"),
       "utf8"
     ),
     auditDeviceSource: readFileSync(resolve(directory, "seed-security-audit-device.mjs"), "utf8"),

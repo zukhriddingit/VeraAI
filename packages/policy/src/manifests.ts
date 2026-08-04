@@ -168,6 +168,111 @@ export const ZILLOW_RENTAL_RESEARCH_MANIFEST = freezeManifest(
   })
 );
 
+export const APARTMENTS_RENTAL_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "apartments-com.browser-research.v1",
+    displayName: "Apartments.com rental research (founder experiment)",
+    version: 1,
+    source: "apartments_com",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["apartments_com.rental_research.v1"],
+    allowedDomains: ["www.apartments.com"],
+    allowedOrigins: ["https://www.apartments.com/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.apartments-com.browser-research.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-08-04",
+    decisionRecord: "AGENTS.md",
+    notes:
+      "Founder-only, user-triggered, disabled-by-default rental research. No login automation, lead forms, contact, tour, application, phone, email, payment, upload, or download actions.",
+    createdAt: "2026-08-04T00:00:00.000Z",
+    updatedAt: "2026-08-04T00:00:00.000Z"
+  })
+);
+
+export const ZILLOW_GENERIC_BROWSER_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "zillow.browser-research.v2",
+    displayName: "Zillow generic bounded rental research (founder experiment)",
+    version: 2,
+    source: "zillow",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["zillow.rental_research.v2"],
+    allowedDomains: ["www.zillow.com"],
+    allowedOrigins: ["https://www.zillow.com/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.zillow.browser-research.v2.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-08-04",
+    decisionRecord: "AGENTS.md",
+    notes:
+      "Founder-only migration of the accepted Zillow workflow to the signed generic bounded browser tool. No unrestricted browser or contact/application action is exposed.",
+    createdAt: "2026-08-04T00:00:00.000Z",
+    updatedAt: "2026-08-04T00:00:00.000Z"
+  })
+);
+
+export const FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "facebook-marketplace.browser-research.v1",
+    displayName: "Facebook Marketplace rental research (founder experiment)",
+    version: 1,
+    source: "facebook_marketplace",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["facebook_marketplace.rental_research.v1"],
+    allowedDomains: ["www.facebook.com"],
+    allowedOrigins: ["https://www.facebook.com/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.facebook-marketplace.browser-research.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-08-04",
+    decisionRecord: "AGENTS.md",
+    notes:
+      "Founder-only, user-triggered, disabled-by-default Marketplace rental research requiring an existing manual Facebook session. No login, seller-profile, Messenger, contact, application, payment, upload, or download actions.",
+    createdAt: "2026-08-04T00:00:00.000Z",
+    updatedAt: "2026-08-04T00:00:00.000Z"
+  })
+);
+
 /**
  * Calendar write access is deliberately narrower than the provider scope: Vera may
  * create only one user-approved tentative hold through the reviewed Google API.
@@ -293,5 +398,8 @@ export const INITIAL_LOCAL_MANIFESTS = Object.freeze([
   GOOGLE_CALENDAR_MANIFEST,
   RENTCAST_RENTAL_MANIFEST,
   ZILLOW_CURRENT_TAB_MANIFEST,
-  ZILLOW_RENTAL_RESEARCH_MANIFEST
+  ZILLOW_RENTAL_RESEARCH_MANIFEST,
+  ZILLOW_GENERIC_BROWSER_RESEARCH_MANIFEST,
+  APARTMENTS_RENTAL_RESEARCH_MANIFEST,
+  FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST
 ]) satisfies readonly SourcePolicyManifest[];

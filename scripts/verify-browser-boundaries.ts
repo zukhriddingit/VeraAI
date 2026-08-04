@@ -17,6 +17,11 @@ const zillowResearchContract = read(
 const zillowResearchSnapshot = read(
   "infra/maritime/openclaw/vera-zillow-rental-research/zillow-snapshot.mjs"
 );
+const browserResearchPlugin = read("infra/maritime/openclaw/vera-browser-research/index.mjs");
+const browserResearchContract = read("infra/maritime/openclaw/vera-browser-research/contract.mjs");
+const browserResearchSnapshot = read(
+  "infra/maritime/openclaw/vera-browser-research/source-snapshot.mjs"
+);
 const remoteConfig = read("infra/maritime/openclaw/remote-extension.openclaw.json5");
 const remoteImage = read("infra/maritime/openclaw/remote-extension-image.json");
 const remoteRouteFilter = read("infra/maritime/openclaw/remote-extension-route-filter.mjs");
@@ -27,6 +32,9 @@ const zillowCheckpointRoute = read(
   "apps/web/app/api/internal/browser-research/checkpoint/route.ts"
 );
 const zillowCheckpointService = read("apps/web/lib/zillow-research-checkpoint-service.ts");
+const browserResearchCheckpointService = read(
+  "apps/web/lib/browser-research-checkpoint-service.ts"
+);
 const environmentExample = read(".env.example");
 const routes = [
   "apps/web/app/api/integrations/browser-agent/status/route.ts",
@@ -188,6 +196,41 @@ rejectText(
   "The bounded Zillow tool contains arbitrary evaluation, selector, script, or coordinate input."
 );
 requireText(
+  browserResearchContract,
+  /TOOL_NAME\s*=\s*"vera_browser_research_v1"[\s\S]*MAX_RESULTS\s*=\s*10[\s\S]*MAX_DETAIL_PAGES\s*=\s*5[\s\S]*MAX_ACTIONS\s*=\s*50[\s\S]*MAX_DURATION_MS\s*=\s*90_000/u,
+  "The generic browser tool must keep its reviewed signed 10/5/50/90-second contract."
+);
+requireText(
+  browserResearchContract,
+  /createHmac[\s\S]*timingSafeEqual[\s\S]*plan_signature_invalid/u,
+  "The generic browser tool must verify the server-signed plan before any browser action."
+);
+requireText(
+  browserResearchPlugin,
+  /authorize\("inspect_shared_tabs"[\s\S]*browserGet\([\s\S]*\/tabs\?profile=[\s\S]*authorize\(action/u,
+  "Every generic browser action must be surrounded by a checkpoint and exact shared-tab recheck."
+);
+requireText(
+  browserResearchPlugin,
+  /path !== "\/navigate" && path !== "\/act"[\s\S]*\["click", "type", "scrollIntoView"\]/u,
+  "The generic tool may use only fixed navigation and semantic click, fill, and scroll operations."
+);
+requireText(
+  browserResearchSnapshot,
+  /FORBIDDEN_CONTROL[\s\S]*seller\\s\+profile/u,
+  "The source observers must reject lead, messaging, account, and seller-profile controls."
+);
+rejectText(
+  [browserResearchPlugin, browserResearchContract, browserResearchSnapshot].join("\n"),
+  /["'`]\/(?:screenshot|download|upload|cookies?|storage|pdf|dialog)(?:[/?'"`])/iu,
+  "The generic browser tool contains a forbidden browser-control route."
+);
+rejectText(
+  [browserResearchPlugin, browserResearchContract, browserResearchSnapshot].join("\n"),
+  /\b(?:eval|Function)\s*\(|\b(?:selector|javascript|clickCoords)\s*:/u,
+  "The generic browser tool contains arbitrary evaluation, selector, script, or coordinate input."
+);
+requireText(
   remoteRouteFilter,
   /request\.url\s*!==\s*EXTENSION_ROUTE/u,
   "The public browser Gateway filter must require the exact extension route."
@@ -232,6 +275,11 @@ requireText(
   /VERA_ZILLOW_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BROWSER_RESEARCH_CHECKPOINT_URL=[\r\n]+(?:#[^\r\n]*[\r\n]+)?VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN=[\r\n]+VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN=/u,
   "The bounded Zillow tool must remain disabled by default with server-only checkpoint configuration."
 );
+requireText(
+  environmentExample,
+  /VERA_APARTMENTS_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_FACEBOOK_MARKETPLACE_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY=/u,
+  "The additional browser sources must remain disabled by default and require a server-only signing key."
+);
 rejectText(
   environmentExample,
   /NEXT_PUBLIC_(?:MARITIME_BROWSER_GATEWAY|VERA_REMOTE_EXTENSION|OPENCLAW_EXTENSION)/u,
@@ -256,6 +304,16 @@ rejectText(
   zillowCheckpointService,
   /rawPageContent|snapshot\s*:|cookie|password/u,
   "The checkpoint service must not accept or persist raw browser or credential material."
+);
+requireText(
+  browserResearchCheckpointService,
+  /founderAuthorized[\s\S]*sourceEnabled[\s\S]*browserKillSwitchActive[\s\S]*runActive[\s\S]*cancelled[\s\S]*planSignatureValid/u,
+  "The generic checkpoint must re-evaluate founder, source, kill switch, run, cancellation, and plan signature."
+);
+rejectText(
+  browserResearchCheckpointService,
+  /rawPageContent|snapshot\s*:|cookie|password/u,
+  "The generic checkpoint must not accept or persist raw browser or credential material."
 );
 
 if (failures.length > 0) {

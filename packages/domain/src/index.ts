@@ -5,6 +5,7 @@ export * from "./activity.ts";
 export * from "./api.ts";
 export * from "./browser-agent-api.ts";
 export * from "./browser-acquisition.ts";
+export * from "./browser-research.ts";
 export * from "./capture-api.ts";
 export * from "./calendar-api.ts";
 export * from "./calendar.ts";
