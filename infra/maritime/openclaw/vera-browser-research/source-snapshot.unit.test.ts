@@ -1,10 +1,24 @@
 import { describe, expect, it } from "vitest";
 
-import { assertSafeControl, extractSourceCards, parseSourceSnapshot } from "./source-snapshot.mjs";
+import {
+  assertSafeControl,
+  extractSourceCards,
+  parseSourceSnapshot,
+  sourceStartUrl
+} from "./source-snapshot.mjs";
 
 const observedAt = "2026-08-04T15:00:00.000Z";
 
 describe("bounded source snapshots", () => {
+  it("uses the live Marketplace rentals route that preserves the Boston result surface", () => {
+    expect(
+      sourceStartUrl({
+        source: "facebook_marketplace",
+        profile: { location: "Boston, MA" }
+      })
+    ).toBe("https://www.facebook.com/marketplace/boston/propertyrentals/");
+  });
+
   it("extracts a sanitized Apartments.com card and ignores contact controls", () => {
     const name = "The Longwood, Boston, MA";
     const document = parseSourceSnapshot(
@@ -56,7 +70,7 @@ describe("bounded source snapshots", () => {
         ok: true,
         format: "ai",
         targetId: "shared-tab-1",
-        url: "https://www.facebook.com/marketplace/boston/category/propertyrentals/",
+        url: "https://www.facebook.com/marketplace/boston/propertyrentals/",
         refs: { e1: { role: "link", name } },
         snapshot: [
           `- link "${name}" [ref=e1]`,

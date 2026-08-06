@@ -9,7 +9,7 @@ import { findRuntimeLockViolations } from "../infra/maritime/openclaw/sanitize-r
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const RUNTIME_IMAGE =
-  "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2";
+  "cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22";
 const FINAL_STAGE = `FROM ${RUNTIME_IMAGE} AS final`;
 const FIXED_ENTRYPOINT =
   'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]';
@@ -175,8 +175,8 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
     manifest.publicationState !== "pending_security_replacement" ||
     manifest.image !== null ||
     manifest.replacesReleaseIndex !==
-      "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:ecd112fc4a094af6cbbb259ad027bf236ed8f6707cf14fa526455f8003d2dfec" ||
-    manifest.reasonCode !== "base_package_cve_2026_14257" ||
+      "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:be4145e41c8ff28152d1442e987503e0b3afef7dfa3a358e4651c1ddaae5982a" ||
+    manifest.reasonCode !== "base_package_cve_2026_69152_69192" ||
     manifest.releaseProfile !== "founder_browser_experimental" ||
     manifest.synthetic !== false ||
     manifest.deployableBeforeLiveProxyAcceptance !== false

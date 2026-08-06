@@ -26,7 +26,13 @@ interface Repair {
 }
 
 interface RuntimeLock {
-  readonly finalRuntime: { readonly uid: number; readonly gid: number };
+  readonly finalRuntime: {
+    readonly imageIndex: string;
+    readonly linuxAmd64Image: string;
+    readonly observedNodeVersion: string;
+    readonly uid: number;
+    readonly gid: number;
+  };
   readonly repairs: readonly Repair[];
 }
 
@@ -104,6 +110,29 @@ describe("Gateway runtime dependency sanitizer", () => {
         dependencyNames: []
       }
     ]);
+  });
+
+  it("rejects the stale runtime base containing npm-12 12.0.2-r1", () => {
+    expect(lock.finalRuntime).toMatchObject({
+      imageIndex:
+        "cgr.dev/chainguard/node@sha256:d8d2883b26d4fde4e524d0068cd78abbb23c7c2113a22e67a02cc73a9182552d",
+      linuxAmd64Image:
+        "cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22",
+      observedNodeVersion: "26.7.0"
+    });
+    expect(
+      findRuntimeLockViolations({
+        ...lock,
+        finalRuntime: {
+          ...lock.finalRuntime,
+          imageIndex:
+            "cgr.dev/chainguard/node@sha256:cf7ae5ead5aed79a61404d7b1bbb9b89ea461991b21cb8fcb07d4b6ad4d8b734",
+          linuxAmd64Image:
+            "cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2",
+          observedNodeVersion: "26.6.0"
+        }
+      })
+    ).toContain("Gateway runtime lock must pin the reviewed Chainguard amd64 Node image.");
   });
 
   it("rejects package name, version, and dependency-surface drift", () => {

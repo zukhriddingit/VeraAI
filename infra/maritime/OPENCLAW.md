@@ -55,10 +55,10 @@ package instances, each from a fixed npm tarball with a locked SHA-512 integrity
 The repaired `/app` tree is transplanted into the immutable `linux/amd64` Chainguard Node runtime:
 
 ```text
-cgr.dev/chainguard/node@sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2
+cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22
 ```
 
-`remote-extension-candidate.json` records this zero-finding security replacement as pending without
+`remote-extension-candidate.json` records this security replacement as pending without
 claiming that it has been published. `remote-extension-image.json` continues to record the exact
 previously published Gateway identity and its original runtime base. The pending candidate cannot
 be deployed; publication, signing, provenance, SBOM, attestations, and a follow-up immutable release
@@ -75,7 +75,10 @@ lock, three-stage copy boundary, tool pruning, final identity, and entrypoint. P
 builds the `linux/amd64` image without secrets or publication, checks the executable inventory, and
 runs Trivy 0.72.0 with fixed and unfixed `CRITICAL,HIGH` findings enabled.
 
-The 2026-07-26 local candidate passed that identity check, a Trivy 0.72.0 finding count of zero, all
+The replacement base preserves the minimal runtime while updating Node from 26.6.0 to 26.7.0 and
+the Wolfi `npm-12` package from 12.0.2-r1 to 12.0.2-r2, which fixes CVE-2026-69152 and
+CVE-2026-69192. The 2026-07-26 local candidate passed that identity check, a Trivy 0.72.0 finding
+count of zero, all
 focused transport tests, and a real loopback startup check: only port `18789` was publicly bound,
 the exact extension route returned `426`, and unrelated HTTP routes returned `404`. This local
 result is stored only as restricted gitignored evidence and is not a registry, signature,
