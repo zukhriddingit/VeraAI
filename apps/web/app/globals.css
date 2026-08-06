@@ -69,6 +69,7 @@ main {
 }
 
 .home-nav a,
+.home-nav .nav-action,
 .page-nav a {
   padding: 8px 12px;
   border: 1px solid var(--line);
@@ -80,12 +81,23 @@ main {
   text-decoration: none;
 }
 
+.home-nav .nav-action {
+  cursor: pointer;
+}
+
+.home-nav .nav-action:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .home-nav a:hover,
+.home-nav .nav-action:hover,
 .page-nav a:hover {
   border-color: var(--forest);
 }
 
 .home-nav a:focus-visible,
+.home-nav .nav-action:focus-visible,
 .page-nav a:focus-visible,
 .primary-button:focus-visible,
 .evidence-link:focus-visible,

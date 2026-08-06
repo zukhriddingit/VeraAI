@@ -153,7 +153,7 @@ export function sourceStartUrl(plan) {
   }
   if (plan.source === "facebook_marketplace") {
     return validateObservedUrl(
-      `https://www.facebook.com/marketplace/${city}/category/propertyrentals/`,
+      `https://www.facebook.com/marketplace/${city}/propertyrentals/`,
       plan.source,
       "result"
     ).url;

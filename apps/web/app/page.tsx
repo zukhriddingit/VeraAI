@@ -3,6 +3,7 @@ import Link from "next/link";
 import { loadCockpitInitialState } from "../lib/cockpit-read-model";
 import { requireVeraPageSession } from "../lib/server/page-session";
 import { DemoSearch } from "./demo-search";
+import { SignOutButton } from "./sign-out-button";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,7 @@ export default async function HomePage() {
             <Link href="/activity">Activity</Link>
             <Link href="/connectors">Source status</Link>
             <Link href="/settings/integrations">Settings</Link>
+            <SignOutButton />
           </nav>
         </div>
         <div className="cockpit-hero-copy">

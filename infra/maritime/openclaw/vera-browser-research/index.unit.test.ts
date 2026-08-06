@@ -50,6 +50,38 @@ function signedPlan() {
   };
 }
 
+function signedFacebookPlan() {
+  const issuedAt = new Date();
+  const payload = {
+    version: "1",
+    veraRunId: "facebook-live-replay-1",
+    source: "facebook_marketplace",
+    profile: {
+      location: "Boston, MA",
+      maximumRentUsd: 3_000,
+      minimumBedrooms: 1,
+      minimumBathrooms: 1
+    },
+    maxResults: 10,
+    maxDetailPages: 3,
+    maxActions: 50,
+    maxDurationMilliseconds: 90_000,
+    startingTabReference: {
+      kind: "single_shared_tab",
+      value: "explicitly_shared_zillow_rental_tab"
+    },
+    allowedHostnames: [...SOURCE_POLICY.facebook_marketplace.hostnames],
+    allowedUrlPatterns: [...SOURCE_POLICY.facebook_marketplace.urlPatterns],
+    enabledSafeActionTypes: [...SAFE_ACTIONS],
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: new Date(issuedAt.getTime() + 120_000).toISOString()
+  };
+  return {
+    ...payload,
+    signature: createHmac("sha256", signingKey).update(canonical(payload)).digest("hex")
+  };
+}
+
 function snapshot(mode: "base" | "price" | "beds", currentUrl: string) {
   const listingName = "The Longwood, Boston, MA";
   const common = {
@@ -100,6 +132,35 @@ function snapshot(mode: "base" | "price" | "beds", currentUrl: string) {
       "",
       "Links:",
       `1. ${listingName} -> https://www.apartments.com/the-longwood-boston-ma/r7nkvh2/`
+    ].join("\n")
+  };
+}
+
+function facebookSnapshot(currentUrl: string) {
+  const listingName = "2 Beds 1 Bath - Apartment, $1,995, Allston, MA, listing 123456789";
+  return {
+    ok: true,
+    format: "ai",
+    targetId: "shared-target-1",
+    url: currentUrl,
+    refs: {
+      e1: { role: "textbox", name: "Maximum range" },
+      e2: { role: "button", name: "Bedrooms" },
+      e3: { role: "radio", name: "1+" },
+      e4: { role: "button", name: "Bathrooms" },
+      e5: { role: "link", name: listingName },
+      e6: { role: "button", name: "Message seller" }
+    },
+    snapshot: [
+      '- textbox "Maximum range" [ref=e1]',
+      '- button "Bedrooms" [ref=e2]',
+      '- radio "1+" [ref=e3]',
+      '- button "Bathrooms" [ref=e4]',
+      `- link "${listingName}" [ref=e5]`,
+      '- button "Message seller" [ref=e6]',
+      "",
+      "Links:",
+      `1. ${listingName} -> https://www.facebook.com/marketplace/item/123456789/?ref=category_feed`
     ].join("\n")
   };
 }
@@ -182,6 +243,76 @@ describe("vera_browser_research_v1 local adapter replay", () => {
     });
     expect(JSON.stringify(browserBodies)).not.toMatch(
       /contact|apply|tour|message|email|phone|payment|upload|download/iu
+    );
+    expect(
+      browserBodies.every((body) => {
+        const kind = (body as { kind?: string }).kind;
+        return kind === undefined || ["click", "type", "scrollIntoView"].includes(kind);
+      })
+    ).toBe(true);
+  });
+
+  it("uses the live Facebook rentals route and extracts an observed card without forbidden actions", async () => {
+    let currentUrl = "https://www.facebook.com/marketplace/";
+    const browserBodies: unknown[] = [];
+    let monotonic = 2_000;
+    const result = await researchRentals(signedFacebookPlan(), {
+      now: () => new Date(),
+      monotonicNow: () => (monotonic += 10),
+      wait: async () => {},
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input.toString());
+        if (url.hostname === "vera-checkpoint.example.test") {
+          return Response.json({
+            allowed: true,
+            reason: "allowed",
+            checkedAt: new Date().toISOString()
+          });
+        }
+        if (url.pathname === "/tabs") {
+          return Response.json({
+            tabs: [
+              {
+                targetId: "shared-target-1",
+                tabId: "stable-tab-1",
+                url: currentUrl
+              }
+            ]
+          });
+        }
+        if (url.pathname === "/snapshot") return Response.json(facebookSnapshot(currentUrl));
+        const body = JSON.parse(String(init?.body)) as {
+          kind?: string;
+          url?: string;
+        };
+        browserBodies.push(body);
+        if (url.pathname === "/navigate" && typeof body.url === "string") currentUrl = body.url;
+        return Response.json({ ok: true, targetId: "shared-target-1", url: currentUrl });
+      }
+    });
+
+    expect(result).toMatchObject({
+      source: "facebook_marketplace",
+      state: "partial",
+      pageState: "ready",
+      resultCardsObserved: 1,
+      detailPagesOpened: 0,
+      listings: [
+        {
+          sourceListingId: "123456789",
+          canonicalObservedUrl: "https://www.facebook.com/marketplace/item/123456789/",
+          address: "Allston, MA",
+          rentUsd: 1_995,
+          bedrooms: 2,
+          bathrooms: 1
+        }
+      ]
+    });
+    expect(browserBodies[0]).toMatchObject({
+      url: "https://www.facebook.com/marketplace/boston/propertyrentals/"
+    });
+    expect(JSON.stringify(browserBodies)).not.toMatch(
+      /contact|apply|tour|message|messenger|email|phone|payment|upload|download/iu
     );
     expect(
       browserBodies.every((body) => {
