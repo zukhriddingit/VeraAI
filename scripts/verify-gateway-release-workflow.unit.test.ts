@@ -241,10 +241,24 @@ describe("Gateway release workflow verifier", () => {
     );
   });
 
-  it("rejects signing resume for a different runtime base digest", () => {
+  it("rejects signing resume that reads a different runtime base lock field", () => {
     const mutatedResume = resumeWorkflow.replace(
-      "sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2",
-      "sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f"
+      ".finalRuntime.linuxAmd64Image",
+      ".finalRuntime.imageIndex"
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must bind the existing zero-finding digest and evidence")
+      ])
+    );
+  });
+
+  it("rejects signing resume that does not compare labels to retained lock digests", () => {
+    const mutatedResume = resumeWorkflow.replace(
+      '            "$expected_runtime_base_digest"',
+      '            "sha256:09e6c4bd94200c4866fb18168e666b03de98a9908f55badab29388e80e8b622f"'
     );
     expect(
       findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)

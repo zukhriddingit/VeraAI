@@ -184,15 +184,23 @@ jobs:
         run: |
           set -euo pipefail
           docker pull "$GATEWAY_IMAGE_REF"
+          expected_openclaw_image="$(jq -er '.openclaw.image' \
+            release-evidence/gateway/remote-extension-runtime-lock.json)"
+          expected_openclaw_digest="${expected_openclaw_image##*@}"
+          [[ "$expected_openclaw_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
+          expected_runtime_base_image="$(jq -er '.finalRuntime.linuxAmd64Image' \
+            release-evidence/gateway/remote-extension-runtime-lock.json)"
+          expected_runtime_base_digest="${expected_runtime_base_image##*@}"
+          [[ "$expected_runtime_base_digest" =~ ^sha256:[a-f0-9]{64}$ ]]
           test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
             --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}')" = \
             "$RELEASE_SOURCE_SHA"
           test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
             --format '{{ index .Config.Labels "io.vera.openclaw.image.digest" }}')" = \
-            "sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"
+            "$expected_openclaw_digest"
           test "$(docker image inspect "$GATEWAY_IMAGE_REF" \
             --format '{{ index .Config.Labels "org.opencontainers.image.base.digest" }}')" = \
-            "sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2"
+            "$expected_runtime_base_digest"
           node scripts/verify-gateway-image-layout.mjs \
             --image-ref "$GATEWAY_IMAGE_REF" \
             --simulate-bootstrap

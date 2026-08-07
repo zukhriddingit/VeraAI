@@ -2,9 +2,6 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-const CURRENT_RUNTIME_BASE_DIGEST =
-  "sha256:f077d539a12eee7b7cd0ae1f79b3b779a82e72c93e274983aa0cd0f6519a70c2";
-
 const ACTIONS = new Map([
   ["actions/checkout", { commit: "de0fac2e4500dabe0009e67214ff5f5447ce83dd", count: 2 }],
   ["pnpm/action-setup", { commit: "b906affcce14559ad1aafd4ab0e942779e9f58b1", count: 1 }],
@@ -293,7 +290,16 @@ export function findGatewayReleaseWorkflowViolations(
     "org.opencontainers.image.revision",
     "io.vera.openclaw.image.digest",
     "org.opencontainers.image.base.digest",
-    CURRENT_RUNTIME_BASE_DIGEST,
+    "expected_openclaw_image=",
+    ".openclaw.image",
+    'expected_openclaw_digest="${expected_openclaw_image##*@}"',
+    '[[ "$expected_openclaw_digest" =~ ^sha256:[a-f0-9]{64}$ ]]',
+    "expected_runtime_base_image=",
+    ".finalRuntime.linuxAmd64Image",
+    'expected_runtime_base_digest="${expected_runtime_base_image##*@}"',
+    '[[ "$expected_runtime_base_digest" =~ ^sha256:[a-f0-9]{64}$ ]]',
+    '"$expected_openclaw_digest"',
+    '"$expected_runtime_base_digest"',
     "node scripts/verify-gateway-image-layout.mjs",
     '--image-ref "$GATEWAY_IMAGE_REF"',
     "--simulate-bootstrap",
@@ -338,6 +344,16 @@ export function findGatewayReleaseWorkflowViolations(
     "if-no-files-found: error"
   ]) {
     requireText(resumeWorkflow, required, resumeBoundaryMessage, violations);
+  }
+  if (
+    !/io\.vera\.openclaw\.image\.digest[\s\S]{0,240}"\$expected_openclaw_digest"/u.test(
+      resumeWorkflow
+    ) ||
+    !/org\.opencontainers\.image\.base\.digest[\s\S]{0,240}"\$expected_runtime_base_digest"/u.test(
+      resumeWorkflow
+    )
+  ) {
+    violations.push(resumeBoundaryMessage);
   }
   const recoveryBoundaryMessage =
     "Gateway signing resume must independently revalidate the existing digest before registry writes.";
