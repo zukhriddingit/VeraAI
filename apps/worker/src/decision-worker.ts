@@ -135,7 +135,9 @@ async function finalizeCompletedLiveSearches(
     const events = await repositories.activityEvents.list();
     const requested = events.filter(
       (event) =>
-        event.action === "live_search_requested" && event.metadata.profileId === job.searchProfileId
+        (event.action === "live_search_requested" ||
+          event.action === "rental_research_run_requested") &&
+        event.metadata.profileId === job.searchProfileId
     );
     for (const request of requested) {
       const runEvents = events.filter((event) => event.correlationId === request.correlationId);

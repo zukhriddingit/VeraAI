@@ -75,6 +75,59 @@ function profileInput(profile: SearchProfile) {
   };
 }
 
+function observedFacts(listing: BrowserResearchObservedListing): {
+  readonly rentUsd: number | null;
+  readonly bedrooms: number | null;
+  readonly bathrooms: number | null;
+  readonly separatedAdjacentFacebookMarkers: boolean;
+} {
+  if (
+    listing.source !== "facebook_marketplace" ||
+    listing.rentUsd === null ||
+    listing.propertyName === null
+  ) {
+    return {
+      rentUsd: listing.rentUsd,
+      bedrooms: listing.bedrooms,
+      bathrooms: listing.bathrooms,
+      separatedAdjacentFacebookMarkers: false
+    };
+  }
+  const adjacent = /^\$(\d{1,3}(?:,\d{3})?)(\d+(?:\.5)?)\s+Beds?\s+(\d+(?:\.5)?)\s+Baths?\b/iu.exec(
+    listing.propertyName
+  );
+  if (!adjacent) {
+    return {
+      rentUsd: listing.rentUsd,
+      bedrooms: listing.bedrooms,
+      bathrooms: listing.bathrooms,
+      separatedAdjacentFacebookMarkers: false
+    };
+  }
+  const rentDigits = adjacent[1]!.replaceAll(",", "");
+  const bedroomDigits = adjacent[2]!;
+  const observedBedrooms = Number(bedroomDigits);
+  const observedBathrooms = Number(adjacent[3]!);
+  if (
+    (listing.bedrooms !== null && observedBedrooms !== listing.bedrooms) ||
+    (listing.bathrooms !== null && observedBathrooms !== listing.bathrooms) ||
+    Number(`${rentDigits}${bedroomDigits.replace(".", "")}`) !== listing.rentUsd
+  ) {
+    return {
+      rentUsd: listing.rentUsd,
+      bedrooms: listing.bedrooms,
+      bathrooms: listing.bathrooms,
+      separatedAdjacentFacebookMarkers: false
+    };
+  }
+  return {
+    rentUsd: Number(rentDigits),
+    bedrooms: listing.bedrooms ?? observedBedrooms,
+    bathrooms: listing.bathrooms ?? observedBathrooms,
+    separatedAdjacentFacebookMarkers: true
+  };
+}
+
 export function signBrowserResearchPlan(
   rawPayload: BrowserResearchPlanPayload,
   signingKey: string
@@ -156,23 +209,24 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
       const listing = BrowserResearchObservedListingSchema.parse(rawListing);
       if (listing.source !== source) throw new Error("browser_research_source_mismatch");
       const sourceUrl = listing.finalDetailPageUrl ?? listing.canonicalObservedUrl;
+      const observed = observedFacts(listing);
       const structured = StructuredListingInputSchema.parse({
         source,
         sourceListingId: listing.sourceListingId,
         title: listing.propertyName,
         url: sourceUrl,
-        monthlyRentCents: listing.rentUsd === null ? null : listing.rentUsd * 100,
+        monthlyRentCents: observed.rentUsd === null ? null : observed.rentUsd * 100,
         baseRent:
-          listing.rentUsd === null
+          observed.rentUsd === null
             ? null
             : {
-                amountMinorUnits: listing.rentUsd * 100,
+                amountMinorUnits: observed.rentUsd * 100,
                 currency: "USD",
                 billingPeriod: "month",
-                rawAmount: `$${listing.rentUsd.toLocaleString("en-US")}/month`
+                rawAmount: `$${observed.rentUsd.toLocaleString("en-US")}/month`
               },
-        bedrooms: listing.bedrooms,
-        bathrooms: listing.bathrooms,
+        bedrooms: observed.bedrooms,
+        bathrooms: observed.bathrooms,
         addressText: listing.address,
         squareFeet: listing.squareFeet,
         availabilityRaw: listing.availability,
@@ -200,6 +254,7 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
     safeCaptureMetadata(rawListing, input) {
       const listing = BrowserResearchObservedListingSchema.parse(rawListing);
       if (listing.source !== source) throw new Error("browser_research_source_mismatch");
+      const observed = observedFacts(listing);
       return {
         connectorId: BROWSER_SOURCE_CONNECTOR_IDS[source],
         capability: "browser.capture",
@@ -208,7 +263,12 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
         extractionMethod: "openclaw_semantic_snapshot",
         visibleFees: listing.fees,
         missingFields: listing.missingFields,
-        safeExtractionWarnings: listing.safeExtractionWarnings,
+        safeExtractionWarnings: [
+          ...listing.safeExtractionWarnings,
+          ...(observed.separatedAdjacentFacebookMarkers
+            ? ["Separated exact adjacent Facebook price and bedroom markers from visible evidence."]
+            : [])
+        ],
         researchNotes: listing.researchNotes,
         sourceFieldProvenance: listing.sourceFieldProvenance
       };
