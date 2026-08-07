@@ -336,16 +336,38 @@ describe("Gateway release workflow verifier", () => {
     }
   );
 
-  it("rejects mutually exclusive attestation identity flags in signing resume", () => {
-    const mutatedResume = resumeWorkflow.replace(
-      "            --signer-workflow \\",
-      '            --cert-identity "$CERTIFICATE_IDENTITY" \\\n            --signer-workflow \\'
+  it("rejects signing-resume attestations without the exact workflow identity", () => {
+    const mutatedResume = resumeWorkflow.replaceAll(
+      '            --certificate-identity "$CERTIFICATE_IDENTITY" \\\n',
+      ""
     );
     expect(
       findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
     ).toEqual(
       expect.arrayContaining([
-        expect.stringMatching("must use only the signer-workflow identity selector")
+        expect.stringMatching("must bind the existing zero-finding digest and evidence")
+      ])
+    );
+  });
+
+  it("rejects the GitHub attestation action for a pre-merge source commit", () => {
+    const mutatedResume = `${resumeWorkflow}
+      - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+`;
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([expect.stringMatching("must use direct Cosign attestations")])
+    );
+  });
+
+  it("rejects signing resume without direct Cosign attestations", () => {
+    const mutatedResume = resumeWorkflow.replaceAll("cosign attest --yes", "echo skipped");
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must bind the existing zero-finding digest and evidence")
       ])
     );
   });

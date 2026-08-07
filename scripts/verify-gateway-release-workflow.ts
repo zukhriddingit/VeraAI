@@ -23,7 +23,6 @@ const RESUME_ACTIONS = new Map([
   ["actions/download-artifact", { commit: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c", count: 1 }],
   ["aquasecurity/setup-trivy", { commit: "81e514348e19b6112ce2a7e3ecbafe19c1e1f567", count: 1 }],
   ["docker/login-action", { commit: "b45d80f862d83dbcd57f89517bcf500b2ab88fb2", count: 1 }],
-  ["actions/attest", { commit: "f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6", count: 2 }],
   ["sigstore/cosign-installer", { commit: "6f9f17788090df1f26f669e9d70d6ae9567deba6", count: 1 }],
   ["actions/upload-artifact", { commit: "ea165f8d65b6e75b540449e92b4886f43607fa02", count: 1 }]
 ]);
@@ -314,10 +313,27 @@ export function findGatewayReleaseWorkflowViolations(
     "runId: $evidenceRunId",
     "sourceCommit: $sourceCommit",
     "imageDigest: $imageDigest",
-    "predicate-type: https://slsa.dev/provenance/v1",
-    "sbom-path: release-evidence/gateway/gateway.spdx.json",
     "cosign sign --yes",
+    "cosign attest --yes",
+    "--predicate release-evidence/gateway/source-provenance-predicate.json",
+    "--predicate release-evidence/gateway/gateway.spdx.json",
+    "PROVENANCE_PREDICATE_TYPE: https://slsa.dev/provenance/v1",
+    "SBOM_PREDICATE_TYPE: https://spdx.dev/Document/v2.3",
+    '--type "$PROVENANCE_PREDICATE_TYPE"',
+    '--type "$SBOM_PREDICATE_TYPE"',
+    "cosign-signature-bundle.json",
+    "provenance-bundle.json",
+    "sbom-bundle.json",
     "cosign verify",
+    "cosign verify-attestation",
+    '--certificate-identity "$CERTIFICATE_IDENTITY"',
+    "--certificate-oidc-issuer https://token.actions.githubusercontent.com",
+    "any(.subject[]?; .digest.sha256 == $digest)",
+    'jq -S -c .predicate "$candidate_statement"',
+    'cmp -s -- "$expected_predicate" "$observed_predicate"',
+    ".predicate.buildDefinition.externalParameters.sourceCommit == $sourceCommit",
+    ".predicate.buildDefinition.externalParameters.imageDigest == $digest",
+    '.predicate.spdxVersion == "SPDX-2.3"',
     "attest-openclaw-gateway.yml",
     "if-no-files-found: error"
   ]) {
@@ -361,9 +377,12 @@ export function findGatewayReleaseWorkflowViolations(
   ) {
     violations.push(recoveryBoundaryMessage);
   }
-  if (resumeWorkflow.includes("--cert-identity")) {
+  if (
+    resumeWorkflow.includes("actions/attest@") ||
+    resumeWorkflow.includes("attestations: write")
+  ) {
     violations.push(
-      "Gateway signing-resume attestation verification must use only the signer-workflow identity selector."
+      "Gateway signing resume must use direct Cosign attestations for a pre-merge source commit."
     );
   }
   if (
