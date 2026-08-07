@@ -82,6 +82,81 @@ describe("BrowserSourceAdapter", () => {
     ).toThrow();
   });
 
+  it("separates exact adjacent Facebook price and bedroom markers", () => {
+    const url = "https://www.facebook.com/marketplace/item/123456789/";
+    const listing = {
+      source: "facebook_marketplace" as const,
+      sourceListingId: "123456789",
+      canonicalObservedUrl: url,
+      finalDetailPageUrl: null,
+      propertyName: "$1,0502 Beds 1 Bath HouseSomerville, MA",
+      address: null,
+      rentUsd: 10_502,
+      bedrooms: 2,
+      bathrooms: 1,
+      squareFeet: null,
+      availability: null,
+      amenities: [],
+      fees: [],
+      observedAt: issuedAt.toISOString(),
+      sourceFieldProvenance: [],
+      missingFields: ["address" as const],
+      safeExtractionWarnings: [],
+      researchNotes: ["Read-only extraction."]
+    };
+
+    expect(FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER.toEnvelope(listing)).toMatchObject({
+      rawJson: {
+        monthlyRentCents: 105_000,
+        bedrooms: 2,
+        baseRent: { amountMinorUnits: 105_000, rawAmount: "$1,050/month" }
+      }
+    });
+    expect(
+      FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER.safeCaptureMetadata(listing, {
+        veraRunId: "facebook-run-1",
+        searchProfileId: searchProfile.id
+      })
+    ).toMatchObject({
+      safeExtractionWarnings: [
+        "Separated exact adjacent Facebook price and bedroom markers from visible evidence."
+      ]
+    });
+  });
+
+  it("recovers exact visible Facebook card facts when separate fields are missing", () => {
+    const url = "https://www.facebook.com/marketplace/item/987654321/";
+    const listing = {
+      source: "facebook_marketplace" as const,
+      sourceListingId: "987654321",
+      canonicalObservedUrl: url,
+      finalDetailPageUrl: null,
+      propertyName: "$1,2155 Beds 5.5 Baths ApartmentSomerville, MA",
+      address: null,
+      rentUsd: 12_155,
+      bedrooms: null,
+      bathrooms: null,
+      squareFeet: null,
+      availability: null,
+      amenities: [],
+      fees: [],
+      observedAt: issuedAt.toISOString(),
+      sourceFieldProvenance: [],
+      missingFields: ["address" as const, "bedrooms" as const, "bathrooms" as const],
+      safeExtractionWarnings: [],
+      researchNotes: ["Read-only extraction."]
+    };
+
+    expect(FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER.toEnvelope(listing)).toMatchObject({
+      rawJson: {
+        monthlyRentCents: 121_500,
+        bedrooms: 5,
+        bathrooms: 5.5,
+        baseRent: { amountMinorUnits: 121_500, rawAmount: "$1,215/month" }
+      }
+    });
+  });
+
   it("imports only observed Apartments.com facts through a local-browser envelope", () => {
     const url = "https://www.apartments.com/beacon-hill-boston-ma/abc123/";
     const listing = {
