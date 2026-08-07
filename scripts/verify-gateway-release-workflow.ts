@@ -343,6 +343,12 @@ export function findGatewayReleaseWorkflowViolations(
     "Gateway signing resume must independently revalidate the existing digest before registry writes.";
   for (const required of [
     "name: Verify source publication run is recoverable",
+    "--json event,headBranch,headSha,workflowName",
+    'test "$(jq -r \'.headBranch\' <<< "$run_metadata")" = "$TRUSTED_SOURCE_BRANCH"',
+    'publication_workflow_sha="$(jq -r \'.headSha\' <<< "$run_metadata")"',
+    '[[ "$publication_workflow_sha" =~ ^[a-f0-9]{40}$ ]]',
+    'git cat-file -e "$publication_workflow_sha^{commit}"',
+    '"$publication_workflow_sha" "origin/$TRUSTED_SOURCE_BRANCH"',
     '.conclusion == "success" or',
     '.conclusion == "failure" and',
     '"Build and publish the commit-bound Gateway"',
@@ -376,6 +382,15 @@ export function findGatewayReleaseWorkflowViolations(
     /\.trivyignore|--ignore-policy|--skip-db-update|--ignore-unfixed=true/iu.test(resumeWorkflow)
   ) {
     violations.push(recoveryBoundaryMessage);
+  }
+  if (
+    resumeWorkflow.includes(
+      'test "$(jq -r \'.headSha\' <<< "$run_metadata")" = "$RELEASE_SOURCE_SHA"'
+    )
+  ) {
+    violations.push(
+      "Gateway signing resume must not conflate the publication workflow commit with the candidate source commit."
+    );
   }
   if (
     resumeWorkflow.includes("actions/attest@") ||

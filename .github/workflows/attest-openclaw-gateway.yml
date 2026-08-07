@@ -84,9 +84,14 @@ jobs:
           set -euo pipefail
           run_metadata="$(gh run view "$EVIDENCE_RUN_ID" \
             --repo "$GITHUB_REPOSITORY" \
-            --json event,headSha,workflowName)"
+            --json event,headBranch,headSha,workflowName)"
           test "$(jq -r '.event' <<< "$run_metadata")" = "workflow_dispatch"
-          test "$(jq -r '.headSha' <<< "$run_metadata")" = "$RELEASE_SOURCE_SHA"
+          test "$(jq -r '.headBranch' <<< "$run_metadata")" = "$TRUSTED_SOURCE_BRANCH"
+          publication_workflow_sha="$(jq -r '.headSha' <<< "$run_metadata")"
+          [[ "$publication_workflow_sha" =~ ^[a-f0-9]{40}$ ]]
+          git cat-file -e "$publication_workflow_sha^{commit}"
+          git merge-base --is-ancestor \
+            "$publication_workflow_sha" "origin/$TRUSTED_SOURCE_BRANCH"
           test "$(jq -r '.workflowName' <<< "$run_metadata")" = \
             "Release immutable Vera OpenClaw Gateway"
           gh api \
