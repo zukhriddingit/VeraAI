@@ -372,6 +372,22 @@ describe("Gateway release workflow verifier", () => {
     );
   });
 
+  it("rejects conflating the publication workflow SHA with the candidate source SHA", () => {
+    const mutatedResume = resumeWorkflow
+      .replace("--json event,headBranch,headSha,workflowName", "--json event,headSha,workflowName")
+      .replace(
+        /          test "\$\(jq -r '\.headBranch' <<< "\$run_metadata"\)" = "\$TRUSTED_SOURCE_BRANCH"\n          publication_workflow_sha="\$\(jq -r '\.headSha' <<< "\$run_metadata"\)"\n          \[\[ "\$publication_workflow_sha" =~ \^\[a-f0-9\]\{40\}\$ \]\]\n          git cat-file -e "\$publication_workflow_sha\^\{commit\}"\n          git merge-base --is-ancestor \\\n            "\$publication_workflow_sha" "origin\/\$TRUSTED_SOURCE_BRANCH"\n/u,
+        '          test "$(jq -r \'.headSha\' <<< "$run_metadata")" = "$RELEASE_SOURCE_SHA"\n'
+      );
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching("must not conflate the publication workflow commit")
+      ])
+    );
+  });
+
   it.each([
     [
       "claims the publication workflow as the signer",
