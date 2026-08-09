@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   createLoopbackBrowserResearchClient,
+  createLoopbackZillowResearchClient,
   createMaritimeBrowserResearchClient,
   createMaritimeZillowResearchClient,
   getBrowserSourceAdapter,
@@ -1666,13 +1667,15 @@ export function createRentalResearchDependencies(
     repositories,
     repositoryProvider,
     liveSearch,
-    zillow: canConfigureZillow
-      ? createMaritimeZillowResearchClient(environment)
-      : {
-          async run() {
-            throw new MaritimeZillowResearchError("gateway_unavailable", true);
-          }
-        },
+    zillow: localBridgeConfigured
+      ? createLoopbackZillowResearchClient(environment)
+      : canConfigureZillow
+        ? createMaritimeZillowResearchClient(environment)
+        : {
+            async run() {
+              throw new MaritimeZillowResearchError("gateway_unavailable", true);
+            }
+          },
     zillowEnvironment,
     browserResearch: canConfigureBrowserResearch
       ? localBridgeConfigured
