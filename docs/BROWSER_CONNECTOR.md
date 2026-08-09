@@ -231,6 +231,33 @@ Emergency shutdown order:
 Removing the tab from the `OpenClaw` group revokes tab access. Revoking a user must not affect
 another user's isolated Gateway.
 
+## Prepared Vera Search tab
+
+The reviewed Vera OpenClaw extension package lives at
+`infra/chrome/vera-openclaw-extension`. It preserves the official OpenClaw 2.0.0 pairing and relay
+protocol but changes when Chrome's debugger lease is acquired.
+
+Choose **Prepare Vera Search tab** before starting browser research or a screen recording. The
+extension creates one blank consented tab, attaches while no third-party page or extension frame is
+present, and only then navigates to the fixed reviewed rental bootstrap URL. The popup must show
+**Browser ready** before Vera enables browser sources.
+
+This is a general compatibility boundary for recorders, accessibility tools, password managers,
+and other extension overlays. Vera never inspects or disables another extension. If Chrome refuses
+or later terminates the debugger lease, the popup reports a sanitized browser/debugger conflict,
+Vera keeps completed source results, and the user can prepare a clean replacement tab. Preparing a
+replacement unshares the previous tab without closing or navigating it.
+
+Load the directory as an unpacked extension only after this check passes:
+
+```sh
+pnpm verify:vera-openclaw-extension
+```
+
+The readiness bridge runs only on the reviewed Vera application origins and publishes pairing,
+relay, shared-tab count, and typed readiness state. It publishes no URLs, tab titles, page content,
+cookies, credentials, pairing values, extension identifiers, or raw Chrome errors.
+
 ## Exact founder live-test procedure
 
 All real outputs belong under `release-evidence/private/`, mode `0700`; individual evidence files

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 3,
+  "name": "Vera OpenClaw",
+  "version": "2.0.1",
+  "description": "A reviewed OpenClaw browser connector with one prepared, explicitly shared Vera Search tab.",
+  "permissions": ["debugger", "tabs", "tabGroups", "storage", "alarms"],
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1:3000/*",
+        "http://localhost:3000/*",
+        "https://verahousing.app/*",
+        "https://www.verahousing.app/*",
+        "https://vera-ai-housing.vercel.app/*"
+      ],
+      "js": ["readiness-bridge.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": {
+    "default_title": "Vera OpenClaw",
+    "default_popup": "popup.html"
+  },
+  "minimum_chrome_version": "125"
+}

@@ -63,6 +63,9 @@ jobs:
       - name: Verify browser boundaries
         run: pnpm verify:browser-boundaries
 
+      - name: Verify Vera OpenClaw extension
+        run: pnpm verify:vera-openclaw-extension
+
       - name: Verify Gmail read-only boundary
         run: pnpm verify:gmail-boundaries
 

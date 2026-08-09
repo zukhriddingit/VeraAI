@@ -2463,6 +2463,25 @@ h2 {
   gap: 9px;
 }
 
+.browser-readiness {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 12px;
+  font-size: 0.8rem;
+}
+
+.live-search-launch .browser-readiness-ready {
+  color: #e8fff2;
+  background: rgba(81, 201, 139, 0.18);
+}
+
+.live-search-launch .browser-readiness-blocked {
+  color: #fff0e8;
+  background: rgba(240, 106, 67, 0.18);
+}
+
 .search-choice-row label {
   min-width: 120px;
   padding: 9px 11px;

@@ -17,7 +17,8 @@ export default function RootLayout({ children }: RootLayoutProps) {
   const demoMode = process.env.VERA_DEMO_MODE === "1";
   return (
     <html lang="en">
-      <body>
+      {/* Recorder and password-manager extensions may add inert root attributes before hydration. */}
+      <body suppressHydrationWarning>
         {demoMode ? <DemoBanner /> : null}
         {children}
       </body>

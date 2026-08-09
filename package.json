@@ -18,6 +18,7 @@
     "verify:browser-boundaries": "tsx scripts/verify-browser-boundaries.ts",
     "verify:digitalocean-browser-gateway": "tsx scripts/verify-digitalocean-browser-gateway.ts",
     "verify:remote-extension-config": "tsx scripts/verify-remote-extension-config.ts",
+    "verify:vera-openclaw-extension": "tsx scripts/verify-vera-openclaw-extension.ts",
     "inspect:gateway-registry": "tsx scripts/inspect-gateway-registry.ts",
     "verify:gateway-image-layout": "node scripts/verify-gateway-image-layout.mjs",
     "verify:gateway-runtime-supply-chain": "tsx scripts/verify-gateway-runtime-supply-chain.ts",
