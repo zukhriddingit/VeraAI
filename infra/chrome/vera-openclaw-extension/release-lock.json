@@ -1,0 +1,14 @@
+{
+  "schemaVersion": "1",
+  "upstream": {
+    "name": "OpenClaw",
+    "version": "2.0.0",
+    "manifestSha256": "90dc60974ff7b68b4b487cc7040268d4ce458224beeb8bb715e56f59d23bec23"
+  },
+  "vera": {
+    "name": "Vera OpenClaw",
+    "version": "2.0.1",
+    "manifestSha256": "7088072d3fd766a07dd88f90b7a555f8de674f00f5b91b66aac30cd60e78cf08",
+    "runtimeSha256": "1f60e019b6e7019e60d15885dca9703f6813a2f408fc1f30afc9d8b6a9291b9c"
+  }
+}

@@ -1,7 +1,10 @@
 "use client";
 
 import {
+  BrowserExtensionReadinessMessageSchema,
   RentalResearchRunStatusSchema,
+  browserExtensionReadyForResearch,
+  type BrowserExtensionReadinessMessage,
   type CanonicalListingSummary,
   type RentalResearchProgressPhase,
   type RentalResearchRunStatus,
@@ -9,7 +12,7 @@ import {
   type RentalResearchSourceState,
   type SearchProfile
 } from "@vera/domain";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
 import { SearchComposer } from "./search-composer";
@@ -50,6 +53,33 @@ const sourceStateLabels: Record<RentalResearchSourceState, string> = {
   failed: "Failed"
 };
 
+const browserSources = new Set<RentalResearchSource>([
+  "zillow",
+  "apartments_com",
+  "facebook_marketplace"
+]);
+
+function browserReadinessCopy(message: BrowserExtensionReadinessMessage | null): string {
+  if (message === null) {
+    return "Vera OpenClaw is not detected. Open the extension and prepare a Vera Search tab.";
+  }
+  if (!message.paired) return "Pair Vera OpenClaw with the Browser Gateway first.";
+  if (message.relayState !== "on") return "Vera OpenClaw is paired but the Gateway is offline.";
+  if (message.readiness === "ready" && message.sharedTabCount === 1) {
+    return "Browser ready — recording and bounded browser research may start.";
+  }
+  if (message.readiness === "browser_extension_conflict") {
+    return "A browser extension blocked that tab. Choose Prepare Vera Search tab in OpenClaw.";
+  }
+  if (message.readiness === "debugger_conflict") {
+    return "Another debugger owns that tab. Close DevTools, then prepare a clean search tab.";
+  }
+  if (message.sharedTabCount > 1) {
+    return "More than one tab is shared. Prepare one clean Vera Search tab.";
+  }
+  return "Open Vera OpenClaw and choose Prepare Vera Search tab before searching.";
+}
+
 function sourceNeedsRetry(state: RentalResearchSourceState): boolean {
   return [
     "login_required",
@@ -84,10 +114,16 @@ export function LiveSearchPanel({
   const [localPhase, setLocalPhase] = useState<RentalResearchProgressPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [browserReadiness, setBrowserReadiness] = useState<BrowserExtensionReadinessMessage | null>(
+    null
+  );
+  const browserReadinessObservedAt = useRef<number | null>(null);
 
   const selectedProfile = profiles.find((profile) => profile.id === profileId) ?? null;
   const phase = status?.phase ?? localPhase;
   const running = runId !== null && phase !== "completed";
+  const browserSourceSelected = selectedSources.some((source) => browserSources.has(source));
+  const browserReady = browserExtensionReadyForResearch(browserReadiness);
   const failedSources = useMemo(
     () =>
       status?.sources
@@ -130,6 +166,28 @@ export function LiveSearchPanel({
     };
   }, [phase, runId]);
 
+  useEffect(() => {
+    const receiveReadiness = (event: MessageEvent<unknown>) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const parsed = BrowserExtensionReadinessMessageSchema.safeParse(event.data);
+      if (!parsed.success) return;
+      setBrowserReadiness(parsed.data);
+      browserReadinessObservedAt.current = Date.now();
+    };
+    window.addEventListener("message", receiveReadiness);
+    const staleCheck = window.setInterval(() => {
+      const observedAt = browserReadinessObservedAt.current;
+      if (observedAt !== null && Date.now() - observedAt > 3_500) {
+        browserReadinessObservedAt.current = null;
+        setBrowserReadiness(null);
+      }
+    }, 1_000);
+    return () => {
+      window.removeEventListener("message", receiveReadiness);
+      window.clearInterval(staleCheck);
+    };
+  }, []);
+
   function toggleSource(source: RentalResearchSource) {
     setSelectedSources((current) =>
       current.includes(source)
@@ -141,6 +199,10 @@ export function LiveSearchPanel({
 
   async function run(sources: readonly RentalResearchSource[] = selectedSources) {
     if (sources.length === 0) return;
+    if (sources.some((source) => browserSources.has(source)) && !browserReady) {
+      setError("Prepare one Browser ready Vera Search tab before running browser sources.");
+      return;
+    }
     const nextRunId = crypto.randomUUID();
     setError(null);
     setStatus(null);
@@ -250,11 +312,24 @@ export function LiveSearchPanel({
               }
             )}
           </div>
+          {browserSourceSelected ? (
+            <p
+              className={`browser-readiness ${browserReady ? "browser-readiness-ready" : "browser-readiness-blocked"}`}
+              role="status"
+            >
+              <strong>OpenClaw:</strong> {browserReadinessCopy(browserReadiness)}
+            </p>
+          ) : null}
           <label className="live-search-confirmation">
             <input
               type="checkbox"
               checked={confirmed}
-              disabled={running || selectedProfile === null || selectedSources.length === 0}
+              disabled={
+                running ||
+                selectedProfile === null ||
+                selectedSources.length === 0 ||
+                (browserSourceSelected && !browserReady)
+              }
               onChange={(event) => setConfirmed(event.target.checked)}
             />
             <span>
@@ -268,7 +343,11 @@ export function LiveSearchPanel({
             className="primary-button live-search-button"
             type="button"
             disabled={
-              running || !confirmed || selectedProfile === null || selectedSources.length === 0
+              running ||
+              !confirmed ||
+              selectedProfile === null ||
+              selectedSources.length === 0 ||
+              (browserSourceSelected && !browserReady)
             }
             onClick={() => void run()}
           >

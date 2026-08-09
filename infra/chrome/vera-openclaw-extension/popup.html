@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        width: 336px;
+        margin: 0;
+        padding: 16px;
+        background: #162c24;
+        color: #f5f3ec;
+      }
+      h1 {
+        align-items: center;
+        display: flex;
+        font-size: 16px;
+        gap: 8px;
+        margin: 0 0 12px;
+      }
+      .dot {
+        background: #6b7280;
+        border-radius: 50%;
+        height: 10px;
+        width: 10px;
+      }
+      .dot.on {
+        background: #51c98b;
+      }
+      .dot.connecting {
+        background: #f0b35a;
+      }
+      .dot.error {
+        background: #ff6b5f;
+      }
+      p {
+        color: #c7d5cf;
+        font-size: 12px;
+        line-height: 1.45;
+        margin: 7px 0;
+      }
+      .ready {
+        background: #214b3b;
+        border: 1px solid #3b765f;
+        border-radius: 8px;
+        color: #eaf7f0;
+        padding: 9px 10px;
+      }
+      textarea {
+        background: #203a31;
+        border: 1px solid #48665b;
+        border-radius: 6px;
+        box-sizing: border-box;
+        color: #f5f3ec;
+        font-family: ui-monospace, monospace;
+        font-size: 11px;
+        min-height: 54px;
+        resize: vertical;
+        width: 100%;
+      }
+      button {
+        background: #f06a43;
+        border: 0;
+        border-radius: 7px;
+        color: white;
+        cursor: pointer;
+        font-size: 13px;
+        font-weight: 650;
+        margin-top: 9px;
+        padding: 9px 11px;
+        width: 100%;
+      }
+      button.secondary {
+        background: #355448;
+        color: #f5f3ec;
+      }
+      .hidden {
+        display: none;
+      }
+      #error {
+        color: #ff9b91;
+      }
+    </style>
+  </head>
+  <body>
+    <h1><span id="statusDot" class="dot"></span>Vera OpenClaw</h1>
+    <div id="pairSection">
+      <p>Paste the one-time pairing string for your Vera Browser Gateway.</p>
+      <textarea
+        id="pairingString"
+        placeholder="wss://gateway.example/browser/extension#…"
+      ></textarea>
+      <p id="pairError" class="hidden"></p>
+      <button id="pairButton">Pair</button>
+    </div>
+    <div id="connectedSection" class="hidden">
+      <p id="connectionLine"></p>
+      <p id="readinessLine" class="ready"></p>
+      <button id="prepareButton">Prepare Vera Search tab</button>
+      <button id="shareButton" class="secondary"></button>
+      <button id="unpairButton" class="secondary">Unpair and revoke browser access</button>
+      <p id="error" class="hidden"></p>
+    </div>
+    <script src="popup.js" type="module"></script>
+  </body>
+</html>
