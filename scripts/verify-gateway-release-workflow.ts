@@ -417,6 +417,20 @@ export function findGatewayReleaseWorkflowViolations(
     );
   }
   if (
+    (resumeWorkflow.match(/cosign-release: v3\.1\.2/gu)?.length ?? 0) !== 1 ||
+    (resumeWorkflow.match(/--upload=true/gu)?.length ?? 0) !== 1 ||
+    resumeWorkflow.includes("--upload=false")
+  ) {
+    violations.push(
+      "Gateway signing resume must use Cosign v3.1.2's fixed OCI referrer writer and explicitly upload the signature."
+    );
+  }
+  if (resumeWorkflow.includes("--experimental-oci11")) {
+    violations.push(
+      "Gateway signing resume must use Cosign v3.1.2 automatic OCI referrer discovery instead of its deprecated experimental flag."
+    );
+  }
+  if (
     /\bmaritime\s+(?:create|deploy|restart|stop|delete|env|trigger)\b|\bkubectl\b|\bhelm\b|\bvercel\b|gh release|\bdocker service\b/iu.test(
       resumeWorkflow
     )

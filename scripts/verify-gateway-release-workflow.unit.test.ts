@@ -364,6 +364,33 @@ describe("Gateway release workflow verifier", () => {
     );
   });
 
+  it("rejects a signing resume that regresses to the broken Cosign referrer writer", () => {
+    const mutatedResume = resumeWorkflow.replace(
+      "cosign-release: v3.1.2",
+      "cosign-release: v3.0.6"
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(expect.arrayContaining([expect.stringMatching("fixed OCI referrer writer")]));
+  });
+
+  it("rejects a signing resume that does not explicitly upload the signature", () => {
+    const mutatedResume = resumeWorkflow.replace("            --upload=true \\\n", "");
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(expect.arrayContaining([expect.stringMatching("explicitly upload the signature")]));
+  });
+
+  it("rejects the deprecated experimental OCI-referrer flag", () => {
+    const mutatedResume = resumeWorkflow.replace(
+      '          cosign verify "$GATEWAY_IMAGE_REF" \\\n',
+      '          cosign verify "$GATEWAY_IMAGE_REF" \\\n            --experimental-oci11 \\\n'
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, ciWorkflow, mutatedResume)
+    ).toEqual(expect.arrayContaining([expect.stringMatching("automatic OCI referrer discovery")]));
+  });
+
   it("rejects the GitHub attestation action for a pre-merge source commit", () => {
     const mutatedResume = `${resumeWorkflow}
       - uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
