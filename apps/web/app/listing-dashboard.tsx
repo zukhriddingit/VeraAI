@@ -345,11 +345,17 @@ function ListingCard({
 export function ListingDashboard({
   initialListings,
   refreshKey = 0,
-  demoMode = false
+  demoMode = false,
+  researchRunning = false,
+  observedSince = null,
+  freshSearch = false
 }: {
   initialListings: readonly CanonicalListingSummary[];
   refreshKey?: number;
   demoMode?: boolean;
+  researchRunning?: boolean;
+  observedSince?: string | null;
+  freshSearch?: boolean;
 }) {
   const [state, setState] = useState<ListingState>({ kind: "ready", listings: initialListings });
   const [query, setQuery] = useState<ListingInboxQuery>(DEFAULT_LISTING_INBOX_QUERY);
@@ -368,7 +374,11 @@ export function ListingDashboard({
       if (controller.signal.aborted) return;
       setState({ kind: "loading" });
       try {
-        const response = await fetch("/api/listings", {
+        const requestUrl =
+          observedSince === null
+            ? "/api/listings"
+            : `/api/listings?observedSince=${encodeURIComponent(observedSince)}`;
+        const response = await fetch(requestUrl, {
           cache: "no-store",
           signal: controller.signal
         });
@@ -393,7 +403,7 @@ export function ListingDashboard({
 
     void loadListings();
     return () => controller.abort();
-  }, [refreshKey, reloadKey]);
+  }, [observedSince, refreshKey, reloadKey]);
 
   const listings = state.kind === "ready" ? state.listings : [];
   const visibleListings = refineListingInbox(listings, query);
@@ -456,10 +466,31 @@ export function ListingDashboard({
     }
   }
 
-  if (state.kind === "loading") {
+  if (researchRunning || state.kind === "loading") {
     return (
-      <div className="listing-message" role="status" aria-live="polite">
-        Loading local listings…
+      <div
+        className="listing-skeleton-grid"
+        role="status"
+        aria-live="polite"
+        aria-label="Vera is importing and scoring fresh rental results"
+        aria-busy="true"
+      >
+        <span className="sr-only">Vera is importing and scoring fresh rental results.</span>
+        {Array.from({ length: 3 }, (_, index) => (
+          <article className="listing-skeleton-card" aria-hidden="true" key={index}>
+            <div className="listing-skeleton-photo" />
+            <div className="listing-skeleton-body">
+              <span className="listing-skeleton-line listing-skeleton-line-short" />
+              <span className="listing-skeleton-line listing-skeleton-line-title" />
+              <span className="listing-skeleton-line" />
+              <div className="listing-skeleton-facts">
+                <span />
+                <span />
+                <span />
+              </div>
+            </div>
+          </article>
+        ))}
       </div>
     );
   }
@@ -482,11 +513,19 @@ export function ListingDashboard({
     return (
       <div className="demo-empty-state" role="status">
         <span aria-hidden="true">⌕</span>
-        <strong>{demoMode ? "No demo results yet" : "No listings yet"}</strong>
+        <strong>
+          {demoMode
+            ? "No demo results yet"
+            : freshSearch
+              ? "Ready for a fresh rental search"
+              : "No listings yet"}
+        </strong>
         <p>
           {demoMode
             ? "Run the sanitized demo search to reveal eight fixture-backed homes."
-            : "Capture or import listing evidence to begin."}
+            : freshSearch
+              ? "Choose your sources and start the search. Only results observed in this run will appear here."
+              : "Capture or import listing evidence to begin."}
         </p>
       </div>
     );

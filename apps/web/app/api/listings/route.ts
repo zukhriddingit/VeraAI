@@ -18,12 +18,27 @@ export async function GET(request: Request): Promise<Response> {
   const generatedAt = new Date().toISOString();
 
   try {
+    const observedSinceValue = new URL(request.url).searchParams.get("observedSince");
+    const observedSinceTimestamp =
+      observedSinceValue === null ? null : Date.parse(observedSinceValue);
+    if (observedSinceTimestamp !== null && Number.isNaN(observedSinceTimestamp)) {
+      return Response.json(
+        { code: "invalid_observed_since", message: "The listing time window is invalid." },
+        { status: 400, headers }
+      );
+    }
     const context = await requireVeraSession(request.headers);
     const repositories = context.repositories;
-    const listings =
+    const availableListings =
       context.demoMode && (await getDemoStatus(repositories)).status === "not_run"
         ? []
         : await repositories.canonicalListings.listSummaries();
+    const listings =
+      observedSinceTimestamp === null
+        ? availableListings
+        : availableListings.filter(
+            (listing) => Date.parse(listing.freshestObservedAt) >= observedSinceTimestamp
+          );
     const response = CanonicalListingCollectionResponseSchema.parse({
       listings,
       count: listings.length,

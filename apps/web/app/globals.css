@@ -445,6 +445,93 @@ h2 {
   background: rgba(229, 113, 85, 0.08);
 }
 
+.listing-skeleton-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.listing-skeleton-card {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.28fr) 1fr;
+  min-height: 250px;
+  overflow: hidden;
+  border: 1px solid rgba(29, 101, 72, 0.14);
+  border-radius: 24px;
+  background: rgba(255, 253, 248, 0.78);
+}
+
+.listing-skeleton-photo,
+.listing-skeleton-line,
+.listing-skeleton-facts span {
+  background: linear-gradient(
+    100deg,
+    rgba(29, 101, 72, 0.07) 20%,
+    rgba(160, 199, 180, 0.3) 40%,
+    rgba(29, 101, 72, 0.07) 60%
+  );
+  background-size: 220% 100%;
+  animation: listing-skeleton-shimmer 1.35s ease-in-out infinite;
+}
+
+.listing-skeleton-body {
+  display: grid;
+  align-content: center;
+  gap: 18px;
+  padding: clamp(24px, 4vw, 38px);
+}
+
+.listing-skeleton-line {
+  display: block;
+  width: 78%;
+  height: 13px;
+  border-radius: 999px;
+}
+
+.listing-skeleton-line-short {
+  width: 22%;
+  height: 10px;
+}
+
+.listing-skeleton-line-title {
+  width: 58%;
+  height: 28px;
+}
+
+.listing-skeleton-facts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.listing-skeleton-facts span {
+  height: 58px;
+  border-radius: 14px;
+}
+
+@keyframes listing-skeleton-shimmer {
+  to {
+    background-position-x: -220%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listing-skeleton-photo,
+  .listing-skeleton-line,
+  .listing-skeleton-facts span {
+    animation: none;
+  }
+}
+
+@media (max-width: 720px) {
+  .listing-skeleton-card {
+    grid-template-columns: 1fr;
+  }
+
+  .listing-skeleton-photo {
+    min-height: 150px;
+  }
+}
+
 .next-step::after {
   position: absolute;
   right: -80px;

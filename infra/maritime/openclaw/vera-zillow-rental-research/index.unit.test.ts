@@ -487,6 +487,7 @@ function happyFetch(
     readonly semanticCardActivation?: boolean;
     readonly selectedPriceLabel?: boolean;
     readonly priceButtonStaleResponses?: number;
+    readonly priceButtonTimeoutAfterCompletion?: boolean;
     readonly selectedRoomLabel?: boolean;
     readonly neutralRoomLabel?: boolean;
     readonly staleRentalTypePopover?: boolean;
@@ -615,6 +616,17 @@ function happyFetch(
     if (parsed.pathname === "/act") {
       const action = body as { kind?: string; ref?: string };
       const actionTargetId = currentTargetId;
+      if (
+        action.kind === "click" &&
+        action.ref === "e2" &&
+        options.priceButtonTimeoutAfterCompletion
+      ) {
+        stage = "price";
+        return jsonResponse(
+          { error: "TimeoutError: locator.click: Timeout 8000ms exceeded." },
+          500
+        );
+      }
       if (
         action.kind === "click" &&
         action.ref === "e2" &&
@@ -1242,6 +1254,35 @@ describe("Vera Zillow research execution", () => {
     expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
     );
+  });
+
+  it("observes a completed Price-panel click after an ambiguous timeout without repeating it", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      priceButtonTimeoutAfterCompletion: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-10T20:00:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" }),
+        expect.objectContaining({
+          action: "set_reviewed_filter",
+          result: "completed"
+        })
+      ])
+    );
+    const priceClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e2"
+    );
+    expect(priceClicks).toHaveLength(1);
   });
 
   it("recognizes Zillow's observed selected beds-and-baths chip", async () => {

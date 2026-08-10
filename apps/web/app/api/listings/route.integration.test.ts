@@ -100,6 +100,49 @@ describe.sequential("GET /api/listings", () => {
     ).toBe("high");
   });
 
+  it("can return only listings observed inside a fresh-search time window", async () => {
+    const dataDirectory = temporaryDataDirectory();
+    process.env.VERA_DATA_DIR = dataDirectory;
+    const connection = openDatabase({ filePath: join(dataDirectory, "vera.sqlite") });
+
+    try {
+      migrateDatabase(connection);
+      seedAndEvaluateProductionEvidence(createSqliteRepositories(connection));
+    } finally {
+      connection.close();
+    }
+
+    runtimeConnection = registerTestDemoRuntime(join(dataDirectory, "vera.sqlite"));
+    const provider = createDemoRepositoryProvider(runtimeConnection);
+    await runDemoSearch({
+      userId: DEMO_USER_ID,
+      repositoryProvider: provider,
+      repositories: provider.forUser(DEMO_USER_ID),
+      now: () => new Date("2026-07-17T12:30:00.000Z")
+    });
+
+    const response = await GET(
+      new Request("http://127.0.0.1/api/listings?observedSince=2026-07-18T00%3A00%3A00.000Z")
+    );
+    const parsed = CanonicalListingCollectionResponseSchema.parse(await response.json());
+
+    expect(response.status).toBe(200);
+    expect(parsed.listings).toEqual([]);
+    expect(parsed.count).toBe(0);
+  });
+
+  it("rejects an invalid fresh-search time window without querying listings", async () => {
+    const response = await GET(
+      new Request("http://127.0.0.1/api/listings?observedSince=not-a-timestamp")
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual({
+      code: "invalid_observed_since",
+      message: "The listing time window is invalid."
+    });
+  });
+
   it("fails closed with a safe response when the database is uninitialized", async () => {
     process.env.VERA_DATA_DIR = temporaryDataDirectory();
     runtimeConnection = registerTestDemoRuntime(join(process.env.VERA_DATA_DIR, "vera.sqlite"));

@@ -221,6 +221,13 @@ function amenities(text) {
   ].slice(0, 30);
 }
 
+function visibleFees(text) {
+  const match = text.match(
+    /\b(?:plus fees|application fee|admin fee|amenity fee|move-in fee|parking fee)[^,.;]{0,100}/giu
+  );
+  return [...new Set((match ?? []).map((value) => clean(value, 200)).filter(Boolean))].slice(0, 20);
+}
+
 function address(text, source) {
   if (source === "facebook_marketplace") {
     return (
@@ -248,7 +255,7 @@ function sourceId(url, source) {
     : (url.match(/\/([a-z0-9]{7})\/$/u)?.[1] ?? null);
 }
 
-export function extractSourceCards(document, plan, observedAt) {
+export function extractSourceCardCandidates(document, plan, observedAt) {
   const seen = new Set();
   const cards = [];
   for (const link of document.links) {
@@ -274,16 +281,7 @@ export function extractSourceCards(document, plan, observedAt) {
           300
         ) || null,
       amenities: amenities(evidence),
-      fees: /\b(?:plus fees|application fee|admin fee|amenity fee)\b/iu.test(evidence)
-        ? [
-            clean(
-              evidence.match(
-                /\b(?:plus fees|application fee|admin fee|amenity fee)[^,.;]{0,80}/iu
-              )?.[0],
-              200
-            )
-          ]
-        : [],
+      fees: visibleFees(evidence),
       observedAt,
       sourceFieldProvenance: [],
       missingFields: [],
@@ -331,8 +329,112 @@ export function extractSourceCards(document, plan, observedAt) {
       listing.safeExtractionWarnings.push(
         "One or more core facts were not visible on the result card."
       );
-    cards.push(listing);
+    cards.push({
+      listing,
+      resultRef: link.ref,
+      observedLinkName: link.name
+    });
     if (cards.length >= plan.maxResults) break;
   }
   return cards;
+}
+
+export function extractSourceCards(document, plan, observedAt) {
+  return extractSourceCardCandidates(document, plan, observedAt).map(
+    (candidate) => candidate.listing
+  );
+}
+
+export function enrichSourceListingFromDetail(listing, document, observedAt) {
+  if (document.page.kind !== "detail") {
+    throw new VeraBrowserResearchError("source_surface_not_allowed");
+  }
+  const evidence = clean(document.snapshot.split("\n\nLinks:\n", 1)[0], 50_000);
+  const observed = {
+    address: address(evidence, listing.source),
+    rent: money(evidence),
+    bedrooms: room(evidence, "bedrooms"),
+    bathrooms: room(evidence, "bathrooms"),
+    square_footage: squareFeet(evidence),
+    availability:
+      clean(
+        evidence.match(
+          /\b(?:available now|available (?:on )?[A-Za-z]{3,9}\s+\d{1,2}(?:,\s+\d{4})?)\b/iu
+        )?.[0] ?? "",
+        300
+      ) || null,
+    amenities: amenities(evidence),
+    fees: visibleFees(evidence)
+  };
+  const detailValues = new Map([
+    ["address", observed.address],
+    ["rent", observed.rent],
+    ["bedrooms", observed.bedrooms],
+    ["bathrooms", observed.bathrooms],
+    ["square_footage", observed.square_footage],
+    ["availability", observed.availability],
+    ["amenities", observed.amenities.length ? observed.amenities : null],
+    ["fees", observed.fees.length ? observed.fees : null]
+  ]);
+  const provenance = listing.sourceFieldProvenance.filter(
+    (entry) => !detailValues.has(entry.field) || detailValues.get(entry.field) === null
+  );
+  provenance.push({
+    field: "final_detail_page_url",
+    observedFrom: "detail_page",
+    sourceUrl: document.page.url,
+    extractionMethod: "openclaw_semantic_snapshot",
+    confidenceBasisPoints: 10_000,
+    observedAt
+  });
+  for (const [field, value] of detailValues) {
+    if (value === null) continue;
+    provenance.push({
+      field,
+      observedFrom: "detail_page",
+      sourceUrl: document.page.url,
+      extractionMethod: "openclaw_semantic_snapshot",
+      confidenceBasisPoints: 9_500,
+      observedAt
+    });
+  }
+  const enriched = {
+    ...listing,
+    finalDetailPageUrl: document.page.url,
+    address: observed.address ?? listing.address,
+    rentUsd: observed.rent ?? listing.rentUsd,
+    bedrooms: observed.bedrooms ?? listing.bedrooms,
+    bathrooms: observed.bathrooms ?? listing.bathrooms,
+    squareFeet: observed.square_footage ?? listing.squareFeet,
+    availability: observed.availability ?? listing.availability,
+    amenities: observed.amenities.length > 0 ? observed.amenities : listing.amenities,
+    fees: observed.fees.length > 0 ? observed.fees : listing.fees,
+    sourceFieldProvenance: provenance,
+    missingFields: [],
+    safeExtractionWarnings: [],
+    researchNotes: [
+      ...listing.researchNotes,
+      "Opened one bounded same-tab listing detail page and retained observed rental facts only."
+    ]
+  };
+  for (const [field, value] of [
+    ["source_listing_id", enriched.sourceListingId],
+    ["property_name", enriched.propertyName],
+    ["address", enriched.address],
+    ["rent", enriched.rentUsd],
+    ["bedrooms", enriched.bedrooms],
+    ["bathrooms", enriched.bathrooms],
+    ["square_footage", enriched.squareFeet],
+    ["availability", enriched.availability],
+    ["amenities", enriched.amenities.length ? enriched.amenities : null],
+    ["fees", enriched.fees.length ? enriched.fees : null]
+  ]) {
+    if (value === null) enriched.missingFields.push(field);
+  }
+  if (enriched.address === null || enriched.rentUsd === null) {
+    enriched.safeExtractionWarnings.push(
+      "One or more core facts were not visible on the result card or bounded detail page."
+    );
+  }
+  return enriched;
 }
