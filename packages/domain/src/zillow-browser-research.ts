@@ -14,12 +14,24 @@ export const ZILLOW_RESEARCH_MAX_EXPANSIONS = 2;
 export const ZILLOW_RESEARCH_MAX_DURATION_MS = 90_000;
 
 const ZillowHostnameSchema = z.literal("www.zillow.com");
+function isReviewedZillowObservedUrl(value: string): boolean {
+  return (
+    /^https:\/\/www\.zillow\.com\/[^\s#]*$/u.test(value) ||
+    /^https:\/\/www\.zillow\.com\/apartments\/[a-z0-9-]+\/[a-z0-9-]+\/[A-Za-z0-9]+\/?(?:\?[^\s#]*)?#bedrooms-[1-9][0-9]*$/u.test(
+      value
+    ) ||
+    /^https:\/\/www\.zillow\.com\/b\/[a-z0-9-]+\/[A-Za-z0-9]+\/?(?:\?[^\s#]*)?#unit-[1-9][0-9]*$/u.test(
+      value
+    )
+  );
+}
+
 const ZillowObservedUrlSchema = z
   .url()
   .max(2_048)
-  .regex(
-    /^https:\/\/www\.zillow\.com\/[^\s#]*$/u,
-    "Observed Zillow URLs must use the reviewed HTTPS hostname without credentials or fragments."
+  .refine(
+    isReviewedZillowObservedUrl,
+    "Observed Zillow URLs must use the reviewed HTTPS hostname and only reviewed listing-unit fragments."
   );
 
 const SafeObservedTextSchema = z

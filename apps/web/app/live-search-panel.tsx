@@ -15,6 +15,11 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
+import {
+  rentalResearchRecoveryLabel,
+  rentalResearchRecoveryReady,
+  rentalResearchRecoverySources
+} from "./live-search-recovery";
 import { SearchComposer } from "./search-composer";
 import { STATIC_ACCEPTANCE_SNAPSHOT_WARNING } from "./static-acceptance-warning";
 
@@ -80,17 +85,6 @@ function browserReadinessCopy(message: BrowserExtensionReadinessMessage | null):
   return "Open Vera OpenClaw and choose Prepare Vera Search tab before searching.";
 }
 
-function sourceNeedsRetry(state: RentalResearchSourceState): boolean {
-  return [
-    "login_required",
-    "browser_offline",
-    "tab_required",
-    "partial",
-    "manual_action_required",
-    "failed"
-  ].includes(state);
-}
-
 export function LiveSearchPanel({
   profiles: initialProfiles,
   initialListings,
@@ -125,12 +119,10 @@ export function LiveSearchPanel({
   const browserSourceSelected = selectedSources.some((source) => browserSources.has(source));
   const browserReady = browserExtensionReadyForResearch(browserReadiness);
   const failedSources = useMemo(
-    () =>
-      status?.sources
-        .filter((source) => sourceNeedsRetry(source.state))
-        .map((source) => source.source) ?? [],
+    () => (status === null ? [] : rentalResearchRecoverySources(status.sources)),
     [status]
   );
+  const recoveryReady = status !== null && rentalResearchRecoveryReady(status.sources);
 
   useEffect(() => {
     if (runId === null || phase === "completed") return;
@@ -197,7 +189,10 @@ export function LiveSearchPanel({
     setConfirmed(false);
   }
 
-  async function run(sources: readonly RentalResearchSource[] = selectedSources) {
+  async function run(
+    sources: readonly RentalResearchSource[] = selectedSources,
+    retryOfSearchRunId: string | null = null
+  ) {
     if (sources.length === 0) return;
     if (sources.some((source) => browserSources.has(source)) && !browserReady) {
       setError("Prepare one Browser ready Vera Search tab before running browser sources.");
@@ -216,7 +211,8 @@ export function LiveSearchPanel({
           veraRunId: nextRunId,
           searchProfileId: profileId,
           selectedSources: sources,
-          confirmedExternalUsage: true
+          confirmedExternalUsage: true,
+          ...(retryOfSearchRunId === null ? {} : { retryOfSearchRunId })
         })
       });
       const body = (await response.json()) as unknown;
@@ -378,13 +374,15 @@ export function LiveSearchPanel({
                 ? "Partial completion: successful source results were preserved."
                 : "Each source progresses independently through Vera’s normal import pipeline."}
             </p>
-            {failedSources.length > 0 && !running ? (
+            {failedSources.length > 0 && (!running || recoveryReady) ? (
               <button
                 className="secondary-button"
                 type="button"
-                onClick={() => void run(failedSources)}
+                onClick={() => void run(failedSources, status.searchRunId)}
               >
-                Retry failed source{failedSources.length === 1 ? "" : "s"}
+                {rentalResearchRecoveryLabel(
+                  status.sources.filter((source) => failedSources.includes(source.source))
+                )}
               </button>
             ) : null}
           </div>

@@ -228,6 +228,41 @@ describe("founder Zillow rental research service", () => {
     });
   });
 
+  it("preserves observed Zillow listings when the browser goes offline after extraction", async () => {
+    const deps = dependencies(async () =>
+      output({
+        state: "manual_action_required",
+        pageState: "ready",
+        manualAction: "browser_offline",
+        resultCardsObserved: 10,
+        completedAt: "2026-07-30T12:00:31.000Z",
+        warnings: ["Research stopped safely: browser_offline."]
+      })
+    );
+
+    const status = await runRentalResearch(request, deps);
+
+    expect(status).toMatchObject({
+      sources: [
+        { source: "rentcast", state: "excluded_by_user" },
+        {
+          source: "zillow",
+          state: "browser_offline",
+          manualAction: "browser_offline",
+          retrievedCount: 1,
+          importedCount: 1,
+          rejectedCount: 0
+        },
+        ...excludedAdditionalSources
+      ]
+    });
+    expect(await deps.repositories.rawListings.count()).toBe(13);
+    expect(await deps.repositories.sourceJobs.getById(request.veraRunId)).toMatchObject({
+      status: "manual_action_required",
+      manualAction: { blocker: "node_offline" }
+    });
+  });
+
   it("stops the exact source job and imports nothing returned after cancellation", async () => {
     let release = (_value: ZillowRentalResearchOutput) => {};
     const gate = new Promise<ZillowRentalResearchOutput>((resolve) => {

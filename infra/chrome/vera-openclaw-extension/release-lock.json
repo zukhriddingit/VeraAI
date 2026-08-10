@@ -7,8 +7,8 @@
   },
   "vera": {
     "name": "Vera OpenClaw",
-    "version": "2.0.1",
-    "manifestSha256": "7088072d3fd766a07dd88f90b7a555f8de674f00f5b91b66aac30cd60e78cf08",
-    "runtimeSha256": "1f60e019b6e7019e60d15885dca9703f6813a2f408fc1f30afc9d8b6a9291b9c"
+    "version": "2.0.2",
+    "manifestSha256": "00c4a04bb8b34f3ac00964b8087b94c3a9871d44ad56d9a93c8140ee68d31415",
+    "runtimeSha256": "1e8288e81dd5238a05ebbdc1fbfc804cf30791cebde9700526e4192047bcee99"
   }
 }

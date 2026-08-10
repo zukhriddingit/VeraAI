@@ -249,7 +249,7 @@ chrome.debugger.onDetach.addListener((source, reason) => {
   });
 });
 
-async function handleRelayCommand(message) {
+export async function handleRelayCommand(message) {
   const { seq } = message;
   try {
     switch (message.type) {
@@ -262,7 +262,12 @@ async function handleRelayCommand(message) {
         return;
       }
       case "detach":
-        await detachDebugger(message.tabId);
+        // Relay detach ends the current bounded research session, not the user's
+        // explicit tab-sharing consent. Keep this extension's debugger lease so
+        // the prepared tab stays ready for the next user-triggered source run.
+        // Explicit unshare, unpair, tab close, or Chrome debugger cancellation
+        // still calls detachDebugger and revokes the lease immediately.
+        scheduleTabsSync();
         send({ type: "result", seq, result: {} });
         return;
       case "cdp": {
