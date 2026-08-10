@@ -24,6 +24,23 @@ const validInput = {
 
 const observedAt = "2026-07-30T12:00:00.000Z";
 const observedUrl = "https://www.zillow.com/homedetails/1-Boston-St-Boston-MA/123_zpid/";
+const baseListing = {
+  sourceListingId: null,
+  canonicalObservedUrl: observedUrl,
+  finalDetailPageUrl: null,
+  address: null,
+  rentUsd: null,
+  bedrooms: null,
+  bathrooms: null,
+  squareFeet: null,
+  availability: null,
+  amenities: [],
+  observedAt,
+  sourceFieldProvenance: [],
+  missingFields: ["source_listing_id", "address", "rent"],
+  safeExtractionWarnings: [],
+  researchNotes: []
+} as const;
 
 describe("ZillowRentalResearchInputSchema", () => {
   it("accepts only explicit bounded profile input and a safe tab reference", () => {
@@ -92,33 +109,15 @@ describe("ZillowObservedListingSchema", () => {
   });
 
   it("rejects off-host URLs and duplicate field provenance", () => {
-    const base = {
-      sourceListingId: null,
-      canonicalObservedUrl: observedUrl,
-      finalDetailPageUrl: null,
-      address: null,
-      rentUsd: null,
-      bedrooms: null,
-      bathrooms: null,
-      squareFeet: null,
-      availability: null,
-      amenities: [],
-      observedAt,
-      sourceFieldProvenance: [],
-      missingFields: ["source_listing_id", "address", "rent"],
-      safeExtractionWarnings: [],
-      researchNotes: []
-    };
-
     expect(
       ZillowObservedListingSchema.safeParse({
-        ...base,
+        ...baseListing,
         canonicalObservedUrl: "https://example.com/homedetails/123/"
       }).success
     ).toBe(false);
     expect(
       ZillowObservedListingSchema.safeParse({
-        ...base,
+        ...baseListing,
         sourceFieldProvenance: [
           {
             field: "address",
@@ -137,6 +136,29 @@ describe("ZillowObservedListingSchema", () => {
             observedAt
           }
         ]
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts only Zillow's reviewed apartment-bedroom and building-unit fragments", () => {
+    for (const url of [
+      "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#bedrooms-2",
+      "https://www.zillow.com/b/the-lola-boston-ma/5XjVQx/#unit-2"
+    ]) {
+      expect(
+        ZillowObservedListingSchema.safeParse({
+          ...baseListing,
+          canonicalObservedUrl: url,
+          finalDetailPageUrl: url
+        }).success
+      ).toBe(true);
+    }
+
+    expect(
+      ZillowObservedListingSchema.safeParse({
+        ...baseListing,
+        canonicalObservedUrl:
+          "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#contact"
       }).success
     ).toBe(false);
   });

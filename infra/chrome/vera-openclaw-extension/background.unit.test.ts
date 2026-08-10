@@ -21,6 +21,9 @@ const tabs = new Map<number, { id: number; url: string; title: string; windowId:
 const grouped = new Set<number>([5]);
 const attached = new Set<number>([5]);
 let runtimeMessageListener: RuntimeMessageListener | null = null;
+let backgroundModule: {
+  handleRelayCommand(message: Record<string, unknown>): Promise<void>;
+};
 
 function eventHook<T extends (...arguments_: never[]) => unknown>() {
   return { addListener: vi.fn((_listener: T) => undefined) };
@@ -97,7 +100,7 @@ const chromeMock = {
     onDetach: eventHook()
   },
   runtime: {
-    getManifest: vi.fn(() => ({ version: "2.0.1" })),
+    getManifest: vi.fn(() => ({ version: "2.0.2" })),
     onMessage: {
       addListener: vi.fn((listener: RuntimeMessageListener) => {
         runtimeMessageListener = listener;
@@ -119,7 +122,7 @@ async function message(message: Record<string, unknown>) {
 
 beforeAll(async () => {
   vi.stubGlobal("chrome", chromeMock);
-  await import("./background.js");
+  backgroundModule = await import("./background.js");
 });
 
 describe("Vera OpenClaw background lifecycle", () => {
@@ -146,7 +149,35 @@ describe("Vera OpenClaw background lifecycle", () => {
     expect(attached).toEqual(new Set([9]));
   });
 
+  it("preserves the prepared debugger lease when a bounded relay session detaches", async () => {
+    calls.length = 0;
+    await backgroundModule.handleRelayCommand({ type: "detach", tabId: 9, seq: 1 });
+
+    expect(calls).not.toContain("detach:9");
+    expect(grouped).toEqual(new Set([9]));
+    expect(attached).toEqual(new Set([9]));
+    await expect(message({ type: "getStatus" })).resolves.toMatchObject({
+      readiness: "ready",
+      sharedTabCount: 1
+    });
+  });
+
+  it("still revokes the debugger lease when the user explicitly stops sharing", async () => {
+    calls.length = 0;
+    await expect(message({ type: "toggleShareTab", tabId: 9 })).resolves.toMatchObject({
+      ok: true,
+      shared: false,
+      readiness: "not_shared"
+    });
+
+    expect(calls).toContain("detach:9");
+    expect(calls).toContain("ungroup:9");
+    expect(grouped.size).toBe(0);
+    expect(attached.size).toBe(0);
+  });
+
   it("does not report ready after Chrome drops the debugger lease", async () => {
+    await message({ type: "prepareSearchTab" });
     attached.delete(9);
     await expect(message({ type: "getStatus" })).resolves.toMatchObject({
       readiness: "attachment_failed",

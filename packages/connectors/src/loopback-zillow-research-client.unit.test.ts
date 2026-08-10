@@ -36,6 +36,8 @@ const output = {
   safeActionTrail: [],
   warnings: ["Research stopped safely: layout_changed."]
 } as ZillowRentalResearchOutput;
+const reviewedUnitUrl =
+  "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#bedrooms-2";
 
 describe("LoopbackZillowResearchClient", () => {
   it("posts strict Zillow input only to the authenticated loopback Zillow route", async () => {
@@ -62,6 +64,54 @@ describe("LoopbackZillowResearchClient", () => {
       authorization: `Bearer ${token}`,
       body: input
     });
+  });
+
+  it("accepts observed listings before a late browser-offline partial stop", async () => {
+    const partialOutput: ZillowRentalResearchOutput = {
+      ...output,
+      state: "manual_action_required",
+      manualAction: "browser_offline",
+      listings: [
+        {
+          sourceListingId: "5XjVQx",
+          canonicalObservedUrl: reviewedUnitUrl,
+          finalDetailPageUrl: reviewedUnitUrl,
+          address: "1 Boston St, Boston, MA",
+          rentUsd: 2_900,
+          bedrooms: 2,
+          bathrooms: 1,
+          squareFeet: null,
+          availability: null,
+          amenities: [],
+          observedAt: "2026-08-09T05:00:00.000Z",
+          sourceFieldProvenance: [
+            {
+              field: "canonical_observed_url",
+              observedFrom: "detail_page",
+              sourceUrl: reviewedUnitUrl,
+              extractionMethod: "openclaw_semantic_snapshot",
+              confidenceBasisPoints: 10_000,
+              observedAt: "2026-08-09T05:00:00.000Z"
+            }
+          ],
+          missingFields: ["square_footage", "availability", "amenities"],
+          safeExtractionWarnings: [],
+          researchNotes: ["Observed before the shared browser became unavailable."]
+        }
+      ],
+      resultCardsObserved: 10,
+      detailPagesOpened: 1,
+      warnings: ["Research stopped safely: browser_offline."]
+    };
+    const client = new LoopbackZillowResearchClient({
+      url: "http://127.0.0.1:3002/research",
+      token,
+      fetch: async () => Response.json(partialOutput)
+    });
+
+    await expect(client.run(input, { signal: new AbortController().signal })).resolves.toEqual(
+      partialOutput
+    );
   });
 
   it("rejects non-loopback and non-exact bridge URLs", () => {
