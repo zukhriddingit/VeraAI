@@ -486,6 +486,7 @@ function happyFetch(
     readonly duplicateForRentFilters?: boolean;
     readonly semanticCardActivation?: boolean;
     readonly selectedPriceLabel?: boolean;
+    readonly priceButtonStaleResponses?: number;
     readonly selectedRoomLabel?: boolean;
     readonly neutralRoomLabel?: boolean;
     readonly staleRentalTypePopover?: boolean;
@@ -528,6 +529,7 @@ function happyFetch(
   let roomSelectionChanged = false;
   let roomApplyStaleResponses = 0;
   let semanticCardStaleResponses = 0;
+  let priceButtonStaleResponses = 0;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -613,6 +615,19 @@ function happyFetch(
     if (parsed.pathname === "/act") {
       const action = body as { kind?: string; ref?: string };
       const actionTargetId = currentTargetId;
+      if (
+        action.kind === "click" &&
+        action.ref === "e2" &&
+        priceButtonStaleResponses < (options.priceButtonStaleResponses ?? 0)
+      ) {
+        priceButtonStaleResponses += 1;
+        return jsonResponse(
+          {
+            error: `Error: Unknown ref "${action.ref}". Run a new snapshot and use a ref from that snapshot.`
+          },
+          500
+        );
+      }
       if (action.kind === "type" && action.ref === "e1") {
         if (options.rotateTargetAfterLocation) currentTargetId = "navigation-target-2";
         if (options.rotateTargetBetweenTabCheckAndSnapshot) {
@@ -1201,6 +1216,32 @@ describe("Vera Zillow research execution", () => {
       ])
     );
     expect(actionBodies.map(({ ref }) => ref)).not.toEqual(expect.arrayContaining(["e92", "e9"]));
+  });
+
+  it("refreshes and retries one exact stale reviewed filter reference", async () => {
+    const { calls, fetchImplementation } = happyFetch({ priceButtonStaleResponses: 1 });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-09T06:15:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    expect(result.safeActionTrail).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "set_reviewed_filter", result: "stopped" })
+      ])
+    );
+    const priceClicks = calls.filter(
+      (call) =>
+        new URL(call.url).pathname === "/act" &&
+        (call.body as { kind?: string; ref?: string }).kind === "click" &&
+        (call.body as { ref?: string }).ref === "e2"
+    );
+    expect(priceClicks).toHaveLength(2);
+    expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
   });
 
   it("recognizes Zillow's observed selected beds-and-baths chip", async () => {

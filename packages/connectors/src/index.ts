@@ -17,6 +17,7 @@ export * from "./maritime-remote-extension-client.ts";
 export * from "./maritime-zillow-research-client.ts";
 export * from "./maritime-browser-research-client.ts";
 export * from "./loopback-browser-research-client.ts";
+export * from "./loopback-zillow-research-client.ts";
 export * from "./production-maritime-orchestrator.ts";
 export * from "./rentcast-connector.ts";
 export * from "./normalizer.ts";

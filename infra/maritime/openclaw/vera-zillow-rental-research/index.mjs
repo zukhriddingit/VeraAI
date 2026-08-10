@@ -459,7 +459,7 @@ function validateActionResponse(payload, targetId) {
   return payload.url === undefined ? null : validateZillowUrl(payload.url, "either");
 }
 
-async function activateControl(control, request, state, dependencies) {
+async function activateControlOnce(control, request, state, dependencies) {
   assertSafeControl(control);
   const allowedKinds = new Set(["click", "type"]);
   if (!allowedKinds.has(request.kind)) {
@@ -492,6 +492,46 @@ async function activateControl(control, request, state, dependencies) {
   const page = validateActionResponse(payload, tab.targetId);
   if (page) state.activeUrl = page.url;
   recordAction(state, "set_reviewed_filter", dependencies, `${control.ref}:${control.name}`);
+}
+
+function refreshedControl(document, previous) {
+  const exact = document.refs.filter(
+    (entry) =>
+      entry.ref === previous.ref && entry.role === previous.role && entry.name === previous.name
+  );
+  if (exact.length > 1) throw layoutChanged();
+  if (exact.length === 1) return exact[0];
+
+  const sameSemanticControl = document.refs.filter(
+    (entry) => entry.role === previous.role && entry.name === previous.name
+  );
+  if (sameSemanticControl.length > 1) throw layoutChanged();
+  return sameSemanticControl[0] ?? null;
+}
+
+async function activateControl(control, request, state, dependencies) {
+  try {
+    await activateControlOnce(control, request, state, dependencies);
+  } catch (error) {
+    const staleReference =
+      error instanceof VeraZillowResearchError && error.code === "stale_browser_reference";
+    if (!staleReference) throw error;
+    recordAction(
+      state,
+      "set_reviewed_filter",
+      dependencies,
+      `${control.ref}:${control.name}`,
+      "stopped"
+    );
+    // OpenClaw's exact stale-ref response proves the first action did not execute.
+    // Refresh consent and semantic references once, then retry only the same
+    // reviewed role/name control. No arbitrary selector or page-provided action
+    // is accepted.
+    const document = await takeSnapshot(state, dependencies);
+    const fresh = refreshedControl(document, control);
+    if (!fresh) throw layoutChanged();
+    await activateControlOnce(fresh, request, state, dependencies);
+  }
 }
 
 async function scrollToObservedResult(control, state, dependencies) {
@@ -841,23 +881,6 @@ function findRoomApplyControl(document) {
   return findConsolidatedApplyControl(document);
 }
 
-function findFreshRoomApplyControl(document, previousApply) {
-  const exact = document.refs.filter(
-    (entry) =>
-      entry.ref === previousApply.ref &&
-      entry.role === previousApply.role &&
-      entry.name === previousApply.name
-  );
-  if (exact.length > 1) throw layoutChanged();
-  if (exact.length === 1) return exact[0];
-
-  const candidates = document.refs.filter(
-    (entry) => entry.role === "button" && entry.name === previousApply.name
-  );
-  if (candidates.length > 1) throw layoutChanged();
-  return candidates[0] ?? null;
-}
-
 function filterApplyStillVisible(document, apply) {
   const names = /^Done$/iu.test(apply.name)
     ? [/^Done$/iu]
@@ -874,25 +897,6 @@ async function applyRoomFiltersAndObserve(document, state, dependencies) {
     await activateControl(apply, { kind: "click" }, state, dependencies);
     return takeSnapshot(state, dependencies);
   } catch (error) {
-    const staleReference =
-      error instanceof VeraZillowResearchError && error.code === "stale_browser_reference";
-    if (staleReference) {
-      recordAction(
-        state,
-        "set_reviewed_filter",
-        dependencies,
-        `${apply.ref}:${apply.name}`,
-        "stopped"
-      );
-      const refreshed = await takeSnapshot(state, dependencies);
-      const refreshedApply = findFreshRoomApplyControl(refreshed, apply);
-      if (!refreshedApply) throw error;
-      // The exact stale response proves the first click did not execute. Prefer
-      // the same ref/role/name tuple from the fresh snapshot, then permit only a
-      // unique reviewed-label fallback if OpenClaw changed the semantic ref.
-      await activateControl(refreshedApply, { kind: "click" }, state, dependencies);
-      return takeSnapshot(state, dependencies);
-    }
     const ambiguousCompletion =
       error instanceof VeraZillowResearchError &&
       (error.code === "browser_offline" || error.code === "browser_action_timeout_ambiguous");
