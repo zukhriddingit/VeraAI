@@ -7,14 +7,18 @@ type RuntimeMessageListener = (
 ) => boolean;
 
 const calls: string[] = [];
-const tabs = new Map<number, { id: number; url: string; title: string; windowId: number }>([
+const tabs = new Map<
+  number,
+  { id: number; url: string; title: string; windowId: number; status: string }
+>([
   [
     5,
     {
       id: 5,
       url: "https://www.apartments.com/boston-ma/",
       title: "Boston apartments",
-      windowId: 1
+      windowId: 1,
+      status: "complete"
     }
   ]
 ]);
@@ -23,6 +27,7 @@ const attached = new Set<number>([5]);
 let runtimeMessageListener: RuntimeMessageListener | null = null;
 let backgroundModule: {
   handleRelayCommand(message: Record<string, unknown>): Promise<void>;
+  handleDebuggerDetach(source: { tabId?: number }, reason: string): Promise<void>;
 };
 
 function eventHook<T extends (...arguments_: never[]) => unknown>() {
@@ -52,7 +57,7 @@ const chromeMock = {
     get: vi.fn(async (tabId: number) => tabs.get(tabId)),
     create: vi.fn(async () => {
       calls.push("create:about:blank");
-      const tab = { id: 9, url: "about:blank", title: "", windowId: 1 };
+      const tab = { id: 9, url: "about:blank", title: "", windowId: 1, status: "complete" };
       tabs.set(9, tab);
       return tab;
     }),
@@ -67,7 +72,10 @@ const chromeMock = {
     }),
     update: vi.fn(async (tabId: number, update: { url?: string }) => {
       const tab = tabs.get(tabId);
-      if (tab && update.url) tab.url = update.url;
+      if (tab && update.url) {
+        tab.url = update.url;
+        tab.status = "complete";
+      }
       calls.push(`navigate:${tabId}:${update.url ?? ""}`);
       return tab;
     }),
@@ -100,7 +108,7 @@ const chromeMock = {
     onDetach: eventHook()
   },
   runtime: {
-    getManifest: vi.fn(() => ({ version: "2.0.2" })),
+    getManifest: vi.fn(() => ({ version: "2.0.3" })),
     onMessage: {
       addListener: vi.fn((listener: RuntimeMessageListener) => {
         runtimeMessageListener = listener;
@@ -134,16 +142,18 @@ describe("Vera OpenClaw background lifecycle", () => {
     expect(calls).toContain("command:5:Runtime.enable");
   });
 
-  it("attaches the blank replacement before navigating it", async () => {
+  it("navigates the blank replacement before attaching it", async () => {
     calls.length = 0;
     await expect(message({ type: "prepareSearchTab" })).resolves.toMatchObject({
       ok: true,
       readiness: "ready",
       tabId: 9
     });
-    expect(calls.indexOf("attach:9")).toBeGreaterThanOrEqual(0);
-    expect(calls.indexOf("navigate:9:https://www.zillow.com/homes/for_rent/")).toBeGreaterThan(
-      calls.indexOf("attach:9")
+    expect(
+      calls.indexOf("navigate:9:https://www.zillow.com/homes/for_rent/")
+    ).toBeGreaterThanOrEqual(0);
+    expect(calls.indexOf("attach:9")).toBeGreaterThan(
+      calls.indexOf("navigate:9:https://www.zillow.com/homes/for_rent/")
     );
     expect(grouped).toEqual(new Set([9]));
     expect(attached).toEqual(new Set([9]));
@@ -162,7 +172,39 @@ describe("Vera OpenClaw background lifecycle", () => {
     });
   });
 
+  it("recovers a transient target replacement without revoking consent", async () => {
+    calls.length = 0;
+    attached.delete(9);
+
+    await backgroundModule.handleDebuggerDetach({ tabId: 9 }, "target_closed");
+
+    expect(calls).toContain("attach:9");
+    expect(calls).not.toContain("ungroup:9");
+    expect(grouped).toEqual(new Set([9]));
+    expect(attached).toEqual(new Set([9]));
+    await expect(message({ type: "getStatus" })).resolves.toMatchObject({
+      readiness: "ready",
+      sharedTabCount: 1
+    });
+  });
+
+  it("still revokes consent when DevTools replaces the owned debugger", async () => {
+    calls.length = 0;
+    attached.delete(9);
+
+    await backgroundModule.handleDebuggerDetach({ tabId: 9 }, "replaced_with_devtools");
+
+    expect(calls).not.toContain("attach:9");
+    expect(calls).toContain("ungroup:9");
+    expect(grouped.size).toBe(0);
+    await expect(message({ type: "getStatus" })).resolves.toMatchObject({
+      readiness: "debugger_conflict",
+      sharedTabCount: 0
+    });
+  });
+
   it("still revokes the debugger lease when the user explicitly stops sharing", async () => {
+    await message({ type: "prepareSearchTab" });
     calls.length = 0;
     await expect(message({ type: "toggleShareTab", tabId: 9 })).resolves.toMatchObject({
       ok: true,

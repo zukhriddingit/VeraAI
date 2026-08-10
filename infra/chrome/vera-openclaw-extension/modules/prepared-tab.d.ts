@@ -33,6 +33,7 @@ interface PreparedTabDependencies {
   groupTab(tabId: number): Promise<void>;
   attachTab(tabId: number): Promise<unknown>;
   navigateTab(tabId: number, url: string): Promise<unknown>;
+  waitForTabReady(tabId: number, url: string): Promise<void>;
   detachTab(tabId: number): Promise<void>;
   ungroupTab(tabId: number): Promise<void>;
   closeTab(tabId: number): Promise<void>;

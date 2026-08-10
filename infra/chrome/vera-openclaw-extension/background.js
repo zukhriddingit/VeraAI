@@ -38,6 +38,9 @@ let tabsSyncTimer = null;
 let tabReadiness = TAB_READINESS.NOT_SHARED;
 const attachedTabs = new Set();
 const attachingTabs = new Map();
+const NAVIGATION_REATTACH_DELAYS_MS = Object.freeze([0, 150, 400]);
+const PREPARED_NAVIGATION_TIMEOUT_MS = 15_000;
+const PREPARED_NAVIGATION_POLL_MS = 100;
 
 function setBadge(kind) {
   relayState = kind;
@@ -160,6 +163,34 @@ async function detachDebugger(tabId) {
   }
 }
 
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function isReviewedPreparedDestination(rawUrl) {
+  try {
+    const url = new URL(rawUrl);
+    return (
+      url.protocol === "https:" &&
+      url.hostname === "www.zillow.com" &&
+      !url.username &&
+      !url.password
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function waitForPreparedNavigation(tabId) {
+  const deadline = Date.now() + PREPARED_NAVIGATION_TIMEOUT_MS;
+  while (Date.now() <= deadline) {
+    const tab = await chrome.tabs.get(tabId);
+    if (tab?.status === "complete" && isReviewedPreparedDestination(tab.url ?? "")) return;
+    await delay(PREPARED_NAVIGATION_POLL_MS);
+  }
+  throw new PreparedTabError(TAB_READINESS.ATTACHMENT_FAILED);
+}
+
 async function readySharedTabs() {
   const shared = await listSharedTabs();
   const ready = [];
@@ -218,6 +249,7 @@ function preparedDependencies() {
     groupTab: addTabToOpenClawGroup,
     attachTab: attachDebugger,
     navigateTab: async (tabId, url) => chrome.tabs.update(tabId, { url }),
+    waitForTabReady: async (tabId) => waitForPreparedNavigation(tabId),
     detachTab: detachDebugger,
     ungroupTab: removeTabFromOpenClawGroup,
     closeTab: async (tabId) => chrome.tabs.remove(tabId),
@@ -236,17 +268,43 @@ chrome.debugger.onEvent.addListener((source, method, params) => {
   });
 });
 
-chrome.debugger.onDetach.addListener((source, reason) => {
+async function recoverNavigationDebuggerLease(tabId) {
+  for (const retryDelay of NAVIGATION_REATTACH_DELAYS_MS) {
+    if (retryDelay > 0) await delay(retryDelay);
+    const shared = await listSharedTabs();
+    if (shared.length !== 1 || shared[0]?.id !== tabId) return false;
+    try {
+      await attachDebugger(tabId);
+      await syncTabsToRelay();
+      return true;
+    } catch (error) {
+      const code =
+        error instanceof PreparedTabError ? error.code : classifyDebuggerAttachError(error);
+      if (
+        code === TAB_READINESS.DEBUGGER_CONFLICT ||
+        code === TAB_READINESS.BROWSER_EXTENSION_CONFLICT
+      ) {
+        return false;
+      }
+    }
+  }
+  return false;
+}
+
+export async function handleDebuggerDetach(source, reason) {
   if (typeof source.tabId !== "number") return;
   attachedTabs.delete(source.tabId);
   send({ type: "detached", tabId: source.tabId, reason });
-  void isTabShared(source.tabId).then(async (shared) => {
-    if (!shared) return;
-    await removeTabFromOpenClawGroup(source.tabId);
-    tabReadiness =
-      reason === "canceled_by_user" ? TAB_READINESS.NOT_SHARED : TAB_READINESS.DEBUGGER_CONFLICT;
-    scheduleTabsSync();
-  });
+  if (!(await isTabShared(source.tabId))) return;
+  if (reason === "target_closed" && (await recoverNavigationDebuggerLease(source.tabId))) return;
+  await removeTabFromOpenClawGroup(source.tabId);
+  tabReadiness =
+    reason === "canceled_by_user" ? TAB_READINESS.NOT_SHARED : TAB_READINESS.DEBUGGER_CONFLICT;
+  scheduleTabsSync();
+}
+
+chrome.debugger.onDetach.addListener((source, reason) => {
+  void handleDebuggerDetach(source, reason);
 });
 
 export async function handleRelayCommand(message) {
