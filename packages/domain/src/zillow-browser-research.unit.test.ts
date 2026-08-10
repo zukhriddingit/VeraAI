@@ -157,8 +157,7 @@ describe("ZillowObservedListingSchema", () => {
     expect(
       ZillowObservedListingSchema.safeParse({
         ...baseListing,
-        canonicalObservedUrl:
-          "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#contact"
+        canonicalObservedUrl: "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#contact"
       }).success
     ).toBe(false);
   });

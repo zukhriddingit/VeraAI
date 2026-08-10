@@ -36,8 +36,7 @@ const output = {
   safeActionTrail: [],
   warnings: ["Research stopped safely: layout_changed."]
 } as ZillowRentalResearchOutput;
-const reviewedUnitUrl =
-  "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#bedrooms-2";
+const reviewedUnitUrl = "https://www.zillow.com/apartments/the-lola/boston-ma/5XjVQx/#bedrooms-2";
 
 describe("LoopbackZillowResearchClient", () => {
   it("posts strict Zillow input only to the authenticated loopback Zillow route", async () => {
