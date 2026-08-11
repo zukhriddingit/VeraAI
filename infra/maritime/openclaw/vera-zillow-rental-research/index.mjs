@@ -962,6 +962,33 @@ async function applyRoomFiltersAndObserve(document, state, dependencies) {
   }
 }
 
+function normalizedObservedLocation(value) {
+  return String(value ?? "")
+    .normalize("NFKD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLocaleLowerCase("en-US")
+    .replace(/[^a-z0-9]+/gu, " ")
+    .trim();
+}
+
+function resultPageProvesSavedLocation(document, savedLocation) {
+  const expected = normalizedObservedLocation(savedLocation);
+  if (expected.length < 3) return false;
+  return document.snapshot.split(/\r?\n/u).some((line) => {
+    const heading = line.match(/^\s*-\s+heading\s+"([^"]{1,300})"/u)?.[1];
+    if (heading !== undefined) {
+      const normalizedHeading = normalizedObservedLocation(heading);
+      return normalizedHeading === expected || normalizedHeading.startsWith(`${expected} rental`);
+    }
+    const searchValue = line.match(
+      /^\s*-\s+(?:searchbox|textbox|combobox)\s+"(?:Search|Search(?: by)? location|Where do you want to live\??|[^"]*city[^"]*)"\s*:\s*([^\[]{1,300}?)(?:\s+\[|$)/iu
+    )?.[1];
+    return (
+      searchValue !== undefined && normalizedObservedLocation(searchValue).startsWith(expected)
+    );
+  });
+}
+
 async function applySavedProfile(initialDocument, state, dependencies) {
   let document = await closeStaleMoreFilters(initialDocument, state, dependencies);
   document = await closeStaleRentalTypePopover(document, state, dependencies);
@@ -977,13 +1004,15 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     ]
   });
   if (location) {
-    await activateControl(
-      location,
-      { kind: "type", text: state.input.profile.location, submit: true },
-      state,
-      dependencies
-    );
-    document = await takeSnapshot(state, dependencies);
+    if (!resultPageProvesSavedLocation(document, state.input.profile.location)) {
+      await activateControl(
+        location,
+        { kind: "type", text: state.input.profile.location, submit: true },
+        state,
+        dependencies
+      );
+      document = await takeSnapshot(state, dependencies);
+    }
   } else {
     throw layoutChanged();
   }

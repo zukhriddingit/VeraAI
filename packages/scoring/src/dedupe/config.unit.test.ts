@@ -8,6 +8,7 @@ describe("dedupe configuration", () => {
     expect(
       Object.values(DEFAULT_DEDUPE_CONFIG.weights).reduce((sum, value) => sum + value, 0)
     ).toBe(10_000);
+    expect(DEFAULT_DEDUPE_CONFIG.maxCandidatePairs).toBe(50_000);
   });
 
   it("rejects invalid thresholds, weights, and safety bounds", () => {
