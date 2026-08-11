@@ -61,6 +61,8 @@ export const RENTAL_RESEARCH_ACTIONS = {
 } as const;
 
 const ZILLOW_OPERATION = "zillow.rental_research.v1";
+const ZILLOW_MAX_RESULTS = 5;
+const ZILLOW_MAX_DETAIL_PAGES = 1;
 
 export class RentalResearchServiceError extends Error {
   constructor(
@@ -182,8 +184,8 @@ function zillowInput(profile: SearchProfile, jobId: string) {
       ...(profile.minimumBathrooms === null ? {} : { minimumBathrooms: profile.minimumBathrooms }),
       ...(propertyType === undefined ? {} : { rentalPropertyType: propertyType })
     },
-    maxResults: 10,
-    maxDetailPages: 5,
+    maxResults: ZILLOW_MAX_RESULTS,
+    maxDetailPages: ZILLOW_MAX_DETAIL_PAGES,
     startingTabReference: {
       kind: "single_shared_tab" as const,
       value: ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE
@@ -212,7 +214,7 @@ function zillowJob(
       maxDurationMilliseconds: 90_000,
       maxConcurrency: 1 as const
     },
-    maxDetailPages: 5,
+    maxDetailPages: ZILLOW_MAX_DETAIL_PAGES,
     maxResultPageExpansions: 2 as const
   };
   const payloadHash = hash(payload);
@@ -454,8 +456,8 @@ async function runZillowSource(
         metadata: {
           profileId: profile.id,
           source: "zillow",
-          maxResults: 10,
-          maxDetailPages: 5
+          maxResults: ZILLOW_MAX_RESULTS,
+          maxDetailPages: ZILLOW_MAX_DETAIL_PAGES
         },
         occurredAt: createdAt,
         targetType: "source_job",

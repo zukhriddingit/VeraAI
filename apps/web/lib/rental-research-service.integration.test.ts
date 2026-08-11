@@ -156,8 +156,14 @@ const excludedAdditionalSources = [
 
 describe("founder Zillow rental research service", () => {
   it("imports observed Zillow evidence into the normal RawListing and normalization queue", async () => {
-    const deps = dependencies(async () => output());
+    let observedInput: Parameters<RentalResearchDependencies["zillow"]["run"]>[0] | null = null;
+    const deps = dependencies(async (input) => {
+      observedInput = input;
+      return output();
+    });
     const status = await runRentalResearch(request, deps);
+
+    expect(observedInput).toMatchObject({ maxResults: 5, maxDetailPages: 1 });
 
     expect(status).toMatchObject({
       searchRunId: "run-zillow-1",

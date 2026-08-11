@@ -115,6 +115,20 @@ describe("bounded duplicate candidate generation", () => {
     );
   });
 
+  it("keeps the preserved single-user corpus inside the reviewed default ceiling", () => {
+    const records = Array.from({ length: 259 }, (_, index) =>
+      source(`preserved-${String(index).padStart(3, "0")}`, {
+        normalizedPostalCode: "02134"
+      })
+    );
+
+    const result = generateCandidatePairs(records, DEFAULT_DEDUPE_CONFIG);
+
+    expect(result.wasTruncated).toBe(false);
+    expect(result.pairs).toHaveLength((records.length * (records.length - 1)) / 2);
+    expect(result.limit).toBe(50_000);
+  });
+
   it("fails visibly at the configured safety limit", () => {
     const records = ["a", "b", "c", "d"].map((id) => source(id, { normalizedPostalCode: "02110" }));
     const result = generateCandidatePairs(records, {

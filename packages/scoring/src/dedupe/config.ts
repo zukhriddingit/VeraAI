@@ -15,7 +15,7 @@ export const DEFAULT_DEDUPE_CONFIG: DedupeConfig = {
   version: DEDUPE_VERSION,
   automaticLinkThresholdBasisPoints: 7_500,
   reviewThresholdBasisPoints: 6_000,
-  maxCandidatePairs: 2_000,
+  maxCandidatePairs: 50_000,
   fallbackBlockSize: 250,
   weights: {
     address: 2_500,

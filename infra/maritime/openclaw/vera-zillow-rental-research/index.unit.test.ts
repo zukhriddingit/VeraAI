@@ -93,7 +93,8 @@ function snapshotForState(
   roomApplyDuplicateMatchingLabel = false,
   roomApplyUnrelatedSaves = false,
   semanticCardReference = "e10",
-  adjacentSemanticCard = false
+  adjacentSemanticCard = false,
+  locationAlreadyObserved = false
 ) {
   if (currentUrl === detailUrl) {
     return {
@@ -462,6 +463,23 @@ function snapshotForState(
       }
     };
   }
+  if (locationAlreadyObserved) {
+    return {
+      ...readyFixture,
+      targetId,
+      snapshot: String(readyFixture.snapshot).replace(
+        '- searchbox "Search" [ref=e1]',
+        [
+          '- combobox "Search": Boston MABoston, MA [ref=e1]',
+          '- heading "Boston MA Rental Listings" [level=1]'
+        ].join("\n")
+      ),
+      refs: {
+        ...(readyFixture.refs as Record<string, unknown>),
+        e1: { role: "combobox", name: "Search" }
+      }
+    };
+  }
   return { ...readyFixture, targetId };
 }
 
@@ -517,6 +535,8 @@ function happyFetch(
     readonly adjacentSemanticCard?: boolean;
     readonly semanticCardStaleResponses?: number;
     readonly semanticCardDestination?: string;
+    readonly locationAlreadyObserved?: boolean;
+    readonly priceButtonStaleOnlyAfterLocation?: boolean;
   } = {}
 ) {
   let stage = options.staleMoreFilters ? "more-filters" : "results";
@@ -531,6 +551,7 @@ function happyFetch(
   let roomApplyStaleResponses = 0;
   let semanticCardStaleResponses = 0;
   let priceButtonStaleResponses = 0;
+  let locationSubmitted = false;
   const calls: Array<{ url: string; method: string; body: unknown; origin: string | null }> = [];
   const fetchImplementation = vi.fn<typeof fetch>(async (request, init) => {
     const url = String(request);
@@ -609,7 +630,8 @@ function happyFetch(
           options.roomApplyDuplicateMatchingLabel && roomApplyStaleResponses > 0,
           options.roomApplyUnrelatedSaves,
           options.refreshSemanticCardReference && semanticCardStaleResponses > 0 ? "e11" : "e10",
-          options.adjacentSemanticCard
+          options.adjacentSemanticCard,
+          options.locationAlreadyObserved
         )
       );
     }
@@ -630,6 +652,7 @@ function happyFetch(
       if (
         action.kind === "click" &&
         action.ref === "e2" &&
+        (!options.priceButtonStaleOnlyAfterLocation || locationSubmitted) &&
         priceButtonStaleResponses < (options.priceButtonStaleResponses ?? 0)
       ) {
         priceButtonStaleResponses += 1;
@@ -641,6 +664,7 @@ function happyFetch(
         );
       }
       if (action.kind === "type" && action.ref === "e1") {
+        locationSubmitted = true;
         if (options.rotateTargetAfterLocation) currentTargetId = "navigation-target-2";
         if (options.rotateTargetBetweenTabCheckAndSnapshot) {
           rotateTargetBeforeNextSnapshot = true;
@@ -1253,6 +1277,57 @@ describe("Vera Zillow research execution", () => {
     expect(priceClicks).toHaveLength(2);
     expect(JSON.stringify(calls.map((call) => call.body))).not.toMatch(
       /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("preserves fresh Price references when the shared result page already proves the saved location", async () => {
+    const { calls, fetchImplementation } = happyFetch({
+      locationAlreadyObserved: true,
+      priceButtonStaleResponses: 2,
+      priceButtonStaleOnlyAfterLocation: true
+    });
+    const result = await researchZillowRentals(input, {
+      fetch: fetchImplementation,
+      now: () => new Date("2026-08-11T19:30:00.000Z"),
+      monotonicNow: () => 1_000
+    });
+
+    expect(result.state).toBe("completed");
+    const actionBodies = calls
+      .filter((call) => new URL(call.url).pathname === "/act")
+      .map((call) => call.body as { kind?: string; ref?: string });
+    expect(actionBodies).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "type", ref: "e1" })])
+    );
+    expect(actionBodies).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: "click", ref: "e2" })])
+    );
+    expect(JSON.stringify(actionBodies)).not.toMatch(
+      /evaluate|selector|clickCoords|Contact|Apply|Tour|Message|Phone|Email|payment|upload|download/iu
+    );
+  });
+
+  it("submits the saved location when the observed result heading proves a different city", async () => {
+    const { calls, fetchImplementation } = happyFetch({ locationAlreadyObserved: true });
+    const result = await researchZillowRentals(
+      {
+        ...input,
+        profile: { ...input.profile, location: "Cambridge, MA" }
+      },
+      {
+        fetch: fetchImplementation,
+        now: () => new Date("2026-08-11T19:31:00.000Z"),
+        monotonicNow: () => 1_000
+      }
+    );
+
+    expect(result.state).toBe("completed");
+    expect(
+      calls.filter((call) => new URL(call.url).pathname === "/act").map((call) => call.body)
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ kind: "type", ref: "e1", text: "Cambridge, MA", submit: true })
+      ])
     );
   });
 

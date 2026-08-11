@@ -54,6 +54,16 @@ import {
   riskSignals,
   searchProfiles
 } from "./schema.ts";
+
+export const POSTGRES_DECISION_INSERT_BATCH_SIZE = 1_000;
+
+export function chunkForPostgresInsert<T>(values: readonly T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let offset = 0; offset < values.length; offset += POSTGRES_DECISION_INSERT_BATCH_SIZE) {
+    chunks.push(values.slice(offset, offset + POSTGRES_DECISION_INSERT_BATCH_SIZE));
+  }
+  return chunks;
+}
 import type { PostgresExecutor } from "./types.ts";
 
 function connectorId(metadata: JsonObject): string {
@@ -502,26 +512,27 @@ async function applyValidatedPlan(
     .returning();
   if (!runRows[0]) throw new Error("Decision run insert returned no row.");
   if (plan.pairEvaluations.length > 0) {
-    await db.insert(duplicatePairEvaluations).values(
-      plan.pairEvaluations.map((pair) => ({
-        userId,
-        id: `${runId}:${pair.id}`.slice(0, 160),
-        decisionRunId: runId,
-        leftSourceRecordId: pair.leftSourceRecordId,
-        rightSourceRecordId: pair.rightSourceRecordId,
-        algorithmVersion: pair.algorithmVersion,
-        inputHash: pair.inputHash,
-        decision: pair.decision,
-        scoreBasisPoints: pair.scoreBasisPoints,
-        automaticLinkThresholdBasisPoints: pair.automaticLinkThresholdBasisPoints,
-        reviewThresholdBasisPoints: pair.reviewThresholdBasisPoints,
-        exactReasonCodes: pair.exactReasonCodes,
-        conflictReasonCodes: pair.conflictReasonCodes,
-        contactMatched: pair.contactMatched,
-        features: pair.features,
-        evaluatedAt: new Date(pair.evaluatedAt)
-      }))
-    );
+    const pairRows = plan.pairEvaluations.map((pair) => ({
+      userId,
+      id: `${runId}:${pair.id}`.slice(0, 160),
+      decisionRunId: runId,
+      leftSourceRecordId: pair.leftSourceRecordId,
+      rightSourceRecordId: pair.rightSourceRecordId,
+      algorithmVersion: pair.algorithmVersion,
+      inputHash: pair.inputHash,
+      decision: pair.decision,
+      scoreBasisPoints: pair.scoreBasisPoints,
+      automaticLinkThresholdBasisPoints: pair.automaticLinkThresholdBasisPoints,
+      reviewThresholdBasisPoints: pair.reviewThresholdBasisPoints,
+      exactReasonCodes: pair.exactReasonCodes,
+      conflictReasonCodes: pair.conflictReasonCodes,
+      contactMatched: pair.contactMatched,
+      features: pair.features,
+      evaluatedAt: new Date(pair.evaluatedAt)
+    }));
+    for (const batch of chunkForPostgresInsert(pairRows)) {
+      await db.insert(duplicatePairEvaluations).values(batch);
+    }
   }
   await db
     .update(duplicateClusters)
