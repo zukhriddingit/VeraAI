@@ -32,6 +32,9 @@ function harness(options: { attachError?: Error; existing?: Array<{ id: number }
     navigateTab: vi.fn(async (tabId: number, url: string) => {
       calls.push(`navigate:${tabId}:${url}`);
     }),
+    waitForTabReady: vi.fn(async (tabId: number, url: string) => {
+      calls.push(`ready:${tabId}:${url}`);
+    }),
     detachTab: vi.fn(async (tabId: number) => {
       calls.push(`detach:${tabId}`);
     }),
@@ -49,7 +52,7 @@ function harness(options: { attachError?: Error; existing?: Array<{ id: number }
 }
 
 describe("prepareDedicatedSearchTab", () => {
-  it("revokes old consent and attaches the blank tab before navigation", async () => {
+  it("revokes old consent and attaches only after the reviewed navigation is ready", async () => {
     const { calls, dependencies } = harness();
     await expect(prepareDedicatedSearchTab(dependencies)).resolves.toEqual({
       tabId: 9,
@@ -61,8 +64,9 @@ describe("prepareDedicatedSearchTab", () => {
       "ungroup:7",
       "create:about:blank",
       "group:9",
-      "attach:9",
       `navigate:9:${PREPARED_SEARCH_START_URL}`,
+      `ready:9:${PREPARED_SEARCH_START_URL}`,
+      "attach:9",
       "sync"
     ]);
   });
@@ -80,7 +84,8 @@ describe("prepareDedicatedSearchTab", () => {
     expect(calls).toContain("detach:9");
     expect(calls).toContain("ungroup:9");
     expect(calls).toContain("close:9");
-    expect(calls.some((entry) => entry.startsWith("navigate:"))).toBe(false);
+    expect(calls).toContain(`navigate:9:${PREPARED_SEARCH_START_URL}`);
+    expect(calls).toContain(`ready:9:${PREPARED_SEARCH_START_URL}`);
   });
 });
 

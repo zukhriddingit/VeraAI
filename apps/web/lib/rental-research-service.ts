@@ -609,7 +609,8 @@ async function runZillowSource(
           resultCardsObserved: output.resultCardsObserved,
           detailPagesOpened: output.detailPagesOpened,
           resultPageExpansions: output.resultPageExpansions,
-          warningCount: output.warnings.length
+          warningCount: output.warnings.length,
+          warnings: output.warnings
         },
         occurredAt: finishedAt,
         targetType: "source_job",
@@ -1089,7 +1090,8 @@ async function runAdditionalBrowserSource(
           resultCardsObserved: output.resultCardsObserved,
           detailPagesOpened: output.detailPagesOpened,
           actionCount: output.actionsUsed,
-          warningCount: output.warnings.length
+          warningCount: output.warnings.length,
+          warnings: output.warnings
         },
         occurredAt: finishedAt,
         targetType: "source_job",
@@ -1301,6 +1303,16 @@ function zillowManualAction(job: SourceJob | null, finished: ActivityEvent | und
   return null;
 }
 
+function firstSafeResearchWarning(finished: ActivityEvent | undefined): string | null {
+  const warnings = finished?.metadata.warnings;
+  if (!Array.isArray(warnings)) return null;
+  const first = warnings.find(
+    (warning): warning is string =>
+      typeof warning === "string" && warning.trim().length > 0 && warning.length <= 240
+  );
+  return first?.trim() ?? null;
+}
+
 function sourceLabelsForMessage(source: RentalResearchSource): string {
   if (source === "apartments_com") return "Apartments.com";
   if (source === "facebook_marketplace") return "Facebook Marketplace";
@@ -1347,21 +1359,28 @@ function sourceStatus(
     const retrievedCount = numeric(finished?.metadata.retrievedCount);
     const importedCount = numeric(finished?.metadata.importedCount) || imports.length;
     const rejectedCount = numeric(finished?.metadata.rejectedCount) || rejections.length;
+    const safeWarning = firstSafeResearchWarning(finished);
     let state: RentalResearchSourceStatus["state"] = "ready";
     if (job?.status === "manual_action_required") {
-      state =
-        manualAction === "login_required"
-          ? "login_required"
-          : manualAction === "browser_offline"
-            ? "browser_offline"
-            : importedCount > 0
-              ? "partial"
-              : "failed";
+      if (manualAction === "login_required") state = "login_required";
+      else if (manualAction === "browser_offline") state = "browser_offline";
+      else if (
+        manualAction === "tab_required" ||
+        manualAction === "no_shared_tab" ||
+        manualAction === "multiple_shared_tabs" ||
+        manualAction === "shared_tab_changed"
+      ) {
+        state = "tab_required";
+      } else {
+        state = importedCount > 0 ? "partial" : "manual_action_required";
+      }
     } else if (job?.status === "completed") {
       state =
-        finished?.metadata.outputState === "partial" || terminalNormalizationFailures.length > 0
-          ? "partial"
-          : "completed";
+        finished?.metadata.outputState === "no_results"
+          ? "no_results"
+          : finished?.metadata.outputState === "partial" || terminalNormalizationFailures.length > 0
+            ? "partial"
+            : "completed";
     } else if (
       job?.status === "retryable_failed" ||
       job?.status === "permanently_failed" ||
@@ -1385,9 +1404,11 @@ function sourceStatus(
           ? manualInstruction(manualAction)
           : terminalNormalizationFailures.length > 0
             ? `${terminalNormalizationFailures.length} imported Zillow record(s) could not be normalized; accepted results were preserved.`
-            : failed
-              ? "Zillow stopped safely; other source results were preserved."
-              : null
+            : safeWarning !== null
+              ? safeWarning
+              : failed
+                ? "Zillow stopped safely; other source results were preserved."
+                : null
     };
   }
 
@@ -1406,6 +1427,7 @@ function sourceStatus(
     const retrievedCount = numeric(finished?.metadata.retrievedCount);
     const importedCount = numeric(finished?.metadata.importedCount) || imports.length;
     const rejectedCount = numeric(finished?.metadata.rejectedCount) || rejections.length;
+    const safeWarning = firstSafeResearchWarning(finished);
     let state: RentalResearchSourceStatus["state"] =
       source === "facebook_marketplace" ? "account_recommended" : "ready";
     if (job?.status === "manual_action_required") {
@@ -1448,9 +1470,11 @@ function sourceStatus(
         job?.manualAction?.instruction ??
         (terminalNormalizationFailures.length > 0
           ? `${terminalNormalizationFailures.length} imported ${sourceLabelsForMessage(source)} record(s) could not be normalized; accepted results were preserved.`
-          : failed
-            ? `${sourceLabelsForMessage(source)} stopped safely; other results were preserved.`
-            : null)
+          : safeWarning !== null
+            ? safeWarning
+            : failed
+              ? `${sourceLabelsForMessage(source)} stopped safely; other results were preserved.`
+              : null)
     };
   }
 

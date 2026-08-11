@@ -534,6 +534,36 @@ async function activateControl(control, request, state, dependencies) {
   }
 }
 
+async function activateControlAndObserve(control, predicate, state, dependencies) {
+  try {
+    await activateControl(control, { kind: "click" }, state, dependencies);
+    return takeSnapshot(state, dependencies);
+  } catch (error) {
+    const ambiguousCompletion =
+      error instanceof VeraZillowResearchError &&
+      (error.code === "browser_offline" || error.code === "browser_action_timeout_ambiguous");
+    if (!ambiguousCompletion) throw error;
+    recordAction(
+      state,
+      "set_reviewed_filter",
+      dependencies,
+      `${control.ref}:${control.name}`,
+      "stopped"
+    );
+    const observed = await takeSnapshot(state, dependencies);
+    if (!predicate(observed)) throw error;
+    // The ambiguous click is never repeated. A fresh semantic snapshot must
+    // prove the exact reviewed panel opened before Vera continues.
+    recordAction(
+      state,
+      "set_reviewed_filter",
+      dependencies,
+      `${control.ref}:${control.name}:observed_postcondition`
+    );
+    return observed;
+  }
+}
+
 async function scrollToObservedResult(control, state, dependencies) {
   assertSafeControl(control);
   if (control.role !== "link")
@@ -788,9 +818,17 @@ async function closeStaleRentalTypePopover(document, state, dependencies) {
   return updated;
 }
 
-async function applyConsolidatedFilters(filtersButton, initialDocument, state, dependencies) {
-  await activateControl(filtersButton, { kind: "click" }, state, dependencies);
-  let document = await takeSnapshot(state, dependencies);
+async function applyConsolidatedFilters(filtersButton, state, dependencies) {
+  let document = await activateControlAndObserve(
+    filtersButton,
+    (observed) =>
+      findUniqueReviewedControl(observed, {
+        roles: ["textbox", "combobox", "spinbutton"],
+        names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
+      }) !== null,
+    state,
+    dependencies
+  );
   const maximumPrice = findUniqueReviewedControl(document, {
     roles: ["textbox", "combobox", "spinbutton"],
     names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
@@ -965,17 +1003,25 @@ async function applySavedProfile(initialDocument, state, dependencies) {
     );
     if (forRentButtons.length > 1) throw layoutChanged();
     if (forRentButtons.length === 1) {
-      return applyConsolidatedFilters(forRentButtons[0], document, state, dependencies);
+      return applyConsolidatedFilters(forRentButtons[0], state, dependencies);
     }
     const filtersButton = findUniqueReviewedControl(document, {
       roles: ["button"],
       names: [/^Filters$/iu]
     });
     if (!filtersButton) throw layoutChanged();
-    return applyConsolidatedFilters(filtersButton, document, state, dependencies);
+    return applyConsolidatedFilters(filtersButton, state, dependencies);
   }
-  await activateControl(priceButton, { kind: "click" }, state, dependencies);
-  document = await takeSnapshot(state, dependencies);
+  document = await activateControlAndObserve(
+    priceButton,
+    (observed) =>
+      findReviewedControl(observed, {
+        roles: ["textbox", "combobox", "spinbutton"],
+        names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
+      }) !== null,
+    state,
+    dependencies
+  );
   const maximumPrice = findReviewedControl(document, {
     roles: ["textbox", "combobox", "spinbutton"],
     names: [/^(?:Maximum|Max)(?: rent| price)?$/iu, /^price max$/iu, /^No Max$/iu]
@@ -1003,8 +1049,32 @@ async function applySavedProfile(initialDocument, state, dependencies) {
       ]
     });
     if (!bedsButton) throw layoutChanged();
-    await activateControl(bedsButton, { kind: "click" }, state, dependencies);
-    document = await takeSnapshot(state, dependencies);
+    document = await activateControlAndObserve(
+      bedsButton,
+      (observed) => {
+        if (state.input.profile.minimumBedrooms > 0) {
+          return (
+            findReviewedControlInSection(observed, {
+              roles: ["button", "radio"],
+              names: [bareRoomValue(state.input.profile.minimumBedrooms)],
+              startNames: [/^Bedrooms$/iu],
+              endNames: [/^Bathrooms$/iu]
+            }) !== null
+          );
+        }
+        return (
+          state.input.profile.minimumBathrooms !== undefined &&
+          findReviewedControlInSection(observed, {
+            roles: ["button", "radio"],
+            names: [bareRoomValue(state.input.profile.minimumBathrooms)],
+            startNames: [/^Bathrooms$/iu],
+            endNames: [/^Done$/iu, /^Save$/iu, /^See [\d,]+ rentals? available$/iu]
+          }) !== null
+        );
+      },
+      state,
+      dependencies
+    );
     if (state.input.profile.minimumBedrooms > 0) {
       const bedroomControl = {
         roles: ["button", "radio"],
@@ -1059,14 +1129,22 @@ async function applySavedProfile(initialDocument, state, dependencies) {
       names: [/^Home type$/iu, /^Property type$/iu]
     });
     if (!homeType) throw layoutChanged();
-    await activateControl(homeType, { kind: "click" }, state, dependencies);
-    document = await takeSnapshot(state, dependencies);
     const labels = {
       apartment: [/^Apartments?$/iu],
       house: [/^Houses?$/iu],
       townhouse: [/^Townhomes?|Townhouses?$/iu],
       condo: [/^Condos?(?:\/Co-ops?)?$/iu]
     };
+    document = await activateControlAndObserve(
+      homeType,
+      (observed) =>
+        findReviewedControl(observed, {
+          roles: ["checkbox", "button"],
+          names: labels[state.input.profile.rentalPropertyType]
+        }) !== null,
+      state,
+      dependencies
+    );
     const propertyType = findReviewedControl(document, {
       roles: ["checkbox", "button"],
       names: labels[state.input.profile.rentalPropertyType]

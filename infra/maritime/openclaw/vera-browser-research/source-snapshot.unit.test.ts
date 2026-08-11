@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   assertSafeControl,
+  enrichSourceListingFromDetail,
+  extractSourceCardCandidates,
   extractSourceCards,
   parseSourceSnapshot,
   sourceStartUrl
@@ -94,6 +96,65 @@ describe("bounded source snapshots", () => {
       bedrooms: 2,
       bathrooms: 1
     });
+  });
+
+  it("retains a semantic result reference and enriches only observed detail facts", () => {
+    const name = "The Longwood, Boston, MA";
+    const resultDocument = parseSourceSnapshot(
+      {
+        ok: true,
+        format: "ai",
+        targetId: "shared-tab-1",
+        url: "https://www.apartments.com/boston-ma/",
+        refs: { e8: { role: "link", name } },
+        snapshot: [
+          `- link "${name}" [ref=e8]`,
+          "  - generic: $2,793, 1 Bed",
+          "",
+          "Links:",
+          `1. ${name} -> https://www.apartments.com/the-longwood-boston-ma/r7nkvh2/`
+        ].join("\n")
+      },
+      "apartments_com"
+    );
+    const candidate = extractSourceCardCandidates(
+      resultDocument,
+      { source: "apartments_com", maxResults: 10 },
+      observedAt
+    )[0];
+    const detailDocument = parseSourceSnapshot(
+      {
+        ok: true,
+        format: "ai",
+        targetId: "shared-tab-1",
+        url: "https://www.apartments.com/the-longwood-boston-ma/r7nkvh2/",
+        refs: {},
+        snapshot: [
+          '- heading "The Longwood"',
+          "- paragraph: 1575 Tremont St, Boston, MA 02120",
+          "- paragraph: $2,793, 1 Bed, 1 Bath, 740 sq ft",
+          "- paragraph: Available now. Dishwasher and in-unit laundry.",
+          '- button "Email"'
+        ].join("\n")
+      },
+      "apartments_com"
+    );
+    const enriched = enrichSourceListingFromDetail(candidate.listing, detailDocument, observedAt);
+
+    expect(candidate).toMatchObject({ resultRef: "e8", observedLinkName: name });
+    expect(enriched).toMatchObject({
+      finalDetailPageUrl: "https://www.apartments.com/the-longwood-boston-ma/r7nkvh2/",
+      address: "1575 Tremont St, Boston, MA 02120",
+      rentUsd: 2_793,
+      bedrooms: 1,
+      bathrooms: 1,
+      squareFeet: 740,
+      availability: "Available now"
+    });
+    expect(enriched.sourceFieldProvenance).toContainEqual(
+      expect.objectContaining({ field: "bathrooms", observedFrom: "detail_page" })
+    );
+    expect(JSON.stringify(enriched)).not.toMatch(/email/iu);
   });
 
   it("rejects forbidden or unobserved controls", () => {

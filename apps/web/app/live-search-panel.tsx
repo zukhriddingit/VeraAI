@@ -108,6 +108,7 @@ export function LiveSearchPanel({
   const [localPhase, setLocalPhase] = useState<RentalResearchProgressPhase | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [observedSince, setObservedSince] = useState<string | null>(null);
   const [browserReadiness, setBrowserReadiness] = useState<BrowserExtensionReadinessMessage | null>(
     null
   );
@@ -199,6 +200,9 @@ export function LiveSearchPanel({
       return;
     }
     const nextRunId = crypto.randomUUID();
+    if (retryOfSearchRunId === null) {
+      setObservedSince(new Date().toISOString());
+    }
     setError(null);
     setStatus(null);
     setRunId(nextRunId);
@@ -417,7 +421,13 @@ export function LiveSearchPanel({
           </div>
           <p>Compare Vera fit scores, source freshness, missing facts, and research notes.</p>
         </div>
-        <ListingDashboard initialListings={initialListings} refreshKey={refreshKey} />
+        <ListingDashboard
+          initialListings={staticAcceptanceSnapshot ? initialListings : []}
+          refreshKey={refreshKey}
+          researchRunning={running}
+          observedSince={observedSince}
+          freshSearch={!staticAcceptanceSnapshot}
+        />
       </section>
     </>
   );

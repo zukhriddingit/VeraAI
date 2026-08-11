@@ -10,7 +10,8 @@ import {
 } from "./contract.mjs";
 import {
   assertSafeControl,
-  extractSourceCards,
+  enrichSourceListingFromDetail,
+  extractSourceCardCandidates,
   findControl,
   parseSourceSnapshot,
   sourceStartUrl,
@@ -335,6 +336,12 @@ async function navigate(url, action, state, dependencies) {
     state.plan.source,
     action === "open_observed_listing" ? "detail" : "result"
   );
+  if (
+    (action === "open_observed_listing" || action === "return_to_results") &&
+    !state.observedUrls.has(url)
+  ) {
+    throw new VeraBrowserResearchError("unobserved_navigation_target");
+  }
   const tab = await prepare(action, state, dependencies, url);
   const payload = await browserPost(
     "/navigate",
@@ -401,6 +408,51 @@ async function activate(control, kind, state, dependencies, text = null) {
   state.actionsUsed += 1;
   actionResponse(payload, tab.targetId);
   record(state, action, dependencies, `${control.ref}:${control.name}`);
+}
+
+async function scrollToObservedCandidate(candidate, document, state, dependencies) {
+  const control = document.refs.find(
+    (entry) =>
+      entry.ref === candidate.resultRef &&
+      entry.role === "link" &&
+      entry.name === candidate.observedLinkName
+  );
+  assertSafeControl(control);
+  const tab = await prepare(
+    "scroll_bounded",
+    state,
+    dependencies,
+    `${control.ref}:${control.name}`
+  );
+  const payload = await browserPost(
+    "/act",
+    { kind: "scrollIntoView", targetId: tab.targetId, ref: control.ref },
+    ACTION_MAX_BYTES,
+    state,
+    dependencies
+  );
+  state.actionsUsed += 1;
+  actionResponse(payload, tab.targetId);
+  state.resultPageExpansions += 1;
+  record(state, "scroll_bounded", dependencies, `${control.ref}:${control.name}`);
+}
+
+function candidateIdentity(candidate) {
+  return candidate.listing.canonicalObservedUrl;
+}
+
+function mergeCandidates(existing, observed, maximum) {
+  const merged = new Map(existing.map((candidate) => [candidateIdentity(candidate), candidate]));
+  for (const candidate of observed) {
+    if (!merged.has(candidateIdentity(candidate))) {
+      merged.set(candidateIdentity(candidate), candidate);
+    }
+  }
+  return [...merged.values()].slice(0, maximum);
+}
+
+function hasActionBudget(state, needed) {
+  return state.actionsUsed + needed <= state.plan.maxActions;
 }
 
 async function applyApartmentsFilters(document, state, dependencies) {
@@ -590,13 +642,17 @@ export async function researchRentals(
     pinnedTab: null,
     resultCardsObserved: 0,
     detailPagesOpened: 0,
+    resultPageExpansions: 0,
     safeActionTrail: [],
-    listings: []
+    listings: [],
+    observedUrls: new Set()
   };
   try {
     if (plan.source === "zillow")
       throw new VeraBrowserResearchError("source_uses_accepted_zillow_tool");
-    await navigate(sourceStartUrl(plan), "navigate_same_source", state, dependencies);
+    const resultPage = sourceStartUrl(plan);
+    state.observedUrls.add(resultPage);
+    await navigate(resultPage, "navigate_same_source", state, dependencies);
     await dependencies.wait(1_500);
     let document = await snapshot(state, dependencies);
     document =
@@ -605,10 +661,64 @@ export async function researchRentals(
         : await applyFacebookFilters(document, state, dependencies);
     await dependencies.wait(1_500);
     document = await snapshot(state, dependencies);
+    const observedResultPage = document.page.url;
+    state.observedUrls.add(observedResultPage);
+    const observedAt = safeNow(dependencies);
+    let candidates = extractSourceCardCandidates(document, plan, observedAt);
+    for (const candidate of candidates) {
+      state.observedUrls.add(candidate.listing.canonicalObservedUrl);
+    }
+    while (
+      candidates.length < plan.maxResults &&
+      state.resultPageExpansions < 2 &&
+      hasActionBudget(state, 4)
+    ) {
+      const last = candidates.at(-1);
+      if (!last?.resultRef) break;
+      const previousCount = candidates.length;
+      await scrollToObservedCandidate(last, document, state, dependencies);
+      await dependencies.wait(650);
+      document = await snapshot(state, dependencies);
+      candidates = mergeCandidates(
+        candidates,
+        extractSourceCardCandidates(document, plan, safeNow(dependencies)),
+        plan.maxResults
+      );
+      for (const candidate of candidates) {
+        state.observedUrls.add(candidate.listing.canonicalObservedUrl);
+      }
+      if (candidates.length === previousCount) break;
+    }
     await authorize("extract_observed_facts", state, dependencies);
-    state.listings = extractSourceCards(document, plan, safeNow(dependencies));
+    state.listings = candidates.map((candidate) => candidate.listing);
     state.resultCardsObserved = state.listings.length;
     record(state, "extract_observed_facts", dependencies);
+    for (
+      let index = 0;
+      index < candidates.length && state.detailPagesOpened < plan.maxDetailPages;
+      index += 1
+    ) {
+      if (!hasActionBudget(state, 6)) break;
+      const candidate = candidates[index];
+      await navigate(
+        candidate.listing.canonicalObservedUrl,
+        "open_observed_listing",
+        state,
+        dependencies
+      );
+      await dependencies.wait(650);
+      const detailDocument = await snapshot(state, dependencies);
+      state.listings[index] = enrichSourceListingFromDetail(
+        state.listings[index],
+        detailDocument,
+        safeNow(dependencies)
+      );
+      state.detailPagesOpened += 1;
+      await navigate(observedResultPage, "return_to_results", state, dependencies);
+      await dependencies.wait(400);
+    }
+    const detailBudgetLimited =
+      state.detailPagesOpened < Math.min(plan.maxDetailPages, candidates.length);
     return validateResearchOutput(
       {
         version: "1",
@@ -617,7 +727,7 @@ export async function researchRentals(
         state:
           state.listings.length === 0
             ? "no_results"
-            : state.listings.length < plan.maxResults
+            : state.listings.length < plan.maxResults || detailBudgetLimited
               ? "partial"
               : "completed",
         pageState: state.listings.length === 0 ? "no_results" : "ready",
@@ -629,10 +739,14 @@ export async function researchRentals(
         startedAt: state.startedAt,
         completedAt: safeNow(dependencies),
         safeActionTrail: state.safeActionTrail,
-        warnings:
-          state.listings.length < plan.maxResults
+        warnings: [
+          ...(state.listings.length < plan.maxResults
             ? ["The bounded run returned fewer cards than its requested maximum."]
-            : []
+            : []),
+          ...(detailBudgetLimited
+            ? ["The action limit stopped detail inspection before the requested maximum."]
+            : [])
+        ]
       },
       plan
     );

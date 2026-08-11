@@ -90,8 +90,9 @@ export async function prepareDedicatedSearchTab(dependencies) {
   try {
     await dependencies.groupTab(tab.id);
     grouped = true;
-    await dependencies.attachTab(tab.id);
     await dependencies.navigateTab(tab.id, PREPARED_SEARCH_START_URL);
+    await dependencies.waitForTabReady(tab.id, PREPARED_SEARCH_START_URL);
+    await dependencies.attachTab(tab.id);
     await dependencies.syncTabs();
     return Object.freeze({ tabId: tab.id, readiness: TAB_READINESS.READY });
   } catch (error) {

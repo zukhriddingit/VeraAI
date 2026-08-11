@@ -214,7 +214,7 @@ describe("founder Zillow rental research service", () => {
         { source: "rentcast", state: "excluded_by_user" },
         {
           source: "zillow",
-          state: "failed",
+          state: "tab_required",
           manualAction: "no_shared_tab",
           importedCount: 0
         },
@@ -225,6 +225,32 @@ describe("founder Zillow rental research service", () => {
     expect(await deps.repositories.sourceJobs.getById(request.veraRunId)).toMatchObject({
       status: "manual_action_required",
       manualAction: { blocker: "user_intervention_required" }
+    });
+  });
+
+  it("surfaces the bounded Zillow tool's safe stop code instead of a generic failure", async () => {
+    const deps = dependencies(async () =>
+      output({
+        state: "failed",
+        pageState: "ready",
+        manualAction: null,
+        listings: [],
+        resultCardsObserved: 0,
+        detailPagesOpened: 0,
+        completedAt: "2026-08-10T20:00:01.000Z",
+        warnings: ["Research stopped safely: browser_action_timeout_ambiguous."]
+      })
+    );
+
+    const status = await runRentalResearch(
+      { ...request, veraRunId: "run-zillow-safe-warning" },
+      deps
+    );
+
+    expect(status.sources[1]).toMatchObject({
+      source: "zillow",
+      state: "failed",
+      message: "Research stopped safely: browser_action_timeout_ambiguous."
     });
   });
 
