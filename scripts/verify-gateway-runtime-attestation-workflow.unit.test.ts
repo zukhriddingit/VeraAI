@@ -72,6 +72,15 @@ describe("existing Gateway runtime attestation workflow verifier", () => {
     ["a Docker build", (source: string) => `${source}\n# docker build .\n`, /never build/u],
     ["an image push", (source: string) => `${source}\n# docker push image\n`, /never build/u],
     [
+      "a persistent registry secret",
+      (source: string) =>
+        source.replace(
+          "password: ${{ github.token }}",
+          "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}"
+        ),
+      /bind and revalidate/u
+    ],
+    [
       "checking out the older image source before running merged recovery validators",
       (source: string) =>
         source.replace(

@@ -49,13 +49,13 @@ describe("Gateway release workflow verifier", () => {
       "approved public package"
     ],
     [
-      "repository token for the existing unlinked package",
+      "persistent registry secret",
       (source: string) =>
         source.replace(
-          "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
-          "password: ${{ github.token }}"
+          "password: ${{ github.token }}",
+          "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}"
         ),
-      "must not use the repository token"
+      "must not depend on a persistent"
     ],
     [
       "ignore-unfixed vulnerability suppression",
