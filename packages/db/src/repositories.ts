@@ -38,6 +38,9 @@ import type {
   ListingScore,
   ListingScoreV2,
   ListingSourceRecord,
+  ListingEnrichmentReason,
+  ListingEnrichmentRecord,
+  ListingEnrichmentSnapshot,
   MaritimeDeployment,
   MaritimeDispatch,
   MaritimeDispatchState,
@@ -211,6 +214,60 @@ export interface ListingSourceRecordRepository {
 export interface ListingPhotoRepository {
   insert(photo: ListingPhoto): ListingPhoto;
   getById(id: string): ListingPhoto | null;
+}
+
+export interface QueueListingEnrichmentInput {
+  readonly listingSourceRecordId: string;
+  readonly reason: ListingEnrichmentReason;
+  readonly requestedAt: string;
+  readonly force: boolean;
+}
+
+export interface QueueListingEnrichmentResult {
+  readonly record: ListingEnrichmentRecord;
+  readonly queued: boolean;
+  readonly reusedFresh: boolean;
+}
+
+export interface ClaimListingEnrichmentInput {
+  readonly leaseOwner: string;
+  readonly now: string;
+  readonly leaseExpiresAt: string;
+}
+
+export interface CompleteListingEnrichmentInput {
+  readonly listingSourceRecordId: string;
+  readonly leaseOwner: string;
+  readonly snapshot: ListingEnrichmentSnapshot;
+  readonly state: "enriched" | "partial";
+}
+
+export interface BlockListingEnrichmentInput {
+  readonly listingSourceRecordId: string;
+  readonly leaseOwner: string;
+  readonly manualAction: ListingEnrichmentRecord["manualAction"] & string;
+  readonly completedAt: string;
+}
+
+export interface FailListingEnrichmentInput {
+  readonly listingSourceRecordId: string;
+  readonly leaseOwner: string;
+  readonly errorCode: string;
+  readonly retryable: boolean;
+  readonly failedAt: string;
+  readonly retryAt: string;
+}
+
+export interface ListingEnrichmentRepository {
+  getBySourceRecordId(sourceRecordId: string): ListingEnrichmentRecord | null;
+  listByCanonicalListingId(canonicalListingId: string): readonly ListingEnrichmentRecord[];
+  getCurrentSnapshot(sourceRecordId: string): ListingEnrichmentSnapshot | null;
+  markExpiredStale(now: string): number;
+  queue(input: QueueListingEnrichmentInput): QueueListingEnrichmentResult;
+  claim(input: ClaimListingEnrichmentInput): ListingEnrichmentRecord | null;
+  complete(input: CompleteListingEnrichmentInput): ListingEnrichmentRecord;
+  block(input: BlockListingEnrichmentInput): ListingEnrichmentRecord;
+  fail(input: FailListingEnrichmentInput): ListingEnrichmentRecord;
 }
 
 export interface FieldProvenanceRepository {
@@ -681,6 +738,7 @@ export interface UserRepositories {
   readonly rawListings: AsyncRepository<RawListingRepository>;
   readonly sourceRecords: AsyncRepository<ListingSourceRecordRepository>;
   readonly listingPhotos: AsyncRepository<ListingPhotoRepository>;
+  readonly listingEnrichments: AsyncRepository<ListingEnrichmentRepository>;
   readonly fieldProvenance: AsyncRepository<FieldProvenanceRepository>;
   readonly listingExtractions: AsyncRepository<ListingExtractionRepository>;
   readonly duplicateClusters: AsyncRepository<DuplicateClusterRepository>;

@@ -200,6 +200,50 @@ describe("source job payload schemas", () => {
       captureKind: "research_tab",
       startingTabReference: { kind: "target_id", value: "shared-tab-1" }
     });
+    expect(
+      SourceJobPayloadSchema.parse({
+        acquisitionMode: "local_browser",
+        captureKind: "detail_enrichment",
+        nodeId: "remote-extension-gateway",
+        profileId: "official-chrome-extension",
+        startingTabReference: {
+          kind: "single_shared_tab",
+          value: "explicitly_shared_zillow_rental_tab"
+        },
+        targetListingUrl: "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/",
+        limits: {
+          maxPages: 1,
+          maxRecords: 1,
+          maxBytes: 250_000,
+          maxDurationMilliseconds: 90_000,
+          maxConcurrency: 1
+        },
+        maxDetailPages: 1,
+        maxResultPageExpansions: 0
+      })
+    ).toMatchObject({ captureKind: "detail_enrichment", maxDetailPages: 1 });
+    expect(() =>
+      SourceJobPayloadSchema.parse({
+        acquisitionMode: "local_browser",
+        captureKind: "detail_enrichment",
+        nodeId: "remote-extension-gateway",
+        profileId: "official-chrome-extension",
+        startingTabReference: {
+          kind: "single_shared_tab",
+          value: "explicitly_shared_zillow_rental_tab"
+        },
+        targetListingUrl: "https://www.zillow.com/homedetails/12-Cedar-St/12345_zpid/",
+        limits: {
+          maxPages: 2,
+          maxRecords: 1,
+          maxBytes: 250_000,
+          maxDurationMilliseconds: 90_000,
+          maxConcurrency: 1
+        },
+        maxDetailPages: 1,
+        maxResultPageExpansions: 0
+      })
+    ).toThrow();
   });
 
   it("rejects credential, browser-profile, pasted-evidence, and arbitrary fields", () => {

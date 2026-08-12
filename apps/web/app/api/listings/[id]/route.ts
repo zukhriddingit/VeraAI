@@ -1,6 +1,10 @@
 import { ListingActionErrorResponseSchema } from "@vera/domain";
 
 import { getListingDetail } from "../../../../lib/listing-presentation";
+import {
+  createListingEnrichmentDependencies,
+  requestCanonicalListingEnrichment
+} from "../../../../lib/listing-enrichment-service";
 import { parseRouteEntityId } from "../../../../lib/route-entity-id";
 import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
@@ -24,6 +28,13 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
         }),
         { status: 404, headers }
       );
+    }
+    if (!session.demoMode) {
+      await requestCanonicalListingEnrichment(
+        listingId,
+        "listing_opened",
+        createListingEnrichmentDependencies(session)
+      ).catch(() => null);
     }
     const detail = await getListingDetail(session.repositories, listingId);
     if (!detail) {

@@ -14,6 +14,7 @@ import {
 } from "@vera/db/demo";
 import {
   ActivityEventSchema,
+  BrowserResearchObservedListingSchema,
   type BrowserResearchOutput,
   type BrowserResearchPlan,
   type ZillowRentalResearchOutput
@@ -163,7 +164,7 @@ describe("founder Zillow rental research service", () => {
     });
     const status = await runRentalResearch(request, deps);
 
-    expect(observedInput).toMatchObject({ maxResults: 5, maxDetailPages: 1 });
+    expect(observedInput).toMatchObject({ maxResults: 5, maxDetailPages: 0 });
 
     expect(status).toMatchObject({
       searchRunId: "run-zillow-1",
@@ -343,7 +344,7 @@ function browserOutput(
     pageState: "ready",
     manualAction: null,
     listings: [
-      {
+      BrowserResearchObservedListingSchema.parse({
         source: plan.source,
         sourceListingId: isApartments ? "abc123" : "123456789",
         canonicalObservedUrl: sourceUrl,
@@ -373,7 +374,7 @@ function browserOutput(
         missingFields: isApartments ? [] : ["square_footage", "amenities", "fees"],
         safeExtractionWarnings: [],
         researchNotes: ["Read-only bounded browser extraction completed."]
-      }
+      })
     ],
     resultCardsObserved: 1,
     detailPagesOpened: 1,
@@ -411,7 +412,7 @@ describe("multi-source browser research service", () => {
       version: "1",
       source: "apartments_com",
       maxResults: 10,
-      maxDetailPages: 5,
+      maxDetailPages: 0,
       allowedHostnames: ["www.apartments.com"]
     });
     expect(capturedPlan?.signature).toMatch(/^[a-f0-9]{64}$/u);

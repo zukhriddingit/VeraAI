@@ -122,6 +122,34 @@ function formatLatency(seconds: number | null): string {
   return `Alerted in ${String(Math.round(seconds / 3_600))}h`;
 }
 
+function ListingCardPhoto({ listing }: { readonly listing: CanonicalListingSummary }) {
+  const [failed, setFailed] = useState(false);
+  if (listing.primaryPhoto && !failed) {
+    return (
+      <div className="listing-photo-frame">
+        {/* Source-hosted media is displayed directly and never rehosted by Vera. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={listing.primaryPhoto.sourceUrl}
+          alt={`${formatAddress(listing)} listing photo`}
+          loading="lazy"
+          onError={() => setFailed(true)}
+        />
+      </div>
+    );
+  }
+  return (
+    <div
+      className="listing-photo-placeholder"
+      role="img"
+      aria-label={`Source image unavailable for ${listing.title}`}
+    >
+      <span>{listing.address.line1?.slice(0, 1) ?? "V"}</span>
+      <small>Source image unavailable</small>
+    </div>
+  );
+}
+
 interface ListingCardProps {
   readonly listing: CanonicalListingSummary;
   readonly busy: boolean;
@@ -149,14 +177,7 @@ function ListingCard({
 
   return (
     <article className="listing-card" data-testid="listing-card">
-      <div
-        className="listing-photo-placeholder"
-        role="img"
-        aria-label={`No approved photo available for ${listing.title}`}
-      >
-        <span>{listing.address.line1?.slice(0, 1) ?? "V"}</span>
-        <small>Photo not supplied</small>
-      </div>
+      <ListingCardPhoto listing={listing} />
       <div className="listing-card-body">
         <div className="listing-card-topline">
           <span className={`listing-state ${shortlisted ? "listing-state-shortlisted" : ""}`}>
@@ -279,6 +300,10 @@ function ListingCard({
           ) : (
             <span>Core facts complete</span>
           )}
+          <span>
+            {String(Math.round(listing.detailCompletenessBasisPoints / 100))}% details ·{" "}
+            {listing.enrichmentState.replaceAll("_", " ")}
+          </span>
         </div>
 
         <div className="listing-card-actions">
@@ -289,6 +314,19 @@ function ListingCard({
           >
             Inspect
           </Link>
+          {listing.originalListingUrl ? (
+            <a
+              className="secondary-button compact-button link-button"
+              href={listing.originalListingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`View original listing for ${listing.title}`}
+            >
+              View original listing ↗
+            </a>
+          ) : (
+            <span className="source-link-unavailable">Original link unavailable</span>
+          )}
           {canShortlist ? (
             <button
               className="secondary-button compact-button"
@@ -392,6 +430,14 @@ export function ListingDashboard({
         }
         const collection = CanonicalListingCollectionResponseSchema.parse(body);
         setState({ kind: "ready", listings: collection.listings });
+        if (freshSearch && !demoMode) {
+          await fetch("/api/listings/enrichment/top", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}",
+            signal: controller.signal
+          });
+        }
       } catch (error: unknown) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setState({
@@ -403,7 +449,7 @@ export function ListingDashboard({
 
     void loadListings();
     return () => controller.abort();
-  }, [observedSince, refreshKey, reloadKey]);
+  }, [demoMode, freshSearch, observedSince, refreshKey, reloadKey]);
 
   const listings = state.kind === "ready" ? state.listings : [];
   const visibleListings = refineListingInbox(listings, query);

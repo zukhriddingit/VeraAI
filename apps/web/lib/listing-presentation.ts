@@ -24,6 +24,7 @@ import {
 } from "@vera/domain";
 
 const sourceNames = {
+  rentcast: "RentCast",
   zillow: "Zillow",
   facebook_marketplace: "Facebook Marketplace",
   craigslist: "Craigslist",
@@ -69,6 +70,14 @@ function safeActivityDetail(event: ActivityEvent): string | null {
       return "Listing removed from the shortlist.";
     case "listing.dismissed":
       return "Listing dismissed from the active inbox.";
+    case "listing.enrichment_requested":
+      return "Read-only detail enrichment was queued for the listing's validated source links.";
+    case "listing.enrichment_completed":
+      return "Observed listing details and source-photo references were stored with provenance.";
+    case "listing.enrichment_blocked":
+      return "Detail enrichment stopped for a visible manual browser action.";
+    case "listing.enrichment_failed":
+      return "Detail enrichment failed closed without changing the canonical listing.";
     case "seed.completed":
       return "Legacy sanitized fixtures were seeded for migration compatibility.";
     case "demo.viewing_fixture.prepared":
@@ -187,11 +196,13 @@ export async function getListingDetail(
   if (!summary) return null;
   const sourceRecords = await repositories.sourceRecords.listByCanonicalListingId(listingId);
   const rawIds = new Set(sourceRecords.map((record) => record.rawListingId));
+  const sourceRecordIds = new Set(sourceRecords.map((record) => record.id));
   const activity = (await repositories.activityEvents.list())
     .filter(
       (event) =>
         (event.targetType === "canonical_listing" && event.targetId === listingId) ||
-        (event.targetType === "raw_listing" && rawIds.has(event.targetId))
+        (event.targetType === "raw_listing" && rawIds.has(event.targetId)) ||
+        (event.targetType === "listing_source_record" && sourceRecordIds.has(event.targetId))
     )
     .sort((left, right) => right.occurredAt.localeCompare(left.occurredAt))
     .map(projectActivityEvent);
@@ -214,7 +225,9 @@ export async function getListingDetail(
   const sources = await Promise.all(
     sourceRecords.map(async (record) => ({
       record,
-      provenance: await repositories.fieldProvenance.listBySourceRecordId(record.id)
+      provenance: await repositories.fieldProvenance.listBySourceRecordId(record.id),
+      enrichment: await repositories.listingEnrichments.getBySourceRecordId(record.id),
+      snapshot: await repositories.listingEnrichments.getCurrentSnapshot(record.id)
     }))
   );
 

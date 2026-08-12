@@ -17,7 +17,7 @@ function sourceFiles(directory: string): readonly string[] {
   const absolute = resolve(root, directory);
   const result: string[] = [];
   for (const name of readdirSync(absolute)) {
-    if (["node_modules", ".next", "dist"].includes(name)) continue;
+    if (name === "node_modules" || name.startsWith(".next") || name === "dist") continue;
     const path = join(absolute, name);
     if (statSync(path).isDirectory()) result.push(...sourceFiles(path.slice(root.length + 1)));
     else if ([".ts", ".tsx", ".js", ".mjs"].includes(extname(name))) result.push(path);

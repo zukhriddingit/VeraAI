@@ -2,6 +2,7 @@
 node_modules/
 .pnpm-store/
 .next/
+.next-e2e/
 dist/
 coverage/
 *.tsbuildinfo

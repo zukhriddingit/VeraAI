@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { ListingAddressSchema, ListingLifecycleStateSchema, PetPolicySchema } from "./listing.ts";
+import { ListingDetailPhotoSchema, ListingEnrichmentStateSchema } from "./listing-enrichment.ts";
 import {
   EntityIdSchema,
   IsoDateTimeSchema,
@@ -30,6 +31,10 @@ export const CanonicalListingSummarySchema = z
     projectionState: z.enum(["active", "superseded"]).optional(),
     supersededById: EntityIdSchema.nullable().optional(),
     completenessBasisPoints: PercentageBasisPointsSchema,
+    detailCompletenessBasisPoints: PercentageBasisPointsSchema.default(0),
+    enrichmentState: ListingEnrichmentStateSchema.default("not_requested"),
+    primaryPhoto: ListingDetailPhotoSchema.nullable().default(null),
+    originalListingUrl: z.string().url().max(2_048).nullable().default(null),
     freshestObservedAt: IsoDateTimeSchema,
     freshestSourcePostedAt: IsoDateTimeSchema.nullable(),
     alertLatencySeconds: z.number().int().nonnegative().safe().nullable(),

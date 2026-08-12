@@ -66,7 +66,7 @@ export function demoEnvironment(base: NodeJS.ProcessEnv = process.env): NodeJS.P
     ...base,
     VERA_DEMO_MODE: "1",
     VERA_DATA_DIR: resolveDemoDataDirectory(base),
-    VERA_PUBLIC_BASE_URL: "http://127.0.0.1:3000",
+    VERA_PUBLIC_BASE_URL: base.VERA_PUBLIC_BASE_URL?.trim() || "http://127.0.0.1:3000",
     NEXT_TELEMETRY_DISABLED: "1"
   };
 

@@ -58,7 +58,8 @@ environment.NODE_OPTIONS = [environment.NODE_OPTIONS, `--import=${registerUrl.hr
   .filter(Boolean)
   .join(" ");
 
-const web = spawn(process.execPath, [nextCli, "dev", "--hostname", "127.0.0.1"], {
+const webCommand = environment.VERA_DEMO_SERVER_MODE === "production" ? "start" : "dev";
+const web = spawn(process.execPath, [nextCli, webCommand, "--hostname", "127.0.0.1"], {
   cwd: webDirectory,
   env: environment,
   stdio: "inherit"

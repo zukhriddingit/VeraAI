@@ -87,7 +87,7 @@ function isBrowserResearchJob(
     job.acquisitionMode === "local_browser" &&
     job.operation === BROWSER_SOURCE_OPERATIONS[source] &&
     job.payload.acquisitionMode === "local_browser" &&
-    job.payload.captureKind === "research_tab"
+    (job.payload.captureKind === "research_tab" || job.payload.captureKind === "detail_enrichment")
   );
 }
 

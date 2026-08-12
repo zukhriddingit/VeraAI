@@ -17,6 +17,7 @@ import type { UserRepositories, UserRepositoryProvider } from "../repositories.t
 import type { PostgresConnection } from "./connection.ts";
 import { createPostgresDecisionReconciliation } from "./decision-reconciliation.ts";
 import { createPostgresDecisionRepositories } from "./decision-repositories.ts";
+import { createPostgresEnrichmentRepository } from "./enrichment-repositories.ts";
 import { createPostgresCalendarRepositories } from "./calendar-repositories.ts";
 import { createPostgresBrowserRepositories } from "./browser-repositories.ts";
 import { createPostgresGmailRepositories } from "./gmail-repositories.ts";
@@ -532,6 +533,7 @@ export function createPostgresUserRepositories(
     ...createPostgresGmailRepositories(db, userId),
     ...createPostgresMaritimeRepositories(db, userId),
     ...createPostgresNotificationRepositories(db, userId),
+    listingEnrichments: createPostgresEnrichmentRepository(db, userId),
     ...createCorePostgresRepositories(db, userId),
     ...createStandardPostgresRepositories(db, userId),
     sourcePolicyManifests: createPostgresPolicyReader(db),

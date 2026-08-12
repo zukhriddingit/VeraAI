@@ -2,7 +2,12 @@ import { createHmac } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
 
-import { SAFE_ACTIONS, SOURCE_POLICY, validateResearchPlan } from "./contract.mjs";
+import {
+  ENRICHMENT_SAFE_ACTIONS,
+  SAFE_ACTIONS,
+  SOURCE_POLICY,
+  validateResearchPlan
+} from "./contract.mjs";
 
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
@@ -48,6 +53,26 @@ function plan() {
   };
 }
 
+function enrichmentPlan(
+  targetListingUrl = "https://www.apartments.com/the-longwood-boston-ma/r7nkvh2/"
+) {
+  const base = plan();
+  const { signature: _signature, ...payload } = base;
+  const enrichmentPayload = {
+    ...payload,
+    mode: "enrichment",
+    targetListingUrl,
+    maxResults: 1,
+    maxDetailPages: 1,
+    maxActions: 10,
+    enabledSafeActionTypes: [...ENRICHMENT_SAFE_ACTIONS]
+  };
+  return {
+    ...enrichmentPayload,
+    signature: createHmac("sha256", key).update(canonical(enrichmentPayload)).digest("hex")
+  };
+}
+
 describe("vera_browser_research_v1 contract", () => {
   it("accepts only the exact signed, reviewed and bounded plan", () => {
     expect(validateResearchPlan(plan(), key)).toMatchObject({
@@ -88,6 +113,23 @@ describe("vera_browser_research_v1 contract", () => {
       const unsafe = plan();
       unsafe.enabledSafeActionTypes = [action];
       expect(() => validateResearchPlan(unsafe, key)).toThrow("invalid_tool_input");
+    }
+  });
+
+  it("accepts one exact same-source enrichment target and rejects widened targets", () => {
+    expect(validateResearchPlan(enrichmentPlan(), key)).toMatchObject({
+      mode: "enrichment",
+      maxResults: 1,
+      maxDetailPages: 1,
+      maxActions: 10
+    });
+    for (const target of [
+      "https://www.apartments.com/boston-ma/",
+      "https://www.apartments.com.evil.test/the-longwood/r7nkvh2/",
+      "https://www.apartments.com/the-longwood/r7nkvh2/#contact",
+      "https://user:secret@www.apartments.com/the-longwood/r7nkvh2/"
+    ]) {
+      expect(() => validateResearchPlan(enrichmentPlan(target), key)).toThrow();
     }
   });
 });

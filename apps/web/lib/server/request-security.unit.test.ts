@@ -68,6 +68,20 @@ describe("same-origin mutation boundary", () => {
       )
     ).toThrow(CrossOriginMutationError);
   });
+
+  it("allows an exact loopback origin only for the explicit offline demo runtime", () => {
+    process.env.VERA_PUBLIC_BASE_URL = "http://127.0.0.1:3100";
+    vi.stubEnv("NODE_ENV", "production");
+    vi.stubEnv("VERA_DEMO_MODE", "1");
+    expect(() =>
+      assertSameOriginMutation(
+        new Request("http://127.0.0.1:3100/api/demo/run", {
+          method: "POST",
+          headers: { origin: "http://127.0.0.1:3100" }
+        })
+      )
+    ).not.toThrow();
+  });
 });
 
 describe("bounded JSON mutation parser", () => {

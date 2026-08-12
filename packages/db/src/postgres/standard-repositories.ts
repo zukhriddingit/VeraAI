@@ -12,8 +12,10 @@ import {
   ErrorCategorySchema,
   IsoDateTimeSchema,
   JobAttemptSchema,
+  ListingDetailPhotoSchema,
   ListingLifecycleStateSchema,
   LiveListingEvidenceSchema,
+  ListingSourceLabelSchema,
   ListingScoreSchema,
   ListingScoreV2Schema,
   ReminderMinutesSchema,
@@ -27,6 +29,8 @@ import {
   transitionListingLifecycle,
   transitionSourceJobStatus,
   transitionViewingState,
+  isExpectedSourcePhotoUrl,
+  isExpectedSourceUrl,
   type CanonicalListingSummary,
   type VeraUserId
 } from "@vera/domain";
@@ -38,6 +42,7 @@ import {
   type UserRepositories
 } from "../repositories.ts";
 import { mapPostgresError, PostgresRepositoryError } from "./errors.ts";
+import { createPostgresEnrichmentRepository } from "./enrichment-repositories.ts";
 import {
   mapApprovalRow,
   mapBrowserNodeRow,
@@ -155,6 +160,7 @@ export function createStandardPostgresRepositories(
   db: PostgresExecutor,
   userId: VeraUserId
 ): StandardPostgresRepositories {
+  const enrichmentRepository = createPostgresEnrichmentRepository(db, userId);
   const listingScoreRepository: StandardPostgresRepositories["listingScores"] = {
     async insert(input) {
       const score = ListingScoreSchema.parse(input);
@@ -406,7 +412,10 @@ export function createStandardPostgresRepositories(
       const memberships = await db
         .select({
           canonicalListingId: canonicalListingSources.canonicalListingId,
+          listingSourceRecordId: canonicalListingSources.listingSourceRecordId,
+          isPrimary: canonicalListingSources.isPrimary,
           source: listingSourceRecords.source,
+          sourceUrl: listingSourceRecords.sourceUrl,
           observedAt: listingSourceRecords.observedAt,
           sourcePostedAt: listingSourceRecords.sourcePostedAt,
           rawJson: rawListings.rawJson,
@@ -433,6 +442,85 @@ export function createStandardPostgresRepositories(
         const listingMemberships = memberships.filter(
           (membership) => membership.canonicalListingId === listing.id
         );
+        const enrichmentStates = await enrichmentRepository.listByCanonicalListingId(listing.id);
+        const enrichmentSnapshots = (
+          await Promise.all(
+            listingMemberships.map(async (membership) => ({
+              membership,
+              snapshot: await enrichmentRepository.getCurrentSnapshot(
+                membership.listingSourceRecordId
+              )
+            }))
+          )
+        )
+          .filter(
+            (entry): entry is typeof entry & { snapshot: NonNullable<typeof entry.snapshot> } =>
+              entry.snapshot !== null
+          )
+          .sort(
+            (left, right) =>
+              right.snapshot.completeness.basisPoints - left.snapshot.completeness.basisPoints ||
+              Number(right.membership.isPrimary) - Number(left.membership.isPrimary)
+          );
+        const bestEnrichment = enrichmentSnapshots[0] ?? null;
+        const discoveredPrimaryPhoto =
+          listingMemberships.flatMap((membership) => {
+            const photo = ListingDetailPhotoSchema.safeParse(
+              membership.captureMetadata.firstObservedPhoto
+            );
+            const source = ListingSourceLabelSchema.parse(membership.source);
+            return photo.success && isExpectedSourcePhotoUrl(source, photo.data.sourceUrl)
+              ? [photo.data]
+              : [];
+          })[0] ?? null;
+        const enrichedDetails = bestEnrichment?.snapshot.details ?? null;
+        const observedRecurringFees =
+          enrichedDetails?.fees.filter((fee) => fee.required && fee.cadence === "month") ?? [];
+        const enrichedRecurringFeesCents =
+          observedRecurringFees.length > 0 &&
+          observedRecurringFees.every((fee) => fee.amountCents !== null)
+            ? observedRecurringFees.reduce((total, fee) => total + (fee.amountCents ?? 0), 0)
+            : null;
+        const projectedMonthlyRentCents =
+          enrichedDetails?.baseRentCents ?? listing.monthlyRentCents;
+        const projectedRecurringFeesCents =
+          enrichedRecurringFeesCents ?? listing.recurringFeesCents;
+        const projectedBedrooms = enrichedDetails?.bedrooms ?? listing.bedrooms;
+        const projectedBathrooms = enrichedDetails?.bathrooms ?? listing.bathrooms;
+        const projectedSquareFeet = enrichedDetails?.squareFeet ?? listing.squareFeet;
+        const projectedAvailableOn = enrichedDetails?.availableOn ?? listing.availableOn;
+        const projectedLeaseTermMonths =
+          enrichedDetails?.leaseTermMonths ?? listing.leaseTermMonths;
+        const projectedPetPolicy = enrichedDetails?.petDetails?.policy ?? listing.petPolicy;
+        const statePriority = [
+          "enriching",
+          "queued",
+          "blocked_manual_action",
+          "failed",
+          "stale",
+          "partial",
+          "enriched"
+        ] as const;
+        const enrichmentState =
+          statePriority.find((state) => enrichmentStates.some((entry) => entry.state === state)) ??
+          "not_requested";
+        const sourceLinkCandidates = [
+          ...(bestEnrichment
+            ? [
+                {
+                  source: bestEnrichment.membership.source,
+                  url: bestEnrichment.snapshot.details.sourceUrl
+                }
+              ]
+            : []),
+          ...listingMemberships
+            .filter((membership) => membership.sourceUrl !== null)
+            .map((membership) => ({ source: membership.source, url: membership.sourceUrl! }))
+        ];
+        const originalListingUrl =
+          sourceLinkCandidates.find(({ source, url }) =>
+            isExpectedSourceUrl(ListingSourceLabelSchema.parse(source), url)
+          )?.url ?? null;
         const score =
           (await listingScoreRepository.listByCanonicalListingId(listing.id))[0] ?? null;
         const v2 =
@@ -492,14 +580,14 @@ export function createStandardPostgresRepositories(
           )
         ].slice(0, 20);
         const unknownFields = [
-          ["monthly rent", listing.monthlyRentCents],
-          ["recurring fees", listing.recurringFeesCents],
-          ["bedrooms", listing.bedrooms],
-          ["bathrooms", listing.bathrooms],
-          ["square feet", listing.squareFeet],
-          ["availability", listing.availableOn],
-          ["lease term", listing.leaseTermMonths],
-          ["pet policy", listing.petPolicy]
+          ["monthly rent", projectedMonthlyRentCents],
+          ["recurring fees", projectedRecurringFeesCents],
+          ["bedrooms", projectedBedrooms],
+          ["bathrooms", projectedBathrooms],
+          ["square feet", projectedSquareFeet],
+          ["availability", projectedAvailableOn],
+          ["lease term", projectedLeaseTermMonths],
+          ["pet policy", projectedPetPolicy]
         ]
           .filter((entry) => entry[1] === null)
           .map((entry) => String(entry[0]));
@@ -513,16 +601,20 @@ export function createStandardPostgresRepositories(
             id: listing.id,
             title: listing.title,
             address: listing.address,
-            monthlyRentCents: listing.monthlyRentCents,
-            recurringFeesCents: listing.recurringFeesCents,
-            bedrooms: listing.bedrooms,
-            bathrooms: listing.bathrooms,
-            squareFeet: listing.squareFeet,
-            availableOn: listing.availableOn,
-            leaseTermMonths: listing.leaseTermMonths,
-            petPolicy: listing.petPolicy,
+            monthlyRentCents: projectedMonthlyRentCents,
+            recurringFeesCents: projectedRecurringFeesCents,
+            bedrooms: projectedBedrooms,
+            bathrooms: projectedBathrooms,
+            squareFeet: projectedSquareFeet,
+            availableOn: projectedAvailableOn,
+            leaseTermMonths: projectedLeaseTermMonths,
+            petPolicy: projectedPetPolicy,
             lifecycleState: listing.lifecycleState,
             completenessBasisPoints: listing.completenessBasisPoints,
+            detailCompletenessBasisPoints: bestEnrichment?.snapshot.completeness.basisPoints ?? 0,
+            enrichmentState,
+            primaryPhoto: bestEnrichment?.snapshot.photos[0] ?? discoveredPrimaryPhoto,
+            originalListingUrl,
             freshestObservedAt: listing.freshestObservedAt,
             freshestSourcePostedAt: posted?.toISOString() ?? null,
             alertLatencySeconds:

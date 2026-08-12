@@ -62,7 +62,12 @@ export const ManualActionBlockerSchema = z.enum([
   "user_intervention_required"
 ]);
 
-export const BrowserCaptureKindSchema = z.enum(["saved_search", "current_tab", "research_tab"]);
+export const BrowserCaptureKindSchema = z.enum([
+  "saved_search",
+  "current_tab",
+  "research_tab",
+  "detail_enrichment"
+]);
 
 export const BrowserProfileIdSchema = z
   .string()
@@ -232,6 +237,24 @@ export const SourceJobPayloadSchema = z.union([
         }),
         maxDetailPages: z.number().int().min(0).max(ZILLOW_RESEARCH_MAX_DETAIL_PAGES),
         maxResultPageExpansions: z.literal(ZILLOW_RESEARCH_MAX_EXPANSIONS)
+      })
+      .strict(),
+    z
+      .object({
+        acquisitionMode: z.literal("local_browser"),
+        captureKind: z.literal("detail_enrichment"),
+        nodeId: EntityIdSchema,
+        profileId: BrowserProfileIdSchema,
+        startingTabReference: ZillowSharedTabReferenceSchema,
+        targetListingUrl: SafeBrowserUrlSchema,
+        limits: BrowserCaptureLimitsSchema.extend({
+          maxPages: z.literal(1),
+          maxRecords: z.literal(1),
+          maxDurationMilliseconds: z.literal(ZILLOW_RESEARCH_MAX_DURATION_MS),
+          maxConcurrency: z.literal(1)
+        }),
+        maxDetailPages: z.literal(1),
+        maxResultPageExpansions: z.literal(0)
       })
       .strict()
   ])
