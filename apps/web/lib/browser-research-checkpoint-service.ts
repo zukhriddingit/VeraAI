@@ -54,6 +54,15 @@ export function parseBrowserResearchCheckpointEnvironment(
   if (environment.VERA_FACEBOOK_MARKETPLACE_BROWSER_RESEARCH_ENABLED === "1") {
     enabledSources.add("facebook_marketplace");
   }
+  if (environment.VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED === "1") {
+    enabledSources.add("bu_off_campus");
+  }
+  if (environment.VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED === "1") {
+    enabledSources.add("custom_website");
+  }
+  if (environment.VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED === "1") {
+    enabledSources.add("craigslist");
+  }
   return {
     founderUserId: parsedFounder?.success ? parsedFounder.data : null,
     enabledSources,

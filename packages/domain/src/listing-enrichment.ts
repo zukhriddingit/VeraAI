@@ -331,6 +331,10 @@ export function expectedSourceHostname(source: ListingSourceLabel): string | nul
       return "www.apartments.com";
     case "facebook_marketplace":
       return "www.facebook.com";
+    case "bu_off_campus":
+      return "offcampus.bu.edu";
+    case "custom_website":
+      return null;
     case "craigslist":
       return null;
     case "rentcast":
@@ -342,9 +346,26 @@ export function expectedSourceHostname(source: ListingSourceLabel): string | nul
 
 export function isExpectedSourceUrl(source: ListingSourceLabel, value: string): boolean {
   const hostname = expectedSourceHostname(source);
-  if (hostname === null) return false;
   const match = value.match(/^https:\/\/([^/?#:@]+)([^#]*)$/u);
   const suffix = match?.[2] ?? "";
+  if (source === "craigslist") {
+    return (
+      match?.[1] !== undefined &&
+      match[1].endsWith(".craigslist.org") &&
+      /\/\d+\.html(?:\?|$)/u.test(suffix) &&
+      safeSourceQuery(suffix)
+    );
+  }
+  if (source === "custom_website") {
+    return (
+      match?.[1] !== undefined &&
+      match[1].includes(".") &&
+      !match[1].endsWith(".local") &&
+      match[1] !== "localhost" &&
+      safeSourceQuery(suffix)
+    );
+  }
+  if (hostname === null) return false;
   return (
     match?.[1] === hostname &&
     (suffix === "" || suffix.startsWith("/") || suffix.startsWith("?")) &&
@@ -370,6 +391,8 @@ export function isExpectedSourcePhotoUrl(source: ListingSourceLabel, value: stri
   if (source === "facebook_marketplace") {
     return hostname === "scontent.xx.fbcdn.net" || hostname.endsWith(".fbcdn.net");
   }
+  if (source === "bu_off_campus") return hostname === "offcampus.bu.edu";
+  if (source === "craigslist") return hostname === "images.craigslist.org";
   return false;
 }
 

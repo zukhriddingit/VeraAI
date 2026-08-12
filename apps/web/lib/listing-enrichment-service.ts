@@ -20,6 +20,7 @@ import {
   ListingDetailFieldsSchema,
   ListingDetailPhotoSchema,
   ListingEnrichmentSnapshotSchema,
+  SelectedHousingSourceConfigurationSchema,
   SourceJobSchema,
   ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE,
   computeListingDetailCompleteness,
@@ -34,6 +35,7 @@ import {
   type ListingSourceRecord,
   type ManualActionBlocker,
   type SearchProfile,
+  type SelectedHousingSourceConfiguration,
   type VeraUserId
 } from "@vera/domain";
 
@@ -75,7 +77,10 @@ function browserSource(record: ListingSourceRecord): BrowserResearchSource | nul
   if (
     record.source === "zillow" ||
     record.source === "apartments_com" ||
-    record.source === "facebook_marketplace"
+    record.source === "facebook_marketplace" ||
+    record.source === "bu_off_campus" ||
+    record.source === "custom_website" ||
+    record.source === "craigslist"
   ) {
     return record.source;
   }
@@ -83,9 +88,40 @@ function browserSource(record: ListingSourceRecord): BrowserResearchSource | nul
 }
 
 function freshnessMilliseconds(source: BrowserResearchSource): number {
-  if (source === "facebook_marketplace") return 2 * 60 * 60 * 1_000;
+  if (source === "facebook_marketplace" || source === "craigslist") {
+    return 2 * 60 * 60 * 1_000;
+  }
   if (source === "zillow") return 6 * 60 * 60 * 1_000;
+  if (source === "custom_website") return 6 * 60 * 60 * 1_000;
   return 12 * 60 * 60 * 1_000;
+}
+
+async function customConfigurationForRecord(
+  record: ListingSourceRecord,
+  dependencies: ListingEnrichmentDependencies
+): Promise<SelectedHousingSourceConfiguration | undefined> {
+  if (record.source !== "custom_website" || record.sourceUrl === null) return undefined;
+  const raw = await dependencies.repositories.rawListings.getById(record.rawListingId);
+  const stored = raw?.captureMetadata.sourceConfiguration;
+  const parsed = SelectedHousingSourceConfigurationSchema.safeParse(
+    stored && typeof stored === "object"
+      ? { ...stored, source: "custom_website", captureCurrentPage: false }
+      : null
+  );
+  if (parsed.success) return parsed.data;
+  const url = new URL(record.sourceUrl);
+  const suffix = url.hostname.replace(/[^a-z0-9.-]/gu, "-").slice(0, 120);
+  return {
+    source: "custom_website",
+    sourceId: `custom:${suffix}`,
+    displayName: url.hostname,
+    adapterKind: "generic",
+    startingUrl: record.sourceUrl,
+    allowedDomain: url.hostname,
+    loginRequired: "unknown",
+    defaultInclude: false,
+    captureCurrentPage: false
+  };
 }
 
 function manualActionBlocker(
@@ -452,7 +488,10 @@ async function processEnrichment(
     return;
   }
   const profile = await currentProfile(dependencies);
-  const adapter = getBrowserSourceAdapter(source);
+  const adapter = getBrowserSourceAdapter(
+    source,
+    await customConfigurationForRecord(sourceRecord, dependencies)
+  );
   const startedAt = nowIso(dependencies);
   const jobId = dependencies.createId();
   const plan = adapter.createPlan({

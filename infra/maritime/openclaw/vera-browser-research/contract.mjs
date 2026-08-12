@@ -26,6 +26,25 @@ export const SOURCE_POLICY = Object.freeze({
       "^https://www\\.facebook\\.com/marketplace/(?:[a-z0-9-]+/(?:category/propertyrentals|propertyrentals)|item/[0-9]+)(?:/|\\?|$)"
     ]),
     maxDetailPages: 3
+  }),
+  bu_off_campus: Object.freeze({
+    hostnames: Object.freeze(["offcampus.bu.edu"]),
+    urlPatterns: Object.freeze([
+      "^https://offcampus\\.bu\\.edu/(?:housing|listing|property)(?:/|\\?|$)"
+    ]),
+    maxDetailPages: 5
+  }),
+  custom_website: Object.freeze({
+    hostnames: Object.freeze([]),
+    urlPatterns: Object.freeze([]),
+    maxDetailPages: 3
+  }),
+  craigslist: Object.freeze({
+    hostnames: Object.freeze(["boston.craigslist.org"]),
+    urlPatterns: Object.freeze([
+      "^https://boston\\.craigslist\\.org/(?:search/(?:apa|roo|sub)|[^?#]+/[0-9]+\\.html)(?:/|\\?|$)"
+    ]),
+    maxDetailPages: 5
   })
 });
 
@@ -49,6 +68,11 @@ export const ENRICHMENT_SAFE_ACTIONS = Object.freeze([
   "scroll_bounded",
   "extract_observed_facts"
 ]);
+export const CURRENT_PAGE_SAFE_ACTIONS = Object.freeze([
+  "inspect_shared_tabs",
+  "snapshot",
+  "extract_observed_facts"
+]);
 
 const PROPERTY_TYPES = new Set(["apartment", "house", "townhouse", "condo"]);
 const PLAN_KEYS = new Set([
@@ -68,10 +92,13 @@ const PLAN_KEYS = new Set([
   "expiresAt",
   "mode",
   "targetListingUrl",
+  "sourceConfiguration",
   "signature"
 ]);
 const REQUIRED_PLAN_KEYS = new Set(
-  [...PLAN_KEYS].filter((key) => key !== "mode" && key !== "targetListingUrl")
+  [...PLAN_KEYS].filter(
+    (key) => key !== "mode" && key !== "targetListingUrl" && key !== "sourceConfiguration"
+  )
 );
 const PROFILE_KEYS = new Set([
   "location",
@@ -79,6 +106,15 @@ const PROFILE_KEYS = new Set([
   "minimumBedrooms",
   "minimumBathrooms",
   "rentalPropertyType"
+]);
+const SOURCE_CONFIGURATION_KEYS = new Set([
+  "sourceId",
+  "displayName",
+  "adapterKind",
+  "startingUrl",
+  "allowedDomain",
+  "loginRequired",
+  "defaultInclude"
 ]);
 
 export class VeraBrowserResearchError extends Error {
@@ -130,6 +166,86 @@ function exactArray(actual, expected) {
   return Array.isArray(actual) && JSON.stringify(actual) === JSON.stringify(expected);
 }
 
+function safeDomain(value) {
+  return (
+    typeof value === "string" &&
+    value.length <= 253 &&
+    /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/u.test(value)
+  );
+}
+
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+function validateSourceConfiguration(value, source) {
+  const configurable = ["bu_off_campus", "custom_website", "craigslist"].includes(source);
+  if (!configurable) return value === undefined || value === null ? null : false;
+  if (!isRecord(value) || !hasOnlyKeys(value, SOURCE_CONFIGURATION_KEYS)) return false;
+  if (
+    !text(value.sourceId, 160) ||
+    !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u.test(value.sourceId) ||
+    !text(value.displayName, 160) ||
+    !["offcampus_partners", "generic", "craigslist"].includes(value.adapterKind) ||
+    !text(value.startingUrl, 2_048) ||
+    !safeDomain(value.allowedDomain) ||
+    !["yes", "no", "unknown"].includes(value.loginRequired) ||
+    typeof value.defaultInclude !== "boolean"
+  ) {
+    return false;
+  }
+  let start;
+  try {
+    start = new URL(value.startingUrl);
+  } catch {
+    return false;
+  }
+  if (
+    start.protocol !== "https:" ||
+    start.hostname !== value.allowedDomain ||
+    start.username ||
+    start.password ||
+    start.port ||
+    start.hash
+  ) {
+    return false;
+  }
+  const expectedKind =
+    source === "bu_off_campus"
+      ? "offcampus_partners"
+      : source === "craigslist"
+        ? "craigslist"
+        : "generic";
+  if (value.adapterKind !== expectedKind) return false;
+  if (
+    source === "bu_off_campus" &&
+    (value.sourceId !== "bu_off_campus" ||
+      value.allowedDomain !== "offcampus.bu.edu" ||
+      value.startingUrl !== "https://offcampus.bu.edu/housing")
+  ) {
+    return false;
+  }
+  if (
+    source === "craigslist" &&
+    (!value.allowedDomain.endsWith(".craigslist.org") ||
+      !/^\/search\/(?:apa|roo|sub)(?:\/|$)/u.test(start.pathname))
+  ) {
+    return false;
+  }
+  return value;
+}
+
+function policyFor(source, sourceConfiguration) {
+  const configuration = validateSourceConfiguration(sourceConfiguration, source);
+  if (configuration === false) return null;
+  if (configuration === null) return SOURCE_POLICY[source] ?? null;
+  return Object.freeze({
+    hostnames: Object.freeze([configuration.allowedDomain]),
+    urlPatterns: Object.freeze([`^https://${escapeRegex(configuration.allowedDomain)}/[^#]*$`]),
+    maxDetailPages: configuration.adapterKind === "generic" ? 3 : 5
+  });
+}
+
 function validateTabReference(value) {
   if (!isRecord(value) || !hasOnlyKeys(value, new Set(["kind", "value"]))) return false;
   if (value.kind === "single_shared_tab") {
@@ -165,12 +281,12 @@ export function validateResearchPlan(
   ) {
     throw new VeraBrowserResearchError("invalid_tool_input");
   }
-  const policy = SOURCE_POLICY[value.source];
+  const policy = policyFor(value.source, value.sourceConfiguration);
   if (
     value.version !== "1" ||
     !text(value.veraRunId, 160) ||
     !/^[a-zA-Z0-9][a-zA-Z0-9._:-]*$/u.test(value.veraRunId) ||
-    policy === undefined ||
+    policy === null ||
     !integer(value.maxResults, 1, MAX_RESULTS) ||
     !integer(value.maxDetailPages, 0, policy.maxDetailPages) ||
     !integer(value.maxActions, 1, MAX_ACTIONS) ||
@@ -180,7 +296,11 @@ export function validateResearchPlan(
     !exactArray(value.allowedUrlPatterns, policy.urlPatterns) ||
     !exactArray(
       value.enabledSafeActionTypes,
-      (value.mode ?? "discovery") === "enrichment" ? ENRICHMENT_SAFE_ACTIONS : SAFE_ACTIONS
+      (value.mode ?? "discovery") === "enrichment"
+        ? ENRICHMENT_SAFE_ACTIONS
+        : (value.mode ?? "discovery") === "current_page"
+          ? CURRENT_PAGE_SAFE_ACTIONS
+          : SAFE_ACTIONS
     ) ||
     !iso(value.issuedAt) ||
     !iso(value.expiresAt) ||
@@ -192,7 +312,7 @@ export function validateResearchPlan(
   }
   const mode = value.mode ?? "discovery";
   if (
-    !["discovery", "enrichment"].includes(mode) ||
+    !["discovery", "enrichment", "current_page"].includes(mode) ||
     (mode === "discovery" && value.targetListingUrl != null) ||
     (mode === "enrichment" &&
       (!text(value.targetListingUrl, 2_048) ||
@@ -202,7 +322,17 @@ export function validateResearchPlan(
   ) {
     throw new VeraBrowserResearchError("invalid_tool_input");
   }
-  if (mode === "enrichment") validateObservedUrl(value.targetListingUrl, value.source, "detail");
+  if (
+    mode === "current_page" &&
+    (value.targetListingUrl != null ||
+      value.maxResults !== 1 ||
+      value.maxDetailPages !== 1 ||
+      value.maxActions > 10)
+  ) {
+    throw new VeraBrowserResearchError("invalid_tool_input");
+  }
+  if (mode === "enrichment")
+    validateObservedUrl(value.targetListingUrl, value.source, "detail", value.sourceConfiguration);
   const profile = value.profile;
   if (
     !isRecord(profile) ||
@@ -221,7 +351,7 @@ export function validateResearchPlan(
   return Object.freeze(structuredClone(value));
 }
 
-export function validateObservedUrl(rawUrl, source, kind = "either") {
+export function validateObservedUrl(rawUrl, source, kind = "either", sourceConfiguration) {
   let url;
   try {
     url = new URL(rawUrl);
@@ -230,7 +360,7 @@ export function validateObservedUrl(rawUrl, source, kind = "either") {
   }
   if (
     url.protocol !== "https:" ||
-    url.hostname !== SOURCE_POLICY[source]?.hostnames[0] ||
+    url.hostname !== policyFor(source, sourceConfiguration)?.hostnames[0] ||
     url.username ||
     url.password ||
     url.port ||
@@ -252,8 +382,16 @@ export function validateObservedUrl(rawUrl, source, kind = "either") {
     actualKind = /^\/[a-z0-9-]+\/[a-z0-9]{7}\/$/u.test(url.pathname) ? "detail" : "result";
   } else if (source === "facebook_marketplace") {
     actualKind = /^\/marketplace\/item\/[0-9]+\/$/u.test(url.pathname) ? "detail" : "result";
-  } else {
+  } else if (source === "zillow") {
     actualKind = /^(?:\/homedetails\/|\/apartments\/)/u.test(url.pathname) ? "detail" : "result";
+  } else if (source === "craigslist") {
+    actualKind = /\/[0-9]+\.html$/u.test(url.pathname) ? "detail" : "result";
+  } else {
+    const configuredStart = new URL(sourceConfiguration.startingUrl);
+    actualKind =
+      url.pathname === configuredStart.pathname && url.search === configuredStart.search
+        ? "result"
+        : "detail";
   }
   if (kind !== "either" && actualKind !== kind) {
     throw new VeraBrowserResearchError("source_surface_not_allowed");
@@ -299,9 +437,25 @@ export function validateResearchOutput(value, plan) {
     if (!isRecord(listing) || listing.source !== plan.source) {
       throw new VeraBrowserResearchError("invalid_tool_output");
     }
-    validateObservedUrl(listing.canonicalObservedUrl, plan.source, "detail");
+    if (
+      JSON.stringify(listing.sourceConfiguration ?? null) !==
+      JSON.stringify(plan.sourceConfiguration ?? null)
+    ) {
+      throw new VeraBrowserResearchError("invalid_tool_output");
+    }
+    validateObservedUrl(
+      listing.canonicalObservedUrl,
+      plan.source,
+      plan.mode === "current_page" ? "either" : "detail",
+      plan.sourceConfiguration
+    );
     if (listing.finalDetailPageUrl !== null)
-      validateObservedUrl(listing.finalDetailPageUrl, plan.source, "detail");
+      validateObservedUrl(
+        listing.finalDetailPageUrl,
+        plan.source,
+        "detail",
+        plan.sourceConfiguration
+      );
   }
   return Object.freeze(value);
 }
@@ -351,8 +505,22 @@ export const toolParameters = {
     },
     issuedAt: { type: "string", format: "date-time" },
     expiresAt: { type: "string", format: "date-time" },
-    mode: { enum: ["discovery", "enrichment"] },
+    mode: { enum: ["discovery", "enrichment", "current_page"] },
     targetListingUrl: { type: ["string", "null"], maxLength: 2_048 },
+    sourceConfiguration: {
+      type: ["object", "null"],
+      additionalProperties: false,
+      required: [...SOURCE_CONFIGURATION_KEYS],
+      properties: {
+        sourceId: { type: "string", minLength: 1, maxLength: 160 },
+        displayName: { type: "string", minLength: 1, maxLength: 160 },
+        adapterKind: { enum: ["offcampus_partners", "generic", "craigslist"] },
+        startingUrl: { type: "string", minLength: 1, maxLength: 2_048 },
+        allowedDomain: { type: "string", minLength: 1, maxLength: 253 },
+        loginRequired: { enum: ["yes", "no", "unknown"] },
+        defaultInclude: { type: "boolean" }
+      }
+    },
     signature: { type: "string", pattern: "^[a-f0-9]{64}$" }
   }
 };

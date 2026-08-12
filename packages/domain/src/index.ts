@@ -16,6 +16,7 @@ export * from "./extraction.ts";
 export * from "./founder-browser-access.ts";
 export * from "./identity.ts";
 export * from "./gmail.ts";
+export * from "./housing-source.ts";
 export * from "./jobs.ts";
 export * from "./lifecycle.ts";
 export * from "./listing.ts";

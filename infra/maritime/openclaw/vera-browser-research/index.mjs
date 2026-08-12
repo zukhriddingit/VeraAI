@@ -297,7 +297,7 @@ async function prepare(action, state, dependencies, reference = null) {
       manualAction: "shared_tab_changed"
     });
   }
-  validateCurrentSharedUrl(tab.url);
+  validateCurrentSharedUrl(tab.url, state.plan);
   const stable = stableReference(tab);
   const approved = state.plan.startingTabReference;
   const matches =
@@ -335,7 +335,8 @@ async function navigate(url, action, state, dependencies) {
   validateObservedUrl(
     url,
     state.plan.source,
-    action === "open_observed_listing" ? "detail" : "result"
+    action === "open_observed_listing" ? "detail" : "result",
+    state.plan.sourceConfiguration
   );
   if (
     (action === "open_observed_listing" || action === "return_to_results") &&
@@ -361,7 +362,8 @@ async function navigate(url, action, state, dependencies) {
   validateObservedUrl(
     finalUrl,
     state.plan.source,
-    action === "open_observed_listing" ? "detail" : "result"
+    action === "open_observed_listing" ? "detail" : "result",
+    state.plan.sourceConfiguration
   );
   record(state, action, dependencies, url);
 }
@@ -385,7 +387,7 @@ async function snapshot(state, dependencies) {
     dependencies
   );
   state.actionsUsed += 1;
-  const document = parseSourceSnapshot(payload, state.plan.source);
+  const document = parseSourceSnapshot(payload, state.plan);
   if (document.targetId !== tab.targetId)
     throw new VeraBrowserResearchError("shared_tab_changed", {
       manualAction: "shared_tab_changed"
@@ -649,6 +651,40 @@ export async function researchRentals(
     observedUrls: new Set()
   };
   try {
+    if (plan.mode === "current_page") {
+      const detailDocument = await snapshot(state, dependencies);
+      await authorize("extract_observed_facts", state, dependencies);
+      state.listings = [
+        extractSourceDetailListing(
+          plan.source,
+          detailDocument.page.url,
+          detailDocument,
+          safeNow(dependencies),
+          plan.sourceConfiguration ?? null
+        )
+      ];
+      state.detailPagesOpened = 1;
+      record(state, "extract_observed_facts", dependencies, detailDocument.page.url);
+      return validateResearchOutput(
+        {
+          version: "1",
+          veraRunId: plan.veraRunId,
+          source: plan.source,
+          state: "completed",
+          pageState: "ready",
+          manualAction: null,
+          listings: state.listings,
+          resultCardsObserved: 0,
+          detailPagesOpened: 1,
+          actionsUsed: state.actionsUsed,
+          startedAt: state.startedAt,
+          completedAt: safeNow(dependencies),
+          safeActionTrail: state.safeActionTrail,
+          warnings: []
+        },
+        plan
+      );
+    }
     if (plan.mode === "enrichment") {
       const targetUrl = plan.targetListingUrl;
       state.observedUrls.add(targetUrl);
@@ -657,7 +693,13 @@ export async function researchRentals(
       const detailDocument = await snapshot(state, dependencies);
       await authorize("extract_observed_facts", state, dependencies);
       state.listings = [
-        extractSourceDetailListing(plan.source, targetUrl, detailDocument, safeNow(dependencies))
+        extractSourceDetailListing(
+          plan.source,
+          targetUrl,
+          detailDocument,
+          safeNow(dependencies),
+          plan.sourceConfiguration ?? null
+        )
       ];
       state.detailPagesOpened = 1;
       record(state, "extract_observed_facts", dependencies, targetUrl);
@@ -688,16 +730,18 @@ export async function researchRentals(
     await navigate(resultPage, "navigate_same_source", state, dependencies);
     await dependencies.wait(1_500);
     let document = await snapshot(state, dependencies);
-    document =
-      plan.source === "apartments_com"
-        ? await applyApartmentsFilters(document, state, dependencies)
-        : await applyFacebookFilters(document, state, dependencies);
+    if (plan.source === "apartments_com") {
+      document = await applyApartmentsFilters(document, state, dependencies);
+    } else if (plan.source === "facebook_marketplace") {
+      document = await applyFacebookFilters(document, state, dependencies);
+    }
     await dependencies.wait(1_500);
     document = await snapshot(state, dependencies);
     const observedResultPage = document.page.url;
     state.observedUrls.add(observedResultPage);
     const observedAt = safeNow(dependencies);
     let candidates = extractSourceCardCandidates(document, plan, observedAt);
+    if (plan.source === "custom_website" && candidates.length < 2) throw layoutChanged();
     for (const candidate of candidates) {
       state.observedUrls.add(candidate.listing.canonicalObservedUrl);
     }

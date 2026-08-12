@@ -7,7 +7,10 @@ import {
 
 import {
   APARTMENTS_RENTAL_RESEARCH_MANIFEST,
+  CRAIGSLIST_RENTAL_RESEARCH_MANIFEST,
   FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST,
+  GENERIC_HOUSING_RESEARCH_MANIFEST,
+  OFFCAMPUS_PARTNERS_RENTAL_RESEARCH_MANIFEST,
   ZILLOW_GENERIC_BROWSER_RESEARCH_MANIFEST
 } from "./manifests.ts";
 import { SourcePolicyRegistry } from "./registry.ts";
@@ -37,6 +40,9 @@ function manifestFor(source: BrowserResearchCheckpointRequest["plan"]["source"])
   if (source === "facebook_marketplace") {
     return FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST;
   }
+  if (source === "bu_off_campus") return OFFCAMPUS_PARTNERS_RENTAL_RESEARCH_MANIFEST;
+  if (source === "custom_website") return GENERIC_HOUSING_RESEARCH_MANIFEST;
+  if (source === "craigslist") return CRAIGSLIST_RENTAL_RESEARCH_MANIFEST;
   return ZILLOW_GENERIC_BROWSER_RESEARCH_MANIFEST;
 }
 
@@ -83,7 +89,19 @@ export function evaluateBrowserResearchAction(input: {
     return denied("run_limit_exceeded");
   }
 
-  const manifest = { ...manifestFor(checkpoint.plan.source), enabled: true } as const;
+  const baseManifest = manifestFor(checkpoint.plan.source);
+  const manifest = {
+    ...baseManifest,
+    enabled: true,
+    ...(checkpoint.plan.sourceConfiguration === undefined ||
+    checkpoint.plan.sourceConfiguration === null
+      ? {}
+      : {
+          allowedDomains: [checkpoint.plan.sourceConfiguration.allowedDomain],
+          allowedOrigins: [`https://${checkpoint.plan.sourceConfiguration.allowedDomain}/`],
+          allowedHttpMethods: ["GET" as const]
+        })
+  } as const;
   const policy = new SourcePolicyRegistry([manifest]).evaluate({
     connectorId: manifest.connectorId,
     acquisitionMode: "local_browser",

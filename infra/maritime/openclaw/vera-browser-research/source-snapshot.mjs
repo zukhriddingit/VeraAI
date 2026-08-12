@@ -1,14 +1,13 @@
 import { VeraBrowserResearchError, validateObservedUrl } from "./contract.mjs";
 
-const REVIEWED_HOSTS = new Set(["www.zillow.com", "www.apartments.com", "www.facebook.com"]);
 const FORBIDDEN_CONTROL =
-  /\b(?:contact|apply|request\s+(?:a\s+)?tour|tour|message|messenger|email|phone|payment|pay|upload|download|create\s+(?:an?\s+)?account|sign\s*in|log\s*in|seller\s+profile|favorites?|save\s+search|notify\s+me|create\s+new\s+listing)\b/iu;
+  /\b(?:reply|contact|apply|request\s+(?:a\s+)?tour|tour|message|messenger|email|phone|payment|pay|upload|download|create\s+(?:an?\s+)?account|sign\s*in|log\s*in|seller\s+profile|favorites?|save\s+search|notify\s+me|create\s+(?:a\s+)?posting|edit\s+(?:a\s+)?posting|create\s+new\s+listing)\b/iu;
 const EMAIL_ADDRESS = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu;
 const PHONE_NUMBER = /(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}\b/u;
 const BLOCKERS = [
   [
     "two_factor_required",
-    /\b(?:two[- ]factor|2fa|two[- ]step|verification code|security code|approve your login)\b/iu
+    /\b(?:duo|two[- ]factor|2fa|two[- ]step|verification code|security code|approve your login)\b/iu
   ],
   ["captcha_required", /\b(?:captcha|verify you are human|press and hold|human verification)\b/iu],
   ["checkpoint_required", /\b(?:checkpoint|confirm your identity|security check)\b/iu],
@@ -18,7 +17,7 @@ const BLOCKERS = [
   ],
   [
     "blocked",
-    /\b(?:access denied|temporarily blocked|unusual traffic|bot challenge|pardon the interruption)\b/iu
+    /\b(?:access denied|temporarily blocked|unusual traffic|bot challenge|pardon the interruption|rate limit|too many requests)\b/iu
   ],
   [
     "login_required",
@@ -61,23 +60,28 @@ function parseRefs(payload) {
   });
 }
 
-function parseLinks(snapshot, source, refs) {
+function parseLinks(snapshot, plan, refs, pageUrl) {
   const marker = "\n\nLinks:\n";
   const index = snapshot.indexOf(marker);
   if (index < 0) return [];
   const links = [];
   for (const line of snapshot.slice(index + marker.length).split(/\r?\n/u)) {
-    const match = line.match(/^\d+\.\s+(.{1,500}?)\s+->\s+(https:\/\/\S+)$/u);
+    const match = line.match(/^\d+\.\s+(.{1,500}?)\s+->\s+(\S+)$/u);
     if (!match) continue;
     try {
-      let observed = new URL(match[2]);
+      let observed = new URL(match[2], pageUrl);
       if (
-        source === "facebook_marketplace" &&
+        plan.source === "facebook_marketplace" &&
         /^\/marketplace\/item\/[0-9]+\/?$/u.test(observed.pathname)
       ) {
         observed = new URL(`${observed.origin}${observed.pathname.replace(/\/?$/u, "/")}`);
       }
-      const validated = validateObservedUrl(observed.href, source, "detail");
+      const validated = validateObservedUrl(
+        observed.href,
+        plan.source,
+        "detail",
+        plan.sourceConfiguration
+      );
       const name = clean(match[1], 300);
       const matchingRef =
         refs.find((entry) => entry.role === "link" && entry.name === name)?.ref ?? null;
@@ -89,12 +93,12 @@ function parseLinks(snapshot, source, refs) {
   return links;
 }
 
-export function validateCurrentSharedUrl(rawUrl) {
+export function validateCurrentSharedUrl(rawUrl, plan) {
   try {
     const url = new URL(rawUrl);
     if (
       url.protocol !== "https:" ||
-      !REVIEWED_HOSTS.has(url.hostname) ||
+      ![plan.allowedHostnames[0], "www.zillow.com"].includes(url.hostname) ||
       url.username ||
       url.password
     )
@@ -107,7 +111,11 @@ export function validateCurrentSharedUrl(rawUrl) {
   }
 }
 
-export function parseSourceSnapshot(payload, source) {
+export function parseSourceSnapshot(payload, planInput) {
+  const plan =
+    typeof planInput === "string"
+      ? { source: planInput, sourceConfiguration: undefined }
+      : planInput;
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -119,7 +127,7 @@ export function parseSourceSnapshot(payload, source) {
     payload.snapshot.length > 512 * 1024
   )
     throw new VeraBrowserResearchError("invalid_snapshot_response");
-  const page = validateObservedUrl(payload.url, source, "either");
+  const page = validateObservedUrl(payload.url, plan.source, "either", plan.sourceConfiguration);
   const blocker = BLOCKERS.find(([, pattern]) => pattern.test(payload.snapshot));
   if (blocker)
     throw new VeraBrowserResearchError(blocker[0], {
@@ -132,7 +140,7 @@ export function parseSourceSnapshot(payload, source) {
     page,
     snapshot: payload.snapshot,
     refs,
-    links: parseLinks(payload.snapshot, source, refs)
+    links: parseLinks(payload.snapshot, plan, refs, page.url)
   });
 }
 
@@ -158,6 +166,32 @@ export function sourceStartUrl(plan) {
       `https://www.facebook.com/marketplace/${city}/propertyrentals/`,
       plan.source,
       "result"
+    ).url;
+  }
+  if (plan.sourceConfiguration) {
+    if (plan.source === "craigslist") {
+      const url = new URL(plan.sourceConfiguration.startingUrl);
+      url.searchParams.set("max_price", String(plan.profile.maximumRentUsd));
+      url.searchParams.set("min_bedrooms", String(Math.ceil(plan.profile.minimumBedrooms)));
+      if (plan.profile.minimumBathrooms !== undefined) {
+        url.searchParams.set("min_bathrooms", String(Math.ceil(plan.profile.minimumBathrooms)));
+      }
+      if (plan.profile.rentalPropertyType !== undefined) {
+        const housingType = {
+          apartment: "1",
+          condo: "2",
+          house: "6",
+          townhouse: "9"
+        }[plan.profile.rentalPropertyType];
+        url.searchParams.set("housing_type", housingType);
+      }
+      return validateObservedUrl(url.href, plan.source, "result", plan.sourceConfiguration).url;
+    }
+    return validateObservedUrl(
+      plan.sourceConfiguration.startingUrl,
+      plan.source,
+      "result",
+      plan.sourceConfiguration
     ).url;
   }
   throw new VeraBrowserResearchError("source_not_supported_by_generic_adapter");
@@ -203,15 +237,17 @@ function money(text) {
 function room(text, kind) {
   const pattern =
     kind === "bedrooms"
-      ? /\b(\d+(?:\.\d+)?)\s*(?:bd|beds?|bedrooms?)\b/iu
-      : /\b(\d+(?:\.\d+)?)\s*(?:ba|baths?|bathrooms?)\b/iu;
+      ? /\b(\d+(?:\.\d+)?)(?:\s*-\s*\d+(?:\.\d+)?)?\s*(?:bd|beds?|bedrooms?)\b/iu
+      : /\b(\d+(?:\.\d+)?)(?:\s*-\s*\d+(?:\.\d+)?)?\s*(?:ba|baths?|bathrooms?)\b/iu;
   const match = text.match(pattern);
   const value = match ? Number(match[1]) : null;
   return Number.isFinite(value) && value >= 0 && value <= 20 ? value : null;
 }
 
 function squareFeet(text) {
-  const match = text.match(/\b([1-9][\d,]{2,8})\s*(?:sq\.?\s*ft\.?|square feet)\b/iu);
+  const match = text.match(
+    /\b([1-9][\d,]{2,8})\s*(?:sq\.?\s*ft\.?|square feet|ft²)(?=\s|[,.;]|$)/iu
+  );
   const value = match ? Number(match[1].replaceAll(",", "")) : null;
   return Number.isSafeInteger(value) && value <= 1_000_000 ? value : null;
 }
@@ -281,15 +317,19 @@ function description(snapshot) {
   return value || null;
 }
 
-function photoHostAllowed(source, hostname) {
+function photoHostAllowed(source, hostname, sourceConfiguration) {
   if (source === "zillow") return hostname === "photos.zillowstatic.com";
   if (source === "apartments_com") {
     return hostname === "images1.apartments.com" || hostname.endsWith(".apartments.com");
   }
-  return hostname === "scontent.xx.fbcdn.net" || hostname.endsWith(".fbcdn.net");
+  if (source === "facebook_marketplace") {
+    return hostname === "scontent.xx.fbcdn.net" || hostname.endsWith(".fbcdn.net");
+  }
+  if (source === "craigslist") return hostname === "images.craigslist.org";
+  return sourceConfiguration?.allowedDomain === hostname;
 }
 
-function observedPhotos(snapshot, source) {
+function observedPhotos(snapshot, source, sourceConfiguration) {
   const matches = snapshot.match(/https:\/\/[^\s"'<>]+/gu) ?? [];
   const photos = [];
   for (const raw of matches) {
@@ -305,7 +345,7 @@ function observedPhotos(snapshot, source) {
             key
           )
         ) ||
-        !photoHostAllowed(source, url.hostname)
+        !photoHostAllowed(source, url.hostname, sourceConfiguration)
       ) {
         continue;
       }
@@ -341,8 +381,11 @@ function sourceUpdateTime(text, observedAt) {
     const value = new Date(explicit[1]);
     return Number.isNaN(value.getTime()) ? null : value.toISOString();
   }
+  if (/\b(?:last\s+updated|listed|posted|updated|time\s*:)\s+today\b/iu.test(text)) {
+    return observedAt;
+  }
   const relative = text.match(
-    /\b(?:last\s+updated|last\s+seen|listed|posted|updated)\s+(\d{1,3})\s*(minutes?|hours?|days?|weeks?)\s+ago\b/iu
+    /\b(?:(?:last\s+updated|last\s+seen|listed|posted|updated|time\s*:?)\s+)?(\d{1,3})\s*(minutes?|hours?|days?|weeks?)\s+ago\b/iu
   );
   if (!relative?.[1] || !relative[2]) return null;
   const amount = Number(relative[1]);
@@ -445,6 +488,16 @@ function address(text, source) {
       clean(text.match(/(?:^|,\s)([A-Za-z .'-]{2,80},\s*[A-Z]{2})(?:,|$)/u)?.[1] ?? "", 300) || null
     );
   }
+  if (source === "craigslist") {
+    const full = clean(
+      text.match(
+        /\b(\d{1,6}(?:-\d{1,6})?\s+[^,]{2,120},\s*[^,]{2,60},\s*[A-Z]{2}(?:\s+\d{5})?)\b/u
+      )?.[1] ?? "",
+      300
+    );
+    if (full) return full;
+    return clean(text.match(/\(([A-Za-z0-9 .'-]{2,80})\)/u)?.[1] ?? "", 300) || null;
+  }
   return (
     clean(
       text.match(
@@ -467,6 +520,10 @@ function sourceId(url, source) {
       url.match(/\/([0-9]+)_zpid\/?/u)?.[1] ?? url.match(/\/([A-Za-z0-9]{5,16})\/$/u)?.[1] ?? null
     );
   }
+  if (source === "craigslist") return url.match(/\/([0-9]+)\.html(?:\?|$)/u)?.[1] ?? null;
+  if (source === "bu_off_campus" || source === "custom_website") {
+    return url.match(/\/([a-zA-Z0-9_-]{4,80})\/?(?:\?|$)/u)?.[1] ?? null;
+  }
   return url.match(/\/([a-z0-9]{7})\/$/u)?.[1] ?? null;
 }
 
@@ -477,8 +534,18 @@ export function extractSourceCardCandidates(document, plan, observedAt) {
     if (seen.has(link.url)) continue;
     seen.add(link.url);
     const evidence = `${link.name} ${windowFor(document.snapshot, link.name)}`;
+    if (
+      ["bu_off_campus", "custom_website", "craigslist"].includes(plan.source) &&
+      money(evidence) === null &&
+      room(evidence, "bedrooms") === null &&
+      room(evidence, "bathrooms") === null
+    ) {
+      continue;
+    }
+    const observedLease = lease(evidence);
     const listing = {
       source: plan.source,
+      sourceConfiguration: plan.sourceConfiguration ?? null,
       sourceListingId: sourceId(link.url, plan.source),
       canonicalObservedUrl: link.url,
       finalDetailPageUrl: null,
@@ -502,7 +569,7 @@ export function extractSourceCardCandidates(document, plan, observedAt) {
       missingFields: [],
       safeExtractionWarnings: [],
       researchNotes: ["Observed in a bounded read-only result-card snapshot."],
-      photos: observedPhotos(evidence, plan.source),
+      photos: observedPhotos(evidence, plan.source, plan.sourceConfiguration),
       description: null,
       recurringFees: [],
       estimatedTotalMonthlyCostUsd: null,
@@ -510,8 +577,8 @@ export function extractSourceCardCandidates(document, plan, observedAt) {
       applicationFeeUsd: null,
       brokerFeeUsd: null,
       availableDate: null,
-      leaseDuration: null,
-      leaseTermMonths: null,
+      leaseDuration: observedLease.text,
+      leaseTermMonths: observedLease.months,
       propertyType: propertyTypeFromText(evidence),
       petPolicyText: petPolicy(evidence),
       petFees: [],
@@ -534,6 +601,7 @@ export function extractSourceCardCandidates(document, plan, observedAt) {
       ["bathrooms", listing.bathrooms],
       ["square_footage", listing.squareFeet],
       ["availability", listing.availability],
+      ["lease_duration", listing.leaseDuration],
       ["amenities", listing.amenities.length ? listing.amenities : null],
       ["fees", listing.fees.length ? listing.fees : null],
       ["photos", listing.photos.length ? listing.photos : null],
@@ -604,7 +672,7 @@ export function enrichSourceListingFromDetail(listing, document, observedAt) {
       ) || null,
     amenities: amenities(evidence),
     fees: visibleFees(evidence),
-    photos: observedPhotos(document.snapshot, listing.source),
+    photos: observedPhotos(document.snapshot, listing.source, listing.sourceConfiguration),
     description: description(document.snapshot),
     recurringFees: observedRecurringFees(evidence),
     deposit: observedFee(evidence, "(?:security )?deposit", "Security deposit"),
@@ -754,7 +822,13 @@ export function enrichSourceListingFromDetail(listing, document, observedAt) {
   return enriched;
 }
 
-export function extractSourceDetailListing(source, targetUrl, document, observedAt) {
+export function extractSourceDetailListing(
+  source,
+  targetUrl,
+  document,
+  observedAt,
+  sourceConfiguration = null
+) {
   const heading = clean(
     document.snapshot.match(/- heading(?: \[[^\]]+\])?\s+"([^"]+)"/u)?.[1] ?? "",
     300
@@ -762,6 +836,7 @@ export function extractSourceDetailListing(source, targetUrl, document, observed
   return enrichSourceListingFromDetail(
     {
       source,
+      sourceConfiguration,
       sourceListingId: sourceId(targetUrl, source),
       canonicalObservedUrl: targetUrl,
       finalDetailPageUrl: null,

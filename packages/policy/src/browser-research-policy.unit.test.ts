@@ -1,7 +1,8 @@
 import {
   BrowserResearchCheckpointRequestSchema,
   BrowserResearchPlanSchema,
-  BrowserResearchSourcePolicy
+  BrowserResearchSourcePolicy,
+  configuredBrowserResearchPolicy
 } from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
@@ -67,6 +68,40 @@ function checkpoint(overrides: Record<string, unknown> = {}) {
   });
 }
 
+function customCheckpoint(hostname = "housing.example.edu") {
+  const configuration = {
+    sourceId: "custom:housing.example.edu",
+    displayName: "Example Housing",
+    adapterKind: "generic" as const,
+    startingUrl: "https://housing.example.edu/search",
+    allowedDomain: "housing.example.edu",
+    loginRequired: "unknown" as const,
+    defaultInclude: false
+  };
+  const policy = configuredBrowserResearchPolicy(configuration);
+  const researchPlan = BrowserResearchPlanSchema.parse({
+    ...plan(),
+    source: "custom_website",
+    sourceConfiguration: configuration,
+    maxDetailPages: 3,
+    allowedHostnames: [...policy.hostnames],
+    allowedUrlPatterns: [...policy.urlPatterns]
+  });
+  return BrowserResearchCheckpointRequestSchema.parse({
+    version: "1",
+    plan: researchPlan,
+    action: "snapshot",
+    activeTabReference: researchPlan.startingTabReference,
+    sharedTabCount: 1,
+    hostname,
+    elapsedMilliseconds: 1_000,
+    resultCardsObserved: 0,
+    detailPagesOpened: 0,
+    actionsUsed: 1,
+    requestedAt
+  });
+}
+
 const authorizedRuntime = {
   founderAuthorized: true,
   sourceEnabled: true,
@@ -128,6 +163,23 @@ describe("generic browser-research action policy", () => {
         checkedAt
       }).reason
     ).toBe("run_limit_exceeded");
+  });
+
+  it("authorizes a signed custom source only on its exact configured domain", () => {
+    expect(
+      evaluateBrowserResearchAction({
+        checkpoint: customCheckpoint(),
+        runtime: authorizedRuntime,
+        checkedAt
+      })
+    ).toEqual({ allowed: true, reason: "allowed", checkedAt });
+    expect(
+      evaluateBrowserResearchAction({
+        checkpoint: customCheckpoint("housing.example.edu.evil.test"),
+        runtime: authorizedRuntime,
+        checkedAt
+      }).reason
+    ).toBe("hostname_not_allowed");
   });
 
   it.each([

@@ -273,6 +273,111 @@ export const FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST = freezeManifest(
   })
 );
 
+export const OFFCAMPUS_PARTNERS_RENTAL_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "offcampus-partners.browser-research.v1",
+    displayName: "Off Campus Partners rental research (founder experiment)",
+    version: 1,
+    source: "bu_off_campus",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["offcampus_partners.rental_research.v1"],
+    allowedDomains: ["offcampus.bu.edu"],
+    allowedOrigins: ["https://offcampus.bu.edu/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.offcampus-partners.browser-research.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-08-12",
+    decisionRecord: "AGENTS.md",
+    notes:
+      "Founder-only, user-triggered read-only research through one signed Off Campus Partners configuration. Manual login and Duo remain user actions; contact, lead, application, email, phone, payment, upload, and download controls are forbidden.",
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z"
+  })
+);
+
+export const GENERIC_HOUSING_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "generic-housing.browser-research.v1",
+    displayName: "Generic housing website research (founder experiment)",
+    version: 1,
+    source: "custom_website",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["generic_housing.rental_research.v1"],
+    allowedDomains: [],
+    allowedOrigins: [],
+    allowedHttpMethods: [],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.generic-housing.browser-research.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-08-12",
+    decisionRecord: "AGENTS.md",
+    notes:
+      "Founder-only, user-triggered research of one user-configured exact public domain. The signed run plan supplies the exact start URL and domain; no forms, generated URLs, arbitrary scripts, selectors, contact, payment, or file transfer are permitted.",
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z"
+  })
+);
+
+export const CRAIGSLIST_RENTAL_RESEARCH_MANIFEST = freezeManifest(
+  SourcePolicyManifestSchema.parse({
+    schemaVersion: 2,
+    connectorId: "craigslist.browser-research.v1",
+    displayName: "Craigslist rental research (founder experiment)",
+    version: 1,
+    source: "craigslist",
+    acquisitionMode: "local_browser",
+    policyState: "experimental_personal",
+    enabled: false,
+    execution: "manual",
+    capabilities: ["browser.capture"],
+    allowedOperations: ["craigslist.rental_research.v1"],
+    allowedDomains: ["boston.craigslist.org"],
+    allowedOrigins: ["https://boston.craigslist.org/"],
+    allowedHttpMethods: ["GET"],
+    requiresUserSession: true,
+    requiresApproval: true,
+    minimumIntervalSeconds: null,
+    maxConcurrency: 1,
+    globalKillSwitchKey: "browser.disabled",
+    connectorKillSwitchKey: "connectors.craigslist.browser-research.v1.disabled",
+    dataClassification: "third_party",
+    redactionRules,
+    manualBlockerBehavior: "stop_and_request_user_action",
+    owner: "Vera founder",
+    reviewedAt: "2026-08-12",
+    decisionRecord: "AGENTS.md",
+    notes:
+      "Founder-only, user-triggered, disabled-by-default Craigslist housing research. Reply, relay email, phone, posting, account, contact, payment, upload, and download actions are absent and forbidden.",
+    createdAt: "2026-08-12T00:00:00.000Z",
+    updatedAt: "2026-08-12T00:00:00.000Z"
+  })
+);
+
 /**
  * Calendar write access is deliberately narrower than the provider scope: Vera may
  * create only one user-approved tentative hold through the reviewed Google API.
@@ -401,5 +506,8 @@ export const INITIAL_LOCAL_MANIFESTS = Object.freeze([
   ZILLOW_RENTAL_RESEARCH_MANIFEST,
   ZILLOW_GENERIC_BROWSER_RESEARCH_MANIFEST,
   APARTMENTS_RENTAL_RESEARCH_MANIFEST,
-  FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST
+  FACEBOOK_MARKETPLACE_RENTAL_RESEARCH_MANIFEST,
+  OFFCAMPUS_PARTNERS_RENTAL_RESEARCH_MANIFEST,
+  GENERIC_HOUSING_RESEARCH_MANIFEST,
+  CRAIGSLIST_RENTAL_RESEARCH_MANIFEST
 ]) satisfies readonly SourcePolicyManifest[];

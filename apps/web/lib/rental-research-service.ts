@@ -30,6 +30,7 @@ import {
   type BrowserResearchOutput,
   type BrowserResearchPlan,
   type BrowserResearchSource,
+  type SelectedHousingSourceConfiguration,
   type RentalResearchProgressPhase,
   type RentalResearchRunStatus,
   type RentalResearchSource,
@@ -693,10 +694,11 @@ function browserResearchJob(
   profile: SearchProfile,
   parentRunId: string,
   source: AdditionalBrowserResearchSource,
+  configuration: SelectedHousingSourceConfiguration | undefined,
   jobId: string,
   createdAt: string
 ): { readonly job: SourceJob; readonly plan: BrowserResearchPlan } {
-  const adapter = getBrowserSourceAdapter(source);
+  const adapter = getBrowserSourceAdapter(source, configuration);
   const plan = adapter.createPlan({
     veraRunId: jobId,
     profile,
@@ -707,7 +709,8 @@ function browserResearchJob(
     signingKey: dependencies.browserResearchEnvironment.planSigningKey,
     issuedAt: new Date(createdAt),
     maxResults: 10,
-    maxDetailPages: DISCOVERY_DETAIL_PAGES
+    maxDetailPages: configuration?.captureCurrentPage ? 1 : DISCOVERY_DETAIL_PAGES,
+    ...(configuration?.captureCurrentPage ? { mode: "current_page" as const } : {})
   });
   const payload = {
     acquisitionMode: "local_browser" as const,
@@ -722,7 +725,7 @@ function browserResearchJob(
       maxDurationMilliseconds: 90_000,
       maxConcurrency: 1 as const
     },
-    maxDetailPages: DISCOVERY_DETAIL_PAGES,
+    maxDetailPages: configuration?.captureCurrentPage ? 1 : DISCOVERY_DETAIL_PAGES,
     maxResultPageExpansions: 2 as const
   };
   const payloadHash = hash(payload);
@@ -785,7 +788,7 @@ function browserManualInstruction(
   source: AdditionalBrowserResearchSource,
   action: BrowserResearchManualAction
 ): string {
-  const label = source === "apartments_com" ? "Apartments.com" : "Facebook Marketplace";
+  const label = sourceLabelsForMessage(source);
   if (action === "tab_required") return "Open and explicitly share one dedicated Vera Search tab.";
   if (action === "multiple_shared_tabs")
     return "Unshare every tab except the dedicated Vera Search tab.";
@@ -809,9 +812,10 @@ async function importBrowserListings(
   parentRunId: string,
   sourceJobId: string,
   source: AdditionalBrowserResearchSource,
+  configuration: SelectedHousingSourceConfiguration | undefined,
   listings: BrowserResearchOutput["listings"]
 ): Promise<{ importedCount: number; rejectedCount: number }> {
-  const adapter = getBrowserSourceAdapter(source);
+  const adapter = getBrowserSourceAdapter(source, configuration);
   let importedCount = 0;
   let rejectedCount = 0;
   for (const listing of listings) {
@@ -920,7 +924,8 @@ async function runAdditionalBrowserSource(
   dependencies: RentalResearchDependencies,
   profile: SearchProfile,
   parentRunId: string,
-  source: AdditionalBrowserResearchSource
+  source: AdditionalBrowserResearchSource,
+  configuration: SelectedHousingSourceConfiguration | undefined
 ): Promise<void> {
   const environment = dependencies.browserResearchEnvironment;
   if (
@@ -937,6 +942,7 @@ async function runAdditionalBrowserSource(
     profile,
     parentRunId,
     source,
+    configuration,
     jobId,
     createdAt
   );
@@ -992,6 +998,7 @@ async function runAdditionalBrowserSource(
       parentRunId,
       jobId,
       source,
+      configuration,
       output.listings
     );
     const finishedAt = nowIso(dependencies);
@@ -1179,11 +1186,17 @@ export async function runRentalResearch(
       outcome: "recorded",
       payloadHash: hash({
         profileId: profile.id,
-        selectedSources: request.selectedSources
+        selectedSources: request.selectedSources,
+        housingSourceConfigurationIds: request.housingSourceConfigurations.map(
+          (configuration) => configuration.sourceId
+        )
       }),
       metadata: {
         profileId: profile.id,
         selectedSources: request.selectedSources,
+        housingSourceConfigurationIds: request.housingSourceConfigurations.map(
+          (configuration) => configuration.sourceId
+        ),
         retryOfSearchRunId: request.retryOfSearchRunId ?? null
       },
       occurredAt: requestedAt
@@ -1212,6 +1225,9 @@ export async function runRentalResearch(
   for (const source of request.selectedSources.filter(
     (candidate): candidate is Exclude<RentalResearchSource, "rentcast"> => candidate !== "rentcast"
   )) {
+    const configuration = request.housingSourceConfigurations.find(
+      (candidate) => candidate.source === source
+    );
     const sourceRun = browserSequence.then(() =>
       source === "zillow"
         ? runZillowSource(
@@ -1220,7 +1236,13 @@ export async function runRentalResearch(
             request.veraRunId,
             request.selectedSources.length === 1
           )
-        : runAdditionalBrowserSource(dependencies, profile, request.veraRunId, source)
+        : runAdditionalBrowserSource(
+            dependencies,
+            profile,
+            request.veraRunId,
+            source,
+            configuration
+          )
     );
     operations.push({ source, promise: sourceRun });
     browserSequence = sourceRun.catch(() => undefined);
@@ -1318,6 +1340,9 @@ function firstSafeResearchWarning(finished: ActivityEvent | undefined): string |
 function sourceLabelsForMessage(source: RentalResearchSource): string {
   if (source === "apartments_com") return "Apartments.com";
   if (source === "facebook_marketplace") return "Facebook Marketplace";
+  if (source === "bu_off_campus") return "BU Off-Campus Housing";
+  if (source === "custom_website") return "Custom housing website";
+  if (source === "craigslist") return "Craigslist";
   if (source === "zillow") return "Zillow";
   return "RentCast";
 }
@@ -1414,7 +1439,7 @@ function sourceStatus(
     };
   }
 
-  if (source === "apartments_com" || source === "facebook_marketplace") {
+  if (source !== "rentcast") {
     const finished = events.findLast(
       (item) =>
         item.action === RENTAL_RESEARCH_ACTIONS.browserSourceFinished &&
@@ -1548,6 +1573,9 @@ function researchPhase(
   if (running?.source === "facebook_marketplace") {
     return "searching_facebook_marketplace";
   }
+  if (running?.source === "bu_off_campus") return "searching_bu_off_campus";
+  if (running?.source === "custom_website") return "searching_custom_website";
+  if (running?.source === "craigslist") return "searching_craigslist";
   if (jobs.length > 0) return "checking_sources";
   return "connecting_browser";
 }
@@ -1571,6 +1599,9 @@ export async function getRentalResearchStatus(
   const zillow = jobs.find((job) => job.source === "zillow") ?? null;
   const apartments = jobs.find((job) => job.source === "apartments_com") ?? null;
   const facebook = jobs.find((job) => job.source === "facebook_marketplace") ?? null;
+  const buOffCampus = jobs.find((job) => job.source === "bu_off_campus") ?? null;
+  const customWebsite = jobs.find((job) => job.source === "custom_website") ?? null;
+  const craigslist = jobs.find((job) => job.source === "craigslist") ?? null;
   const imports = events.filter((item) => item.action === "live_listing_imported");
   const sources = [
     sourceStatus("rentcast", selected.includes("rentcast"), rentcast, events),
@@ -1581,7 +1612,10 @@ export async function getRentalResearchStatus(
       selected.includes("facebook_marketplace"),
       facebook,
       events
-    )
+    ),
+    sourceStatus("bu_off_campus", selected.includes("bu_off_campus"), buOffCampus, events),
+    sourceStatus("custom_website", selected.includes("custom_website"), customWebsite, events),
+    sourceStatus("craigslist", selected.includes("craigslist"), craigslist, events)
   ] as const;
   const phase = researchPhase(events, jobs, imports);
   const failures = sources.filter(
@@ -1687,6 +1721,15 @@ export function createRentalResearchDependencies(
   }
   if (environment.VERA_FACEBOOK_MARKETPLACE_BROWSER_RESEARCH_ENABLED === "1") {
     enabledSources.add("facebook_marketplace");
+  }
+  if (environment.VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED === "1") {
+    enabledSources.add("bu_off_campus");
+  }
+  if (environment.VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED === "1") {
+    enabledSources.add("custom_website");
+  }
+  if (environment.VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED === "1") {
+    enabledSources.add("craigslist");
   }
   return {
     userId,

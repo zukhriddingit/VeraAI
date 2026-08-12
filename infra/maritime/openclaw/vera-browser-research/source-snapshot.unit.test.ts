@@ -21,6 +21,109 @@ describe("bounded source snapshots", () => {
     ).toBe("https://www.facebook.com/marketplace/boston/propertyrentals/");
   });
 
+  it("builds a code-owned Craigslist housing query and preserves observed listing URLs", () => {
+    const plan = {
+      source: "craigslist",
+      maxResults: 10,
+      profile: {
+        location: "Boston, MA",
+        maximumRentUsd: 2_800,
+        minimumBedrooms: 1,
+        minimumBathrooms: 1,
+        rentalPropertyType: "apartment"
+      },
+      sourceConfiguration: {
+        sourceId: "craigslist",
+        displayName: "Craigslist",
+        adapterKind: "craigslist",
+        startingUrl: "https://boston.craigslist.org/search/apa",
+        allowedDomain: "boston.craigslist.org",
+        loginRequired: "no",
+        defaultInclude: false
+      }
+    };
+    expect(sourceStartUrl(plan)).toContain(
+      "https://boston.craigslist.org/search/apa?max_price=2800&min_bedrooms=1&min_bathrooms=1"
+    );
+    const listingUrl =
+      "https://boston.craigslist.org/gbs/apa/d/boston-sunny-one-bedroom/1234567890.html";
+    const document = parseSourceSnapshot(
+      {
+        ok: true,
+        format: "ai",
+        targetId: "shared-tab-1",
+        url: sourceStartUrl(plan),
+        refs: { e1: { role: "link", name: "Sunny one bedroom (Allston)" } },
+        snapshot: [
+          '- article: link "Sunny one bedroom (Allston)" [ref=e1]',
+          "  - generic: $2,450, 1 bed, 1 bath, 700 ft²",
+          "  - generic: posted 2 hours ago",
+          "",
+          "Links:",
+          `1. Sunny one bedroom (Allston) -> ${listingUrl}`
+        ].join("\n")
+      },
+      plan
+    );
+    expect(extractSourceCards(document, plan, observedAt)[0]).toMatchObject({
+      source: "craigslist",
+      sourceListingId: "1234567890",
+      canonicalObservedUrl: listingUrl,
+      rentUsd: 2_450,
+      bedrooms: 1,
+      bathrooms: 1,
+      squareFeet: 700,
+      address: "Allston"
+    });
+  });
+
+  it("resolves an observed BU card link only against its exact configured portal", () => {
+    const plan = {
+      source: "bu_off_campus",
+      maxResults: 10,
+      sourceConfiguration: {
+        sourceId: "bu_off_campus",
+        displayName: "BU Off-Campus Housing",
+        adapterKind: "offcampus_partners",
+        startingUrl: "https://offcampus.bu.edu/housing",
+        allowedDomain: "offcampus.bu.edu",
+        loginRequired: "unknown",
+        defaultInclude: false
+      }
+    };
+    const document = parseSourceSnapshot(
+      {
+        ok: true,
+        format: "ai",
+        targetId: "shared-tab-1",
+        url: "https://offcampus.bu.edu/housing",
+        refs: { e1: { role: "link", name: "The Longwood" } },
+        snapshot: [
+          '- article "The Longwood":',
+          '  - link "The Longwood" [ref=e1]',
+          "  - paragraph: 1575 Tremont St, Boston, MA 02120",
+          "  - generic: $2,613 - $3,640 Plus Fees",
+          "  - paragraph: 1 - 2 Beds 12 Month Lease",
+          "  - time: 1 Day Ago",
+          "",
+          "Links:",
+          "1. The Longwood -> /housing/property/the-longwood/c4n4rhf"
+        ].join("\n")
+      },
+      plan
+    );
+    expect(extractSourceCards(document, plan, observedAt)[0]).toMatchObject({
+      source: "bu_off_campus",
+      sourceListingId: "c4n4rhf",
+      canonicalObservedUrl: "https://offcampus.bu.edu/housing/property/the-longwood/c4n4rhf",
+      propertyName: "The Longwood",
+      address: "1575 Tremont St, Boston, MA 02120",
+      rentUsd: 2_613,
+      bedrooms: 1,
+      leaseDuration: "12 Month Lease"
+    });
+  });
+
   it("extracts a sanitized Apartments.com card and ignores contact controls", () => {
     const name = "The Longwood, Boston, MA";
     const document = parseSourceSnapshot(
@@ -176,6 +279,8 @@ describe("bounded source snapshots", () => {
       "Message seller",
       "Email",
       "Phone",
+      "Reply",
+      "Create a posting",
       "Upload",
       "Download"
     ]) {

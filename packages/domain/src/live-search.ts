@@ -6,6 +6,7 @@ import {
   PercentageBasisPointsSchema,
   Sha256Schema
 } from "./primitives.ts";
+import { SelectedHousingSourceConfigurationSchema } from "./housing-source.ts";
 
 export const LIVE_RENTAL_SEARCH_MAX_RESULTS = 10;
 
@@ -134,7 +135,10 @@ export const RentalResearchSourceSchema = z.enum([
   "rentcast",
   "zillow",
   "apartments_com",
-  "facebook_marketplace"
+  "facebook_marketplace",
+  "bu_off_campus",
+  "custom_website",
+  "craigslist"
 ]);
 export const RentalResearchSourceStateSchema = z.enum([
   "ready",
@@ -157,6 +161,9 @@ export const RentalResearchProgressPhaseSchema = z.enum([
   "searching_zillow",
   "searching_apartments_com",
   "searching_facebook_marketplace",
+  "searching_bu_off_campus",
+  "searching_custom_website",
+  "searching_craigslist",
   "importing",
   "deduplicating",
   "scoring",
@@ -167,7 +174,11 @@ export const RunRentalResearchRequestSchema = z
   .object({
     veraRunId: EntityIdSchema,
     searchProfileId: EntityIdSchema,
-    selectedSources: z.array(RentalResearchSourceSchema).min(1).max(4),
+    selectedSources: z.array(RentalResearchSourceSchema).min(1).max(7),
+    housingSourceConfigurations: z
+      .array(SelectedHousingSourceConfigurationSchema)
+      .max(3)
+      .default([]),
     confirmedExternalUsage: z.literal(true),
     retryOfSearchRunId: EntityIdSchema.optional()
   })
@@ -179,6 +190,27 @@ export const RunRentalResearchRequestSchema = z
         path: ["selectedSources"],
         message: "Each research source may be selected only once."
       });
+    }
+    const configurationSources = request.housingSourceConfigurations.map(
+      (configuration) => configuration.source
+    );
+    if (new Set(configurationSources).size !== configurationSources.length) {
+      context.addIssue({
+        code: "custom",
+        path: ["housingSourceConfigurations"],
+        message: "Each configurable housing-source family may be selected only once."
+      });
+    }
+    for (const source of ["bu_off_campus", "custom_website", "craigslist"] as const) {
+      const selected = request.selectedSources.includes(source);
+      const configured = configurationSources.includes(source);
+      if (selected !== configured) {
+        context.addIssue({
+          code: "custom",
+          path: ["housingSourceConfigurations"],
+          message: `Selected source ${source} requires exactly one matching configuration.`
+        });
+      }
     }
   });
 
@@ -215,7 +247,7 @@ export const RentalResearchRunStatusSchema = z
     searchRunId: EntityIdSchema,
     searchProfileId: EntityIdSchema,
     phase: RentalResearchProgressPhaseSchema,
-    sources: z.array(RentalResearchSourceStatusSchema).length(4),
+    sources: z.array(RentalResearchSourceStatusSchema).min(4).max(7),
     partial: z.boolean(),
     completedAt: IsoDateTimeSchema.nullable()
   })

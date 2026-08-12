@@ -2931,6 +2931,91 @@ h2 {
   color: rgba(255, 255, 255, 0.68);
 }
 
+.source-fallback-row,
+.current-page-fallback {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.8rem;
+}
+
+.source-fallback-row a {
+  color: #fff;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.custom-source-configurator {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.custom-source-configurator summary {
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.custom-source-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 11px;
+  margin-top: 14px;
+}
+
+.custom-source-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+}
+
+.custom-source-form input[type="text"],
+.custom-source-form input[type="url"],
+.custom-source-form select {
+  min-height: 42px;
+  padding: 9px 11px;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 10px;
+  color: var(--ink);
+  background: #fff;
+}
+
+.custom-source-form .custom-source-toggle {
+  flex-direction: row;
+  align-items: center;
+}
+
+.custom-source-form .secondary-button,
+.current-page-fallback .secondary-button {
+  align-self: end;
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.34);
+  background: transparent;
+}
+
+.custom-source-configurator .custom-source-saved,
+.custom-source-configurator .form-error,
+.current-page-fallback p {
+  margin: 10px 0 0;
+  font-size: 0.78rem;
+}
+
+.custom-source-configurator .form-error {
+  color: #ffd3cc;
+}
+
 .live-search-actions {
   display: flex;
   flex: 0 0 auto;
@@ -3044,8 +3129,15 @@ h2 {
   }
 
   .source-selector,
-  .source-status-grid {
+  .source-status-grid,
+  .custom-source-form {
     grid-template-columns: 1fr;
+  }
+
+  .source-fallback-row,
+  .current-page-fallback {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .search-composer-actions .primary-button,

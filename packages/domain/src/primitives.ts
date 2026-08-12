@@ -21,6 +21,8 @@ export const ListingSourceLabelSchema = z.enum([
   "facebook_marketplace",
   "craigslist",
   "apartments_com",
+  "bu_off_campus",
+  "custom_website",
   "other"
 ]);
 
