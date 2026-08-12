@@ -332,12 +332,12 @@ function actionResponse(payload, targetId) {
 }
 
 async function navigate(url, action, state, dependencies) {
-  validateObservedUrl(
-    url,
-    state.plan.source,
-    action === "open_observed_listing" ? "detail" : "result",
-    state.plan.sourceConfiguration
-  );
+  const navigationKind =
+    action === "open_observed_listing" ||
+    (state.plan.mode === "enrichment" && url === state.plan.targetListingUrl)
+      ? "detail"
+      : "result";
+  validateObservedUrl(url, state.plan.source, navigationKind, state.plan.sourceConfiguration);
   if (
     (action === "open_observed_listing" || action === "return_to_results") &&
     !state.observedUrls.has(url)
@@ -359,12 +359,7 @@ async function navigate(url, action, state, dependencies) {
       pageState: "blocked",
       manualAction: "blocked"
     });
-  validateObservedUrl(
-    finalUrl,
-    state.plan.source,
-    action === "open_observed_listing" ? "detail" : "result",
-    state.plan.sourceConfiguration
-  );
+  validateObservedUrl(finalUrl, state.plan.source, navigationKind, state.plan.sourceConfiguration);
   record(state, action, dependencies, url);
 }
 
@@ -688,7 +683,7 @@ export async function researchRentals(
     if (plan.mode === "enrichment") {
       const targetUrl = plan.targetListingUrl;
       state.observedUrls.add(targetUrl);
-      await navigate(targetUrl, "open_observed_listing", state, dependencies);
+      await navigate(targetUrl, "navigate_same_source", state, dependencies);
       await dependencies.wait(650);
       const detailDocument = await snapshot(state, dependencies);
       await authorize("extract_observed_facts", state, dependencies);

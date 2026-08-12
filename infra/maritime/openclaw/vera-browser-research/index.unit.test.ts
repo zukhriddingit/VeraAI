@@ -334,6 +334,12 @@ describe("vera_browser_research_v1 local adapter replay", () => {
         url: "https://www.zillow.com/apartments/allston-ma/kelton-street/CjkfBg/"
       })
     ]);
+    expect(result.safeActionTrail).toContainEqual(
+      expect.objectContaining({ action: "navigate_same_source", result: "completed" })
+    );
+    expect(result.safeActionTrail).not.toContainEqual(
+      expect.objectContaining({ action: "open_observed_listing" })
+    );
     expect(JSON.stringify(browserBodies)).not.toMatch(/contact|apply|tour|message|email|phone/iu);
   });
 

@@ -349,12 +349,14 @@ export function isExpectedSourceUrl(source: ListingSourceLabel, value: string): 
   const match = value.match(/^https:\/\/([^/?#:@]+)([^#]*)$/u);
   const suffix = match?.[2] ?? "";
   if (source === "craigslist") {
-    return (
+    const currentSharedListing =
+      match?.[1] === "www.craigslist.org" &&
+      /^\/view\/d\/[a-z0-9-]+\/[A-Za-z0-9]+(?:\?|$)/u.test(suffix);
+    const legacyRegionalListing =
       match?.[1] !== undefined &&
       match[1].endsWith(".craigslist.org") &&
-      /\/\d+\.html(?:\?|$)/u.test(suffix) &&
-      safeSourceQuery(suffix)
-    );
+      /\/\d+\.html(?:\?|$)/u.test(suffix);
+    return (currentSharedListing || legacyRegionalListing) && safeSourceQuery(suffix);
   }
   if (source === "custom_website") {
     return (
