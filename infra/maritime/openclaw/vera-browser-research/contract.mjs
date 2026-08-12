@@ -6,6 +6,8 @@ export const MAX_DETAIL_PAGES = 5;
 export const MAX_ACTIONS = 50;
 export const MAX_DURATION_MS = 90_000;
 export const SINGLE_SHARED_TAB_CONSENT_REFERENCE = "explicitly_shared_zillow_rental_tab";
+export const BOSTON_CRAIGSLIST_STARTING_URL =
+  "https://www.craigslist.org/search/area/boston?cat=apa";
 
 export const SOURCE_POLICY = Object.freeze({
   zillow: Object.freeze({
@@ -40,9 +42,10 @@ export const SOURCE_POLICY = Object.freeze({
     maxDetailPages: 3
   }),
   craigslist: Object.freeze({
-    hostnames: Object.freeze(["boston.craigslist.org"]),
+    hostnames: Object.freeze(["www.craigslist.org"]),
     urlPatterns: Object.freeze([
-      "^https://boston\\.craigslist\\.org/(?:search/(?:apa|roo|sub)|[^?#]+/[0-9]+\\.html)(?:/|\\?|$)"
+      "^https://www\\.craigslist\\.org/search/area/boston\\?(?=(?:[^#]*&)?cat=apa(?:&|#|$))[^#]*(?:#search=[a-z0-9~_-]+)?$",
+      "^https://www\\.craigslist\\.org/view/d/[a-z0-9-]+/[A-Za-z0-9]+(?:\\?[^#]*)?$"
     ]),
     maxDetailPages: 5
   })
@@ -227,8 +230,9 @@ function validateSourceConfiguration(value, source) {
   }
   if (
     source === "craigslist" &&
-    (!value.allowedDomain.endsWith(".craigslist.org") ||
-      !/^\/search\/(?:apa|roo|sub)(?:\/|$)/u.test(start.pathname))
+    (value.sourceId !== "craigslist" ||
+      value.allowedDomain !== "www.craigslist.org" ||
+      value.startingUrl !== BOSTON_CRAIGSLIST_STARTING_URL)
   ) {
     return false;
   }
@@ -239,6 +243,7 @@ function policyFor(source, sourceConfiguration) {
   const configuration = validateSourceConfiguration(sourceConfiguration, source);
   if (configuration === false) return null;
   if (configuration === null) return SOURCE_POLICY[source] ?? null;
+  if (configuration.adapterKind === "craigslist") return SOURCE_POLICY.craigslist;
   return Object.freeze({
     hostnames: Object.freeze([configuration.allowedDomain]),
     urlPatterns: Object.freeze([`^https://${escapeRegex(configuration.allowedDomain)}/[^#]*$`]),
@@ -359,12 +364,27 @@ export function validateObservedUrl(rawUrl, source, kind = "either", sourceConfi
     throw new VeraBrowserResearchError("unsafe_source_url");
   }
   if (
+    source === "craigslist" &&
+    url.hash &&
+    url.pathname === "/search/area/boston" &&
+    /^#search=[a-z0-9~_-]+$/u.test(url.hash)
+  ) {
+    url.hash = "";
+  }
+  const policy = policyFor(source, sourceConfiguration);
+  if (
     url.protocol !== "https:" ||
-    url.hostname !== policyFor(source, sourceConfiguration)?.hostnames[0] ||
+    url.hostname !== policy?.hostnames[0] ||
     url.username ||
     url.password ||
     url.port ||
     url.hash
+  ) {
+    throw new VeraBrowserResearchError("unsafe_source_url");
+  }
+  if (
+    source === "craigslist" &&
+    !policy?.urlPatterns.some((pattern) => new RegExp(pattern, "u").test(url.href))
   ) {
     throw new VeraBrowserResearchError("unsafe_source_url");
   }
@@ -385,7 +405,9 @@ export function validateObservedUrl(rawUrl, source, kind = "either", sourceConfi
   } else if (source === "zillow") {
     actualKind = /^(?:\/homedetails\/|\/apartments\/)/u.test(url.pathname) ? "detail" : "result";
   } else if (source === "craigslist") {
-    actualKind = /\/[0-9]+\.html$/u.test(url.pathname) ? "detail" : "result";
+    actualKind = /^\/view\/d\/[a-z0-9-]+\/[A-Za-z0-9]+$/u.test(url.pathname)
+      ? "detail"
+      : "result";
   } else {
     const configuredStart = new URL(sourceConfiguration.startingUrl);
     actualKind =

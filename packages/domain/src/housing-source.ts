@@ -12,6 +12,9 @@ export const HousingSourceAdapterKindSchema = z.enum([
 
 export const HousingSourceLoginRequirementSchema = z.enum(["yes", "no", "unknown"]);
 
+export const BOSTON_CRAIGSLIST_STARTING_URL =
+  "https://www.craigslist.org/search/area/boston?cat=apa" as const;
+
 export const HousingSourceConfigurationSchema = z
   .object({
     sourceId: EntityIdSchema,
@@ -35,14 +38,22 @@ export const HousingSourceConfigurationSchema = z
       });
     }
     if (configuration.adapterKind === "craigslist") {
-      if (!configuration.allowedDomain.endsWith(".craigslist.org")) {
+      const isSharedBostonRoute = configuration.allowedDomain === "www.craigslist.org";
+      if (isSharedBostonRoute) {
+        if (configuration.startingUrl !== BOSTON_CRAIGSLIST_STARTING_URL) {
+          context.addIssue({
+            code: "custom",
+            path: ["startingUrl"],
+            message: "Craigslist's shared host is limited to the exact Boston housing search surface."
+          });
+        }
+      } else if (!configuration.allowedDomain.endsWith(".craigslist.org")) {
         context.addIssue({
           code: "custom",
           path: ["allowedDomain"],
           message: "Craigslist configurations must use one exact regional craigslist.org domain."
         });
-      }
-      if (!/^\/search\/(?:apa|roo|sub)(?:\/|$)/u.test(path)) {
+      } else if (!/^\/search\/(?:apa|roo|sub)(?:\/|$)/u.test(path)) {
         context.addIssue({
           code: "custom",
           path: ["startingUrl"],
@@ -83,6 +94,18 @@ export const SelectedHousingSourceConfigurationSchema = HousingSourceConfigurati
         });
       }
     }
+    if (configuration.source === "craigslist") {
+      if (
+        configuration.sourceId !== "craigslist" ||
+        configuration.allowedDomain !== "www.craigslist.org" ||
+        configuration.startingUrl !== BOSTON_CRAIGSLIST_STARTING_URL
+      ) {
+        context.addIssue({
+          code: "custom",
+          message: "The built-in Craigslist Boston source cannot be widened or replaced."
+        });
+      }
+    }
   });
 
 export const BU_OFF_CAMPUS_CONFIGURATION = HousingSourceConfigurationSchema.parse({
@@ -99,8 +122,8 @@ export const BOSTON_CRAIGSLIST_CONFIGURATION = HousingSourceConfigurationSchema.
   sourceId: "craigslist",
   displayName: "Craigslist",
   adapterKind: "craigslist",
-  startingUrl: "https://boston.craigslist.org/search/apa",
-  allowedDomain: "boston.craigslist.org",
+  startingUrl: BOSTON_CRAIGSLIST_STARTING_URL,
+  allowedDomain: "www.craigslist.org",
   loginRequired: "no",
   defaultInclude: false
 });

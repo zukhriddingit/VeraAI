@@ -1,4 +1,5 @@
 import {
+  BOSTON_CRAIGSLIST_CONFIGURATION,
   BrowserResearchPlanSchema,
   BU_OFF_CAMPUS_CONFIGURATION,
   type SearchProfile
@@ -7,6 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   APARTMENTS_BROWSER_SOURCE_ADAPTER,
+  CRAIGSLIST_BROWSER_SOURCE_ADAPTER,
   GenericHousingSourceAdapter,
   OffCampusPartnersAdapter,
   FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER,
@@ -155,6 +157,43 @@ describe("BrowserSourceAdapter", () => {
       enabledSafeActionTypes: ["inspect_shared_tabs", "snapshot", "extract_observed_facts"]
     });
     expect(JSON.stringify(plan)).not.toMatch(/navigate|scroll|selector|javascript|submit/iu);
+  });
+
+  it("limits Craigslist to the observed Boston search and detail routes", () => {
+    const plan = CRAIGSLIST_BROWSER_SOURCE_ADAPTER.createPlan({
+      veraRunId: "craigslist-boston-redirect-1",
+      profile: searchProfile,
+      startingTabReference,
+      signingKey,
+      issuedAt,
+      maxDetailPages: 5
+    });
+
+    expect(plan).toMatchObject({
+      source: "craigslist",
+      allowedHostnames: ["www.craigslist.org"],
+      sourceConfiguration: BOSTON_CRAIGSLIST_CONFIGURATION
+    });
+    expect(plan.allowedUrlPatterns).toHaveLength(2);
+    const [searchPattern, detailPattern] = plan.allowedUrlPatterns;
+    expect(
+      new RegExp(searchPattern!).test(
+        "https://www.craigslist.org/search/area/boston?cat=apa#search=2~gallery~0"
+      )
+    ).toBe(true);
+    expect(
+      new RegExp(detailPattern!).test(
+        "https://www.craigslist.org/view/d/somerville-laundry-in-unit/1Dn8j1xVrmWNhxYMAKRmmE"
+      )
+    ).toBe(true);
+    for (const url of [
+      "https://www.craigslist.org/search/area/newyork?cat=apa",
+      "https://www.craigslist.org/about/help",
+      "https://www.craigslist.org/reply/bos/apa/123",
+      "https://boston.craigslist.org/search/apa"
+    ]) {
+      expect(plan.allowedUrlPatterns.some((pattern) => new RegExp(pattern).test(url))).toBe(false);
+    }
   });
 
   it("creates a strict signed Apartments.com plan without arbitrary actions or URLs", () => {
