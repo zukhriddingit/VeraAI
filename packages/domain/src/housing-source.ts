@@ -44,7 +44,8 @@ export const HousingSourceConfigurationSchema = z
           context.addIssue({
             code: "custom",
             path: ["startingUrl"],
-            message: "Craigslist's shared host is limited to the exact Boston housing search surface."
+            message:
+              "Craigslist's shared host is limited to the exact Boston housing search surface."
           });
         }
       } else if (!configuration.allowedDomain.endsWith(".craigslist.org")) {

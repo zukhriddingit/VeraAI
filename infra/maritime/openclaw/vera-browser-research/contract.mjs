@@ -405,9 +405,7 @@ export function validateObservedUrl(rawUrl, source, kind = "either", sourceConfi
   } else if (source === "zillow") {
     actualKind = /^(?:\/homedetails\/|\/apartments\/)/u.test(url.pathname) ? "detail" : "result";
   } else if (source === "craigslist") {
-    actualKind = /^\/view\/d\/[a-z0-9-]+\/[A-Za-z0-9]+$/u.test(url.pathname)
-      ? "detail"
-      : "result";
+    actualKind = /^\/view\/d\/[a-z0-9-]+\/[A-Za-z0-9]+$/u.test(url.pathname) ? "detail" : "result";
   } else {
     const configuredStart = new URL(sourceConfiguration.startingUrl);
     actualKind =
