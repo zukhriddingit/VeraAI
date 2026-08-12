@@ -168,6 +168,12 @@ export function createPostgresEnrichmentRepository(
       if (current?.state === "queued" || current?.state === "enriching") {
         return { record: current, queued: false, reusedFresh: false };
       }
+      if (
+        !input.force &&
+        (current?.state === "blocked_manual_action" || current?.state === "failed")
+      ) {
+        return { record: current, queued: false, reusedFresh: false };
+      }
       const fresh =
         !input.force &&
         snapshot !== null &&
