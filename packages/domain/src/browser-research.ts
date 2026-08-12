@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { isExpectedSourcePhotoUrl, isExpectedSourceUrl } from "./listing-enrichment.ts";
 import {
+  HousingSourceConfigurationSchema,
+  type HousingSourceConfiguration
+} from "./housing-source.ts";
+import {
   ZillowRentalResearchProfileSchema,
   ZillowSharedTabReferenceSchema
 } from "./zillow-browser-research.ts";
@@ -21,7 +25,10 @@ export const BROWSER_RESEARCH_MAX_DURATION_MS = 90_000;
 export const BrowserResearchSourceSchema = z.enum([
   "zillow",
   "apartments_com",
-  "facebook_marketplace"
+  "facebook_marketplace",
+  "bu_off_campus",
+  "custom_website",
+  "craigslist"
 ]);
 
 export const BrowserResearchSourcePolicy = {
@@ -43,8 +50,47 @@ export const BrowserResearchSourcePolicy = {
       "^https://www\\.facebook\\.com/marketplace/(?:[a-z0-9-]+/(?:category/propertyrentals|propertyrentals)|item/[0-9]+)(?:/|\\?|$)"
     ],
     maxDetailPages: 3
+  },
+  bu_off_campus: {
+    hostnames: ["offcampus.bu.edu"],
+    urlPatterns: ["^https://offcampus\\.bu\\.edu/(?:housing|listing|property)(?:/|\\?|$)"],
+    maxDetailPages: 5
+  },
+  custom_website: {
+    hostnames: [],
+    urlPatterns: [],
+    maxDetailPages: 3
+  },
+  craigslist: {
+    hostnames: ["boston.craigslist.org"],
+    urlPatterns: [
+      "^https://boston\\.craigslist\\.org/(?:search/(?:apa|roo|sub)|[^?#]+/[0-9]+\\.html)(?:/|\\?|$)"
+    ],
+    maxDetailPages: 5
   }
 } as const;
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
+
+export function configuredBrowserResearchPolicy(configuration: HousingSourceConfiguration) {
+  const parsed = HousingSourceConfigurationSchema.parse(configuration);
+  return {
+    hostnames: [parsed.allowedDomain],
+    urlPatterns: [`^https://${escapeRegex(parsed.allowedDomain)}/[^#]*$`],
+    maxDetailPages: parsed.adapterKind === "generic" ? 3 : 5
+  } as const;
+}
+
+function researchPolicy(
+  source: z.infer<typeof BrowserResearchSourceSchema>,
+  configuration: HousingSourceConfiguration | null | undefined
+) {
+  return configuration === null || configuration === undefined
+    ? BrowserResearchSourcePolicy[source]
+    : configuredBrowserResearchPolicy(configuration);
+}
 
 const SafeObservedTextSchema = z
   .string()
@@ -109,12 +155,22 @@ export const BrowserResearchPlanPayloadSchema = z
     enabledSafeActionTypes: z.array(BrowserResearchSafeActionTypeSchema).min(1).max(10),
     issuedAt: IsoDateTimeSchema,
     expiresAt: IsoDateTimeSchema,
-    mode: z.enum(["discovery", "enrichment"]).optional(),
-    targetListingUrl: ObservedUrlSchema.nullable().optional()
+    mode: z.enum(["discovery", "enrichment", "current_page"]).optional(),
+    targetListingUrl: ObservedUrlSchema.nullable().optional(),
+    sourceConfiguration: HousingSourceConfigurationSchema.nullable().optional()
   })
   .strict()
   .superRefine((plan, context) => {
-    const policy = BrowserResearchSourcePolicy[plan.source];
+    const configurable = ["bu_off_campus", "custom_website", "craigslist"].includes(plan.source);
+    if (configurable !== (plan.sourceConfiguration != null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceConfiguration"],
+        message: "Configurable browser sources require one signed source configuration."
+      });
+      return;
+    }
+    const policy = researchPolicy(plan.source, plan.sourceConfiguration);
     if (JSON.stringify(plan.allowedHostnames) !== JSON.stringify(policy.hostnames)) {
       context.addIssue({
         code: "custom",
@@ -204,6 +260,41 @@ export const BrowserResearchPlanPayloadSchema = z
           code: "custom",
           path: ["enabledSafeActionTypes"],
           message: "Enrichment plans cannot use discovery-only actions."
+        });
+      }
+    }
+    if (mode === "current_page") {
+      if (plan.targetListingUrl != null || plan.maxResults !== 1 || plan.maxDetailPages !== 1) {
+        context.addIssue({
+          code: "custom",
+          path: ["mode"],
+          message: "Current-page capture is limited to one shared listing page."
+        });
+      }
+      if (plan.maxActions > 10) {
+        context.addIssue({
+          code: "custom",
+          path: ["maxActions"],
+          message: "Current-page capture is limited to ten read-only actions."
+        });
+      }
+      if (
+        plan.enabledSafeActionTypes.some((action) =>
+          [
+            "create_source_tab",
+            "navigate_same_source",
+            "scroll_bounded",
+            "select_reviewed_filter",
+            "fill_approved_search_field",
+            "open_observed_listing",
+            "return_to_results"
+          ].includes(action)
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["enabledSafeActionTypes"],
+          message: "Current-page capture cannot navigate, filter, type, or scroll."
         });
       }
     }
@@ -330,6 +421,7 @@ export const BrowserResearchFieldProvenanceSchema = z
 export const BrowserResearchObservedListingSchema = z
   .object({
     source: BrowserResearchSourceSchema,
+    sourceConfiguration: HousingSourceConfigurationSchema.nullable().optional(),
     sourceListingId: z.string().trim().min(1).max(200).nullable(),
     canonicalObservedUrl: ObservedUrlSchema,
     finalDetailPageUrl: ObservedUrlSchema.nullable(),
@@ -388,7 +480,16 @@ export const BrowserResearchObservedListingSchema = z
   })
   .strict()
   .superRefine((listing, context) => {
-    const policy = BrowserResearchSourcePolicy[listing.source];
+    const configurable = ["bu_off_campus", "custom_website", "craigslist"].includes(listing.source);
+    if (configurable !== (listing.sourceConfiguration != null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["sourceConfiguration"],
+        message: "Configurable listing evidence requires its signed source configuration."
+      });
+      return;
+    }
+    const policy = researchPolicy(listing.source, listing.sourceConfiguration);
     for (const [path, value] of [
       ["canonicalObservedUrl", listing.canonicalObservedUrl],
       ["finalDetailPageUrl", listing.finalDetailPageUrl]
@@ -419,7 +520,12 @@ export const BrowserResearchObservedListingSchema = z
       });
     }
     for (const [index, entry] of listing.sourceFieldProvenance.entries()) {
-      if (!isExpectedSourceUrl(listing.source, entry.sourceUrl)) {
+      const hostname = entry.sourceUrl.match(/^https:\/\/([^/?#]+)(?:\/|\?|$)/u)?.[1];
+      if (
+        configurable
+          ? hostname !== policy.hostnames[0]
+          : !isExpectedSourceUrl(listing.source, entry.sourceUrl)
+      ) {
         context.addIssue({
           code: "custom",
           path: ["sourceFieldProvenance", index, "sourceUrl"],
@@ -428,7 +534,14 @@ export const BrowserResearchObservedListingSchema = z
       }
     }
     for (const [index, photo] of listing.photos.entries()) {
-      if (!isExpectedSourcePhotoUrl(listing.source, photo.url)) {
+      const hostname = photo.url.match(/^https:\/\/([^/?#]+)(?:\/|\?|$)/u)?.[1];
+      const configuredPhotoAllowed =
+        listing.source === "craigslist"
+          ? hostname === "images.craigslist.org"
+          : configurable
+            ? hostname === policy.hostnames[0]
+            : false;
+      if (!configuredPhotoAllowed && !isExpectedSourcePhotoUrl(listing.source, photo.url)) {
         context.addIssue({
           code: "custom",
           path: ["photos", index, "url"],

@@ -14,6 +14,8 @@ import {
 } from "@vera/db/demo";
 import {
   ActivityEventSchema,
+  BOSTON_CRAIGSLIST_CONFIGURATION,
+  BU_OFF_CAMPUS_CONFIGURATION,
   BrowserResearchObservedListingSchema,
   type BrowserResearchOutput,
   type BrowserResearchPlan,
@@ -136,7 +138,13 @@ function dependencies(
       founderUserId: DEMO_USER_ID,
       browserDisabled: false,
       planSigningKey: "test-browser-research-signing-key-0000000000000000",
-      enabledSources: new Set(["apartments_com", "facebook_marketplace"])
+      enabledSources: new Set([
+        "apartments_com",
+        "facebook_marketplace",
+        "bu_off_campus",
+        "custom_website",
+        "craigslist"
+      ])
     },
     now: () => new Date("2026-07-30T12:01:00.000Z"),
     createId: () => `research-id-${String(++nextId)}`
@@ -152,8 +160,13 @@ const request = {
 
 const excludedAdditionalSources = [
   { source: "apartments_com", state: "excluded_by_user" },
-  { source: "facebook_marketplace", state: "excluded_by_user" }
+  { source: "facebook_marketplace", state: "excluded_by_user" },
+  { source: "bu_off_campus", state: "excluded_by_user" },
+  { source: "custom_website", state: "excluded_by_user" },
+  { source: "craigslist", state: "excluded_by_user" }
 ] as const;
+
+const excludedConfiguredSources = excludedAdditionalSources.slice(2);
 
 describe("founder Zillow rental research service", () => {
   it("imports observed Zillow evidence into the normal RawListing and normalization queue", async () => {
@@ -333,9 +346,16 @@ function browserOutput(
   overrides: Partial<BrowserResearchOutput> = {}
 ): BrowserResearchOutput {
   const isApartments = plan.source === "apartments_com";
-  const sourceUrl = isApartments
-    ? "https://www.apartments.com/beacon-hill-boston-ma/abc123/"
-    : "https://www.facebook.com/marketplace/item/123456789/";
+  const sourceUrl =
+    plan.source === "apartments_com"
+      ? "https://www.apartments.com/beacon-hill-boston-ma/abc123/"
+      : plan.source === "facebook_marketplace"
+        ? "https://www.facebook.com/marketplace/item/123456789/"
+        : plan.source === "bu_off_campus"
+          ? "https://offcampus.bu.edu/housing/property/12-bay-state-road/ocp-123"
+          : plan.source === "craigslist"
+            ? "https://boston.craigslist.org/gbs/apa/d/boston-beacon-hill-apartment/1234567890.html"
+            : "https://housing.example.edu/listings/green-house";
   return {
     version: "1",
     veraRunId: plan.veraRunId,
@@ -347,6 +367,9 @@ function browserOutput(
       BrowserResearchObservedListingSchema.parse({
         source: plan.source,
         sourceListingId: isApartments ? "abc123" : "123456789",
+        ...(plan.sourceConfiguration === undefined
+          ? {}
+          : { sourceConfiguration: plan.sourceConfiguration }),
         canonicalObservedUrl: sourceUrl,
         finalDetailPageUrl: sourceUrl,
         propertyName: isApartments ? "Beacon Hill Apartments" : null,
@@ -420,7 +443,8 @@ describe("multi-source browser research service", () => {
       { source: "rentcast", state: "excluded_by_user" },
       { source: "zillow", state: "excluded_by_user" },
       { source: "apartments_com", state: "completed", importedCount: 1 },
-      { source: "facebook_marketplace", state: "excluded_by_user" }
+      { source: "facebook_marketplace", state: "excluded_by_user" },
+      ...excludedConfiguredSources
     ]);
     const imported = (await deps.repositories.activityEvents.list()).findLast(
       (event) =>
@@ -475,13 +499,86 @@ describe("multi-source browser research service", () => {
         state: "login_required",
         manualAction: "login_required",
         importedCount: 0
-      }
+      },
+      ...excludedConfiguredSources
     ]);
     const imports = (await deps.repositories.activityEvents.list()).filter(
       (event) =>
         event.correlationId === "run-browser-partial-1" && event.action === "live_listing_imported"
     );
     expect(imports).toHaveLength(1);
+  });
+
+  it("imports configured BU, custom-site, and Craigslist records through one normal pipeline", async () => {
+    const observedPlans: BrowserResearchPlan[] = [];
+    const customConfiguration = {
+      source: "custom_website" as const,
+      sourceId: "custom:housing.example.edu",
+      displayName: "Example Housing",
+      adapterKind: "generic" as const,
+      startingUrl: "https://housing.example.edu/search",
+      allowedDomain: "housing.example.edu",
+      loginRequired: "no" as const,
+      defaultInclude: false,
+      captureCurrentPage: false
+    };
+    const deps = dependencies(
+      async () => output(),
+      async (plan) => {
+        observedPlans.push(plan);
+        return browserOutput(plan);
+      }
+    );
+
+    const status = await runRentalResearch(
+      {
+        veraRunId: "run-configured-sources-1",
+        searchProfileId: profile.id,
+        selectedSources: ["bu_off_campus", "custom_website", "craigslist"],
+        housingSourceConfigurations: [
+          {
+            ...BU_OFF_CAMPUS_CONFIGURATION,
+            source: "bu_off_campus",
+            captureCurrentPage: false
+          },
+          customConfiguration,
+          {
+            ...BOSTON_CRAIGSLIST_CONFIGURATION,
+            source: "craigslist",
+            captureCurrentPage: false
+          }
+        ],
+        confirmedExternalUsage: true
+      },
+      deps
+    );
+
+    expect(observedPlans).toHaveLength(3);
+    expect(observedPlans.map((plan) => plan.source)).toEqual([
+      "bu_off_campus",
+      "custom_website",
+      "craigslist"
+    ]);
+    expect(observedPlans[1]).toMatchObject({
+      allowedHostnames: ["housing.example.edu"],
+      sourceConfiguration: {
+        sourceId: customConfiguration.sourceId,
+        displayName: customConfiguration.displayName,
+        allowedDomain: customConfiguration.allowedDomain,
+        startingUrl: customConfiguration.startingUrl
+      }
+    });
+    expect(status.sources.filter((source) => source.importedCount > 0)).toMatchObject([
+      { source: "bu_off_campus", state: "completed", importedCount: 1 },
+      { source: "custom_website", state: "completed", importedCount: 1 },
+      { source: "craigslist", state: "completed", importedCount: 1 }
+    ]);
+    const imports = (await deps.repositories.activityEvents.list()).filter(
+      (event) =>
+        event.correlationId === "run-configured-sources-1" &&
+        event.action === "live_listing_imported"
+    );
+    expect(imports).toHaveLength(3);
   });
 
   it("completes partially when an imported source record permanently fails normalization", async () => {
@@ -579,7 +676,8 @@ describe("multi-source browser research service", () => {
           message:
             "1 imported Apartments.com record(s) could not be normalized; accepted results were preserved."
         },
-        { source: "facebook_marketplace", state: "excluded_by_user" }
+        { source: "facebook_marketplace", state: "excluded_by_user" },
+        ...excludedConfiguredSources
       ]
     });
   });

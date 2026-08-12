@@ -301,7 +301,10 @@ describe("initial local manifests", () => {
       "zillow.browser-research.v1",
       "zillow.browser-research.v2",
       "apartments-com.browser-research.v1",
-      "facebook-marketplace.browser-research.v1"
+      "facebook-marketplace.browser-research.v1",
+      "offcampus-partners.browser-research.v1",
+      "generic-housing.browser-research.v1",
+      "craigslist.browser-research.v1"
     ]);
     for (const manifest of INITIAL_LOCAL_MANIFESTS) {
       expect(Object.isFrozen(manifest)).toBe(true);
@@ -312,7 +315,10 @@ describe("initial local manifests", () => {
           "zillow.browser-research.v1",
           "zillow.browser-research.v2",
           "apartments-com.browser-research.v1",
-          "facebook-marketplace.browser-research.v1"
+          "facebook-marketplace.browser-research.v1",
+          "offcampus-partners.browser-research.v1",
+          "generic-housing.browser-research.v1",
+          "craigslist.browser-research.v1"
         ].includes(manifest.connectorId)
       );
       expect(manifest.execution).toBe(

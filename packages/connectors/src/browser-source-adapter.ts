@@ -8,11 +8,16 @@ import {
   BrowserResearchPlanPayloadSchema,
   BrowserResearchPlanSchema,
   BrowserResearchSourcePolicy,
+  BU_OFF_CAMPUS_CONFIGURATION,
+  BOSTON_CRAIGSLIST_CONFIGURATION,
+  HousingSourceConfigurationSchema,
+  configuredBrowserResearchPolicy,
   type BrowserResearchObservedListing,
   type BrowserResearchObservedListingInput,
   type BrowserResearchPlan,
   type BrowserResearchPlanPayload,
   type BrowserResearchSource,
+  type HousingSourceConfiguration,
   type JsonObject,
   type SearchProfile,
   type ZillowSharedTabReference
@@ -27,13 +32,19 @@ import {
 export const BROWSER_SOURCE_CONNECTOR_IDS = {
   zillow: "zillow.browser-research.v2",
   apartments_com: "apartments-com.browser-research.v1",
-  facebook_marketplace: "facebook-marketplace.browser-research.v1"
+  facebook_marketplace: "facebook-marketplace.browser-research.v1",
+  bu_off_campus: "offcampus-partners.browser-research.v1",
+  custom_website: "generic-housing.browser-research.v1",
+  craigslist: "craigslist.browser-research.v1"
 } as const satisfies Record<BrowserResearchSource, string>;
 
 export const BROWSER_SOURCE_OPERATIONS = {
   zillow: "zillow.rental_research.v2",
   apartments_com: "apartments_com.rental_research.v1",
-  facebook_marketplace: "facebook_marketplace.rental_research.v1"
+  facebook_marketplace: "facebook_marketplace.rental_research.v1",
+  bu_off_campus: "offcampus_partners.rental_research.v1",
+  custom_website: "generic_housing.rental_research.v1",
+  craigslist: "craigslist.rental_research.v1"
 } as const satisfies Record<BrowserResearchSource, string>;
 
 function canonical(value: unknown): string {
@@ -151,8 +162,9 @@ export interface CreateBrowserResearchPlanInput {
   readonly issuedAt: Date;
   readonly maxResults?: number;
   readonly maxDetailPages?: number;
-  readonly mode?: "discovery" | "enrichment";
+  readonly mode?: "discovery" | "enrichment" | "current_page";
   readonly targetListingUrl?: string;
+  readonly sourceConfiguration?: HousingSourceConfiguration;
 }
 
 export interface BrowserSourceAdapter {
@@ -168,8 +180,14 @@ export interface BrowserSourceAdapter {
   ): JsonObject;
 }
 
-function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
-  const policy = BrowserResearchSourcePolicy[source];
+function adapter(
+  source: BrowserResearchSource,
+  configuredSource?: HousingSourceConfiguration
+): BrowserSourceAdapter {
+  const policy =
+    configuredSource === undefined
+      ? BrowserResearchSourcePolicy[source]
+      : configuredBrowserResearchPolicy(configuredSource);
   return {
     source,
     connectorId: BROWSER_SOURCE_CONNECTOR_IDS[source],
@@ -184,40 +202,53 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
           source,
           profile: profileInput(input.profile),
           maxResults:
-            input.maxResults ?? (input.mode === "enrichment" ? 1 : BROWSER_RESEARCH_MAX_RESULTS),
-          maxDetailPages: input.maxDetailPages ?? (input.mode === "enrichment" ? 1 : 0),
-          maxActions: input.mode === "enrichment" ? 10 : BROWSER_RESEARCH_MAX_ACTIONS,
+            input.maxResults ??
+            (input.mode === "enrichment" || input.mode === "current_page"
+              ? 1
+              : BROWSER_RESEARCH_MAX_RESULTS),
+          maxDetailPages:
+            input.maxDetailPages ??
+            (input.mode === "enrichment" || input.mode === "current_page" ? 1 : 0),
+          maxActions:
+            input.mode === "enrichment" || input.mode === "current_page"
+              ? 10
+              : BROWSER_RESEARCH_MAX_ACTIONS,
           maxDurationMilliseconds: BROWSER_RESEARCH_MAX_DURATION_MS,
           startingTabReference: input.startingTabReference,
           allowedHostnames: [...policy.hostnames],
           allowedUrlPatterns: [...policy.urlPatterns],
           enabledSafeActionTypes:
-            input.mode === "enrichment"
-              ? [
-                  "inspect_shared_tabs",
-                  "create_source_tab",
-                  "navigate_same_source",
-                  "snapshot",
-                  "scroll_bounded",
-                  "extract_observed_facts"
-                ]
-              : [
-                  "inspect_shared_tabs",
-                  "create_source_tab",
-                  "navigate_same_source",
-                  "snapshot",
-                  "scroll_bounded",
-                  "select_reviewed_filter",
-                  "fill_approved_search_field",
-                  "open_observed_listing",
-                  "return_to_results",
-                  "extract_observed_facts"
-                ],
+            input.mode === "current_page"
+              ? ["inspect_shared_tabs", "snapshot", "extract_observed_facts"]
+              : input.mode === "enrichment"
+                ? [
+                    "inspect_shared_tabs",
+                    "create_source_tab",
+                    "navigate_same_source",
+                    "snapshot",
+                    "scroll_bounded",
+                    "extract_observed_facts"
+                  ]
+                : [
+                    "inspect_shared_tabs",
+                    "create_source_tab",
+                    "navigate_same_source",
+                    "snapshot",
+                    "scroll_bounded",
+                    "select_reviewed_filter",
+                    "fill_approved_search_field",
+                    "open_observed_listing",
+                    "return_to_results",
+                    "extract_observed_facts"
+                  ],
           issuedAt,
           expiresAt: new Date(input.issuedAt.getTime() + 120_000).toISOString(),
           ...(input.mode === "enrichment"
             ? { mode: "enrichment" as const, targetListingUrl: input.targetListingUrl ?? null }
-            : {})
+            : input.mode === "current_page"
+              ? { mode: "current_page" as const, targetListingUrl: null }
+              : {}),
+          ...(configuredSource === undefined ? {} : { sourceConfiguration: configuredSource })
         },
         input.signingKey
       );
@@ -225,6 +256,12 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
     toEnvelope(rawListing) {
       const listing = BrowserResearchObservedListingSchema.parse(rawListing);
       if (listing.source !== source) throw new Error("browser_research_source_mismatch");
+      if (
+        configuredSource !== undefined &&
+        JSON.stringify(listing.sourceConfiguration) !== JSON.stringify(configuredSource)
+      ) {
+        throw new Error("browser_research_configuration_mismatch");
+      }
       const sourceUrl = listing.finalDetailPageUrl ?? listing.canonicalObservedUrl;
       const observed = observedFacts(listing);
       const structured = StructuredListingInputSchema.parse({
@@ -271,6 +308,12 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
     safeCaptureMetadata(rawListing, input) {
       const listing = BrowserResearchObservedListingSchema.parse(rawListing);
       if (listing.source !== source) throw new Error("browser_research_source_mismatch");
+      if (
+        configuredSource !== undefined &&
+        JSON.stringify(listing.sourceConfiguration) !== JSON.stringify(configuredSource)
+      ) {
+        throw new Error("browser_research_configuration_mismatch");
+      }
       const observed = observedFacts(listing);
       return {
         connectorId: BROWSER_SOURCE_CONNECTOR_IDS[source],
@@ -300,7 +343,11 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
             : [])
         ],
         researchNotes: listing.researchNotes,
-        sourceFieldProvenance: listing.sourceFieldProvenance
+        sourceFieldProvenance: listing.sourceFieldProvenance,
+        sourceConfigurationId: listing.sourceConfiguration?.sourceId ?? null,
+        sourceDisplayName: listing.sourceConfiguration?.displayName ?? null,
+        allowedSourceDomain: listing.sourceConfiguration?.allowedDomain ?? null,
+        sourceConfiguration: listing.sourceConfiguration ?? null
       };
     }
   };
@@ -309,13 +356,139 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
 export const ZILLOW_BROWSER_SOURCE_ADAPTER = adapter("zillow");
 export const APARTMENTS_BROWSER_SOURCE_ADAPTER = adapter("apartments_com");
 export const FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER = adapter("facebook_marketplace");
+export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
+  readonly source = "bu_off_campus" as const;
+  readonly connectorId = BROWSER_SOURCE_CONNECTOR_IDS.bu_off_campus;
+  readonly operation = BROWSER_SOURCE_OPERATIONS.bu_off_campus;
+  readonly maxDetailPages: number;
+  readonly #delegate: BrowserSourceAdapter;
+
+  constructor(readonly configuration: HousingSourceConfiguration) {
+    if (configuration.adapterKind !== "offcampus_partners") {
+      throw new Error("offcampus_partners_configuration_required");
+    }
+    this.#delegate = adapter(this.source, configuration);
+    this.maxDetailPages = this.#delegate.maxDetailPages;
+  }
+
+  createPlan(input: CreateBrowserResearchPlanInput): BrowserResearchPlan {
+    return this.#delegate.createPlan({ ...input, sourceConfiguration: this.configuration });
+  }
+
+  toEnvelope(listing: BrowserResearchObservedListingInput): RawListingEnvelope {
+    return this.#delegate.toEnvelope(listing);
+  }
+
+  safeCaptureMetadata(
+    listing: BrowserResearchObservedListingInput,
+    input: { readonly veraRunId: string; readonly searchProfileId: string }
+  ): JsonObject {
+    return this.#delegate.safeCaptureMetadata(listing, input);
+  }
+}
+
+export class GenericHousingSourceAdapter implements BrowserSourceAdapter {
+  readonly source = "custom_website" as const;
+  readonly connectorId = BROWSER_SOURCE_CONNECTOR_IDS.custom_website;
+  readonly operation = BROWSER_SOURCE_OPERATIONS.custom_website;
+  readonly maxDetailPages: number;
+  readonly #delegate: BrowserSourceAdapter;
+
+  constructor(readonly configuration: HousingSourceConfiguration) {
+    if (configuration.adapterKind !== "generic") {
+      throw new Error("generic_housing_configuration_required");
+    }
+    this.#delegate = adapter(this.source, configuration);
+    this.maxDetailPages = this.#delegate.maxDetailPages;
+  }
+
+  createPlan(input: CreateBrowserResearchPlanInput): BrowserResearchPlan {
+    return this.#delegate.createPlan({ ...input, sourceConfiguration: this.configuration });
+  }
+
+  toEnvelope(listing: BrowserResearchObservedListingInput): RawListingEnvelope {
+    return this.#delegate.toEnvelope(listing);
+  }
+
+  safeCaptureMetadata(
+    listing: BrowserResearchObservedListingInput,
+    input: { readonly veraRunId: string; readonly searchProfileId: string }
+  ): JsonObject {
+    return this.#delegate.safeCaptureMetadata(listing, input);
+  }
+}
+
+export class CraigslistBrowserSourceAdapter implements BrowserSourceAdapter {
+  readonly source = "craigslist" as const;
+  readonly connectorId = BROWSER_SOURCE_CONNECTOR_IDS.craigslist;
+  readonly operation = BROWSER_SOURCE_OPERATIONS.craigslist;
+  readonly maxDetailPages: number;
+  readonly #delegate: BrowserSourceAdapter;
+
+  constructor(readonly configuration: HousingSourceConfiguration) {
+    if (configuration.adapterKind !== "craigslist") {
+      throw new Error("craigslist_configuration_required");
+    }
+    this.#delegate = adapter(this.source, configuration);
+    this.maxDetailPages = this.#delegate.maxDetailPages;
+  }
+
+  createPlan(input: CreateBrowserResearchPlanInput): BrowserResearchPlan {
+    return this.#delegate.createPlan({ ...input, sourceConfiguration: this.configuration });
+  }
+
+  toEnvelope(listing: BrowserResearchObservedListingInput): RawListingEnvelope {
+    return this.#delegate.toEnvelope(listing);
+  }
+
+  safeCaptureMetadata(
+    listing: BrowserResearchObservedListingInput,
+    input: { readonly veraRunId: string; readonly searchProfileId: string }
+  ): JsonObject {
+    return this.#delegate.safeCaptureMetadata(listing, input);
+  }
+}
+
+export const BU_OFF_CAMPUS_BROWSER_SOURCE_ADAPTER = new OffCampusPartnersAdapter(
+  BU_OFF_CAMPUS_CONFIGURATION
+);
+export const CRAIGSLIST_BROWSER_SOURCE_ADAPTER = new CraigslistBrowserSourceAdapter(
+  BOSTON_CRAIGSLIST_CONFIGURATION
+);
 
 export const BROWSER_SOURCE_ADAPTERS = {
   zillow: ZILLOW_BROWSER_SOURCE_ADAPTER,
   apartments_com: APARTMENTS_BROWSER_SOURCE_ADAPTER,
-  facebook_marketplace: FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER
-} as const satisfies Record<BrowserResearchSource, BrowserSourceAdapter>;
+  facebook_marketplace: FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER,
+  bu_off_campus: BU_OFF_CAMPUS_BROWSER_SOURCE_ADAPTER,
+  craigslist: CRAIGSLIST_BROWSER_SOURCE_ADAPTER
+} as const satisfies Record<Exclude<BrowserResearchSource, "custom_website">, BrowserSourceAdapter>;
 
-export function getBrowserSourceAdapter(source: BrowserResearchSource): BrowserSourceAdapter {
+export function getBrowserSourceAdapter(
+  source: BrowserResearchSource,
+  configuration?: HousingSourceConfiguration
+): BrowserSourceAdapter {
+  const configuredSource =
+    configuration === undefined
+      ? undefined
+      : HousingSourceConfigurationSchema.parse({
+          sourceId: configuration.sourceId,
+          displayName: configuration.displayName,
+          adapterKind: configuration.adapterKind,
+          startingUrl: configuration.startingUrl,
+          allowedDomain: configuration.allowedDomain,
+          loginRequired: configuration.loginRequired,
+          defaultInclude: configuration.defaultInclude
+        });
+  if (source === "custom_website") {
+    if (configuredSource === undefined) throw new Error("custom_housing_configuration_required");
+    return new GenericHousingSourceAdapter(configuredSource);
+  }
+  if (source === "bu_off_campus" && configuredSource !== undefined) {
+    return new OffCampusPartnersAdapter(configuredSource);
+  }
+  if (source === "craigslist" && configuredSource !== undefined) {
+    return new CraigslistBrowserSourceAdapter(configuredSource);
+  }
   return BROWSER_SOURCE_ADAPTERS[source];
 }

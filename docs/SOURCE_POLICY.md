@@ -156,14 +156,19 @@ the remote-extension architecture and cannot count as a remote phase pass.
 | Fixture test double / `fixture`                              | `approved`              | Enabled in dev/test       | Local sanitized data only; test-only mode; no network request.                           |
 | General / `user_capture`                                     | `user_triggered_only`   | Enabled                   | Store supplied evidence and inert URL provenance; no implicit fetch.                     |
 | Configured Gmail listing alerts / `email_alert`              | `approved`              | Disabled until configured | Read-only Vera label/sender/subject query; five-minute minimum interval.                  |
-| Craigslist / `local_browser`                                 | `disabled`              | Disabled                  | No automated browser search initially.                                                   |
+| Craigslist / `local_browser`                                 | `experimental_personal` | Disabled                  | Founder-only, explicitly user-triggered bounded housing search; no Reply or contact path. |
 | Zillow / `local_browser` current tab                         | `experimental_personal` | Disabled                  | Legacy adapter only; not the remote-extension spike and no longer an approved founder topology. |
 | Zillow / `local_browser` saved search                        | `experimental_personal` | Disabled                  | Contract only; no scheduled discovery or polling implementation.                         |
-| Facebook Marketplace / `local_browser`                       | `experimental_personal` | Disabled                  | Contract label only; no remote discovery implementation.                                |
+| Facebook Marketplace / `local_browser`                       | `experimental_personal` | Disabled                  | Founder-only, user-triggered bounded rental discovery; manual account/checkpoint only.   |
+| BU Off-Campus / `local_browser`                              | `experimental_personal` | Disabled                  | First configuration of the shared Off Campus Partners adapter; manual login/Duo only.    |
+| Custom housing website / `local_browser`                     | `experimental_personal` | Disabled                  | One signed start URL and exact allowed domain; current-page capture is the safe fallback. |
 | Zillow, Facebook Marketplace, or Craigslist / `user_capture` | `user_triggered_only`   | Available                 | Direct user-supplied URL or content; the URL remains inert unless separately authorized. |
 | Reviewed structured provider / `official_api`                | `disabled`              | Disabled                  | Review must promote the entry; exact documented API operations and origins only.         |
 
-`experimental_personal` never means generally approved, hosted browser execution, or permission to run for other users. Zillow and Facebook Marketplace browser monitoring remain disabled until the user explicitly enables a reviewed personal manifest. Their user-triggered capture paths remain available. Craigslist begins with official search-alert email ingestion; automated Craigslist browser searching remains disabled.
+`experimental_personal` never means generally approved, scheduled execution, or permission to run
+for other users. Every browser source remains disabled until the founder explicitly enables its
+reviewed manifest. Craigslist keeps official search-alert email, forwarded-alert, pasted-URL, and
+current-page/manual-capture fallbacks alongside its founder-only browser experiment.
 
 External effects remain separate grants: Calendar holds and notifications retain their closed capabilities and approval requirements, and any future Gmail draft writer must remain separate from alert reading. No acquisition state authorizes an outbound message, calendar write, application, payment, upload, or account change.
 
@@ -307,7 +312,8 @@ A connector remains disabled until review confirms:
 - Stale, replayed, rolled-back, or widened cursor inputs deny.
 - An unregistered, offline, stale, or revoked assigned node produces `deferred_node_offline` with the matching typed reason, creates no raw or success record, and does not advance the cursor.
 - Newly discovered source IDs import exactly once, and the cursor commits only after durable idempotent acceptance.
-- Craigslist `local_browser` monitoring denies; Zillow and Facebook Marketplace `local_browser` monitoring remain disabled until their `experimental_personal` manifests are explicitly enabled.
+- Every `local_browser` source denies by default and can run only for the founder after its exact
+  `experimental_personal` environment flag is enabled for a user-triggered run.
 - Dispatch and audit payloads contain no password, cookie, authorization header, session export, password-manager value, or browser-profile content.
 - Login, 2FA, CAPTCHA, consent, camera, and microphone states stop.
 - Gmail alert ingestion is read-only; no draft or send adapter is implemented. Any future draft adapter must expose draft creation only.

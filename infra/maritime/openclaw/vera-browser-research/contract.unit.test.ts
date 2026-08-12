@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  CURRENT_PAGE_SAFE_ACTIONS,
   ENRICHMENT_SAFE_ACTIONS,
   SAFE_ACTIONS,
   SOURCE_POLICY,
@@ -73,6 +74,43 @@ function enrichmentPlan(
   };
 }
 
+function configuredPlan(
+  source: "bu_off_campus" | "custom_website" | "craigslist",
+  sourceConfiguration: {
+    sourceId: string;
+    displayName: string;
+    adapterKind: "offcampus_partners" | "generic" | "craigslist";
+    startingUrl: string;
+    allowedDomain: string;
+    loginRequired: "yes" | "no" | "unknown";
+    defaultInclude: boolean;
+  },
+  mode: "discovery" | "current_page" = "discovery"
+) {
+  const base = plan();
+  const { signature: _signature, ...payload } = base;
+  const configuredPayload = {
+    ...payload,
+    veraRunId: `run-${source}`,
+    source,
+    maxResults: mode === "current_page" ? 1 : 10,
+    maxDetailPages: mode === "current_page" ? 1 : 3,
+    maxActions: mode === "current_page" ? 10 : 50,
+    allowedHostnames: [sourceConfiguration.allowedDomain],
+    allowedUrlPatterns: [
+      `^https://${sourceConfiguration.allowedDomain.replaceAll(".", "\\.")}/[^#]*$`
+    ],
+    enabledSafeActionTypes:
+      mode === "current_page" ? [...CURRENT_PAGE_SAFE_ACTIONS] : [...SAFE_ACTIONS],
+    ...(mode === "current_page" ? { mode, targetListingUrl: null } : {}),
+    sourceConfiguration
+  };
+  return {
+    ...configuredPayload,
+    signature: createHmac("sha256", key).update(canonical(configuredPayload)).digest("hex")
+  };
+}
+
 describe("vera_browser_research_v1 contract", () => {
   it("accepts only the exact signed, reviewed and bounded plan", () => {
     expect(validateResearchPlan(plan(), key)).toMatchObject({
@@ -131,5 +169,49 @@ describe("vera_browser_research_v1 contract", () => {
     ]) {
       expect(() => validateResearchPlan(enrichmentPlan(target), key)).toThrow();
     }
+  });
+
+  it("binds configured housing sources to one exact domain and navigation-free capture mode", () => {
+    const configuration = {
+      sourceId: "custom:housing.example.edu",
+      displayName: "Example Housing",
+      adapterKind: "generic" as const,
+      startingUrl: "https://housing.example.edu/search",
+      allowedDomain: "housing.example.edu",
+      loginRequired: "unknown" as const,
+      defaultInclude: false
+    };
+    expect(
+      validateResearchPlan(configuredPlan("custom_website", configuration), key)
+    ).toMatchObject({
+      allowedHostnames: ["housing.example.edu"],
+      sourceConfiguration: configuration
+    });
+    expect(
+      validateResearchPlan(configuredPlan("custom_website", configuration, "current_page"), key)
+    ).toMatchObject({
+      mode: "current_page",
+      maxResults: 1,
+      maxDetailPages: 1,
+      enabledSafeActionTypes: CURRENT_PAGE_SAFE_ACTIONS
+    });
+    expect(() =>
+      validateResearchPlan(
+        {
+          ...configuredPlan("custom_website", configuration),
+          allowedHostnames: ["housing.example.edu.evil.test"]
+        },
+        key
+      )
+    ).toThrow();
+    expect(() =>
+      validateResearchPlan(
+        configuredPlan("custom_website", {
+          ...configuration,
+          allowedDomain: "housing.example.edu.evil.test"
+        }),
+        key
+      )
+    ).toThrow("invalid_tool_input");
   });
 });

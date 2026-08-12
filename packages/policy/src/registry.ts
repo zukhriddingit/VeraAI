@@ -87,7 +87,14 @@ export const BrowserAccessClassificationSchema = z.enum([
 export const BrowserDomainDecisionSchema = z
   .object({
     hostname: z.string().trim().min(1).max(253),
-    source: z.enum(["zillow", "facebook_marketplace", "craigslist", "apartments_com", "other"]),
+    source: z.enum([
+      "zillow",
+      "facebook_marketplace",
+      "craigslist",
+      "apartments_com",
+      "bu_off_campus",
+      "other"
+    ]),
     matchedDomain: SourceDomainSchema.nullable(),
     browserAccess: BrowserAccessClassificationSchema
   })
@@ -108,7 +115,8 @@ const KNOWN_BROWSER_DOMAINS = [
   { domain: "zillow.com", source: "zillow" },
   { domain: "facebook.com", source: "facebook_marketplace" },
   { domain: "craigslist.org", source: "craigslist" },
-  { domain: "apartments.com", source: "apartments_com" }
+  { domain: "apartments.com", source: "apartments_com" },
+  { domain: "offcampus.bu.edu", source: "bu_off_campus" }
 ] as const satisfies readonly {
   domain: string;
   source: Exclude<ListingSourceLabel, "other" | "rentcast">;

@@ -1,8 +1,14 @@
-import { BrowserResearchPlanSchema, type SearchProfile } from "@vera/domain";
+import {
+  BrowserResearchPlanSchema,
+  BU_OFF_CAMPUS_CONFIGURATION,
+  type SearchProfile
+} from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
 import {
   APARTMENTS_BROWSER_SOURCE_ADAPTER,
+  GenericHousingSourceAdapter,
+  OffCampusPartnersAdapter,
   FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER,
   signBrowserResearchPlan
 } from "./browser-source-adapter.ts";
@@ -40,6 +46,72 @@ const searchProfile: SearchProfile = {
 };
 
 describe("BrowserSourceAdapter", () => {
+  it("creates BU and a second Off Campus Partners adapter from configuration only", () => {
+    const bu = new OffCampusPartnersAdapter(BU_OFF_CAMPUS_CONFIGURATION);
+    const second = new OffCampusPartnersAdapter({
+      ...BU_OFF_CAMPUS_CONFIGURATION,
+      sourceId: "second_off_campus",
+      displayName: "Second Off-Campus Portal",
+      startingUrl: "https://housing.example.edu/search",
+      allowedDomain: "housing.example.edu"
+    });
+
+    expect(
+      bu.createPlan({
+        veraRunId: "bu-run-1",
+        profile: searchProfile,
+        startingTabReference,
+        signingKey,
+        issuedAt
+      })
+    ).toMatchObject({
+      source: "bu_off_campus",
+      allowedHostnames: ["offcampus.bu.edu"],
+      sourceConfiguration: BU_OFF_CAMPUS_CONFIGURATION
+    });
+    expect(
+      second.createPlan({
+        veraRunId: "second-run-1",
+        profile: searchProfile,
+        startingTabReference,
+        signingKey,
+        issuedAt
+      })
+    ).toMatchObject({
+      allowedHostnames: ["housing.example.edu"],
+      sourceConfiguration: { sourceId: "second_off_campus" }
+    });
+  });
+
+  it("creates a navigation-free current-page fallback for a custom public site", () => {
+    const source = new GenericHousingSourceAdapter({
+      sourceId: "example_housing",
+      displayName: "Example Housing",
+      adapterKind: "generic",
+      startingUrl: "https://housing.example.org/rentals",
+      allowedDomain: "housing.example.org",
+      loginRequired: "no",
+      defaultInclude: false
+    });
+    const plan = source.createPlan({
+      veraRunId: "custom-current-page-1",
+      profile: searchProfile,
+      startingTabReference,
+      signingKey,
+      issuedAt,
+      mode: "current_page"
+    });
+
+    expect(plan).toMatchObject({
+      source: "custom_website",
+      mode: "current_page",
+      maxResults: 1,
+      maxDetailPages: 1,
+      enabledSafeActionTypes: ["inspect_shared_tabs", "snapshot", "extract_observed_facts"]
+    });
+    expect(JSON.stringify(plan)).not.toMatch(/navigate|scroll|selector|javascript|submit/iu);
+  });
+
   it("creates a strict signed Apartments.com plan without arbitrary actions or URLs", () => {
     const plan = APARTMENTS_BROWSER_SOURCE_ADAPTER.createPlan({
       veraRunId: "apartments-run-1",

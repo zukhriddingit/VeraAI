@@ -188,4 +188,18 @@ describe("parseBrowserResearchCheckpointEnvironment", () => {
     expect(environment.enabledSources.size).toBe(0);
     expect(environment.browserDisabled).toBe(false);
   });
+
+  it("requires a separate explicit flag for every configurable browser source", () => {
+    const environment = parseBrowserResearchCheckpointEnvironment({
+      VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderUserId,
+      VERA_BROWSER_DISABLED: "0",
+      VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY: signingKey,
+      VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED: "1",
+      VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED: "1",
+      VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED: "1"
+    });
+    expect(environment.enabledSources).toEqual(
+      new Set(["bu_off_campus", "custom_website", "craigslist"])
+    );
+  });
 });

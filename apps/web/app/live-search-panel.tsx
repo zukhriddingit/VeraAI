@@ -1,17 +1,23 @@
 "use client";
 
 import {
+  BOSTON_CRAIGSLIST_CONFIGURATION,
+  BU_OFF_CAMPUS_CONFIGURATION,
   BrowserExtensionReadinessMessageSchema,
   RentalResearchRunStatusSchema,
+  SelectedHousingSourceConfigurationSchema,
   browserExtensionReadyForResearch,
   type BrowserExtensionReadinessMessage,
   type CanonicalListingSummary,
+  type HousingSourceLoginRequirement,
   type RentalResearchProgressPhase,
   type RentalResearchRunStatus,
   type RentalResearchSource,
   type RentalResearchSourceState,
-  type SearchProfile
+  type SearchProfile,
+  type SelectedHousingSourceConfiguration
 } from "@vera/domain";
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
@@ -30,6 +36,9 @@ const phaseLabels: Record<RentalResearchProgressPhase, string> = {
   searching_zillow: "Searching Zillow",
   searching_apartments_com: "Searching Apartments.com",
   searching_facebook_marketplace: "Searching Facebook Marketplace",
+  searching_bu_off_campus: "Searching BU Off-Campus Housing",
+  searching_custom_website: "Searching custom housing website",
+  searching_craigslist: "Searching Craigslist",
   importing: "Importing",
   deduplicating: "Deduplicating",
   scoring: "Scoring",
@@ -40,7 +49,20 @@ const sourceLabels: Record<RentalResearchSource, string> = {
   rentcast: "RentCast",
   zillow: "Zillow",
   apartments_com: "Apartments.com",
-  facebook_marketplace: "Facebook Marketplace"
+  facebook_marketplace: "Facebook Marketplace",
+  bu_off_campus: "BU Off-Campus Housing",
+  custom_website: "Custom housing website",
+  craigslist: "Craigslist"
+};
+
+const sourceDescriptions: Record<RentalResearchSource, string> = {
+  rentcast: "Official API",
+  zillow: "Founder browser experiment",
+  apartments_com: "Founder browser experiment",
+  facebook_marketplace: "Manual account may be required",
+  bu_off_campus: "Configurable Off Campus Partners adapter",
+  custom_website: "Generic read-only browser mode",
+  craigslist: "Experimental browser search"
 };
 
 const sourceStateLabels: Record<RentalResearchSourceState, string> = {
@@ -61,8 +83,23 @@ const sourceStateLabels: Record<RentalResearchSourceState, string> = {
 const browserSources = new Set<RentalResearchSource>([
   "zillow",
   "apartments_com",
-  "facebook_marketplace"
+  "facebook_marketplace",
+  "bu_off_campus",
+  "custom_website",
+  "craigslist"
 ]);
+
+const CUSTOM_SOURCE_STORAGE_KEY = "vera.custom-housing-source.v1";
+
+const selectableSources = [
+  "rentcast",
+  "zillow",
+  "apartments_com",
+  "facebook_marketplace",
+  "bu_off_campus",
+  "craigslist",
+  "custom_website"
+] as const satisfies readonly RentalResearchSource[];
 
 function browserReadinessCopy(message: BrowserExtensionReadinessMessage | null): string {
   if (message === null) {
@@ -112,6 +149,15 @@ export function LiveSearchPanel({
   const [browserReadiness, setBrowserReadiness] = useState<BrowserExtensionReadinessMessage | null>(
     null
   );
+  const [customSourceName, setCustomSourceName] = useState("");
+  const [customStartingUrl, setCustomStartingUrl] = useState("");
+  const [customAllowedDomain, setCustomAllowedDomain] = useState("");
+  const [customLoginRequired, setCustomLoginRequired] =
+    useState<HousingSourceLoginRequirement>("unknown");
+  const [customDefaultInclude, setCustomDefaultInclude] = useState(false);
+  const [customConfiguration, setCustomConfiguration] =
+    useState<SelectedHousingSourceConfiguration | null>(null);
+  const [customSourceError, setCustomSourceError] = useState<string | null>(null);
   const browserReadinessObservedAt = useRef<number | null>(null);
 
   const selectedProfile = profiles.find((profile) => profile.id === profileId) ?? null;
@@ -124,6 +170,36 @@ export function LiveSearchPanel({
     [status]
   );
   const recoveryReady = status !== null && rentalResearchRecoveryReady(status.sources);
+  const customSourceStatus = status?.sources.find((source) => source.source === "custom_website");
+  const showCurrentPageFallback =
+    customConfiguration !== null &&
+    (customSourceStatus?.manualAction === "layout_changed" ||
+      customSourceStatus?.state === "failed");
+
+  useEffect(() => {
+    const hydration = window.setTimeout(() => {
+      const stored = window.localStorage.getItem(CUSTOM_SOURCE_STORAGE_KEY);
+      if (stored === null) return;
+      try {
+        const parsed = SelectedHousingSourceConfigurationSchema.parse(JSON.parse(stored));
+        if (parsed.source !== "custom_website") return;
+        setCustomConfiguration(parsed);
+        setCustomSourceName(parsed.displayName);
+        setCustomStartingUrl(parsed.startingUrl);
+        setCustomAllowedDomain(parsed.allowedDomain);
+        setCustomLoginRequired(parsed.loginRequired);
+        setCustomDefaultInclude(parsed.defaultInclude);
+        if (parsed.defaultInclude) {
+          setSelectedSources((current) =>
+            current.includes("custom_website") ? current : [...current, "custom_website"]
+          );
+        }
+      } catch {
+        window.localStorage.removeItem(CUSTOM_SOURCE_STORAGE_KEY);
+      }
+    }, 0);
+    return () => window.clearTimeout(hydration);
+  }, []);
 
   useEffect(() => {
     if (runId === null || phase === "completed") return;
@@ -190,11 +266,71 @@ export function LiveSearchPanel({
     setConfirmed(false);
   }
 
+  function saveCustomSource() {
+    setCustomSourceError(null);
+    try {
+      const allowedDomain = customAllowedDomain.trim().toLowerCase();
+      const sourceIdSuffix = allowedDomain.replace(/[^a-z0-9.-]/gu, "-").slice(0, 120);
+      const configuration = SelectedHousingSourceConfigurationSchema.parse({
+        source: "custom_website",
+        sourceId: `custom:${sourceIdSuffix}`,
+        displayName: customSourceName,
+        adapterKind: "generic",
+        startingUrl: customStartingUrl,
+        allowedDomain,
+        loginRequired: customLoginRequired,
+        defaultInclude: customDefaultInclude,
+        captureCurrentPage: false
+      });
+      window.localStorage.setItem(CUSTOM_SOURCE_STORAGE_KEY, JSON.stringify(configuration));
+      setCustomConfiguration(configuration);
+      setSelectedSources((current) => {
+        const withoutCustom = current.filter((source) => source !== "custom_website");
+        return configuration.defaultInclude ? [...withoutCustom, "custom_website"] : withoutCustom;
+      });
+      setConfirmed(false);
+    } catch {
+      setCustomSourceError(
+        "Use a public HTTPS starting URL whose hostname exactly matches the allowed domain."
+      );
+    }
+  }
+
+  function housingConfigurationsFor(
+    sources: readonly RentalResearchSource[],
+    captureCurrentPage: boolean
+  ): SelectedHousingSourceConfiguration[] {
+    const configurations: SelectedHousingSourceConfiguration[] = [];
+    if (sources.includes("bu_off_campus")) {
+      configurations.push({
+        ...BU_OFF_CAMPUS_CONFIGURATION,
+        source: "bu_off_campus",
+        captureCurrentPage: false
+      });
+    }
+    if (sources.includes("craigslist")) {
+      configurations.push({
+        ...BOSTON_CRAIGSLIST_CONFIGURATION,
+        source: "craigslist",
+        captureCurrentPage: false
+      });
+    }
+    if (sources.includes("custom_website") && customConfiguration !== null) {
+      configurations.push({ ...customConfiguration, captureCurrentPage });
+    }
+    return configurations;
+  }
+
   async function run(
     sources: readonly RentalResearchSource[] = selectedSources,
-    retryOfSearchRunId: string | null = null
+    retryOfSearchRunId: string | null = null,
+    captureCurrentPage = false
   ) {
     if (sources.length === 0) return;
+    if (sources.includes("custom_website") && customConfiguration === null) {
+      setError("Save a valid custom housing website before selecting it.");
+      return;
+    }
     if (sources.some((source) => browserSources.has(source)) && !browserReady) {
       setError("Prepare one Browser ready Vera Search tab before running browser sources.");
       return;
@@ -215,6 +351,7 @@ export function LiveSearchPanel({
           veraRunId: nextRunId,
           searchProfileId: profileId,
           selectedSources: sources,
+          housingSourceConfigurations: housingConfigurationsFor(sources, captureCurrentPage),
           confirmedExternalUsage: true,
           ...(retryOfSearchRunId === null ? {} : { retryOfSearchRunId })
         })
@@ -283,35 +420,128 @@ export function LiveSearchPanel({
             that use one explicitly shared Vera Search tab through bounded OpenClaw research.
           </p>
           <div className="source-selector" role="group" aria-label="Rental sources">
-            {(["rentcast", "zillow", "apartments_com", "facebook_marketplace"] as const).map(
-              (source) => {
-                const selected = selectedSources.includes(source);
-                const current = status?.sources.find((candidate) => candidate.source === source);
-                return (
-                  <label className="source-selector-option" key={source}>
-                    <input
-                      type="checkbox"
-                      checked={selected}
-                      disabled={running}
-                      onChange={() => toggleSource(source)}
-                    />
-                    <span>
-                      <strong>{sourceLabels[source]}</strong>
-                      <small>
-                        {current
-                          ? sourceStateLabels[current.state]
-                          : selected
-                            ? source === "facebook_marketplace"
-                              ? "Account recommended"
-                              : "Ready"
-                            : "Excluded by user"}
-                      </small>
-                    </span>
-                  </label>
-                );
-              }
-            )}
+            {selectableSources.map((source) => {
+              const selected = selectedSources.includes(source);
+              const current = status?.sources.find((candidate) => candidate.source === source);
+              const unavailable = source === "custom_website" && customConfiguration === null;
+              return (
+                <label className="source-selector-option" key={source}>
+                  <input
+                    type="checkbox"
+                    checked={selected}
+                    disabled={running || unavailable}
+                    onChange={() => toggleSource(source)}
+                  />
+                  <span>
+                    <strong>
+                      {source === "custom_website" && customConfiguration !== null
+                        ? customConfiguration.displayName
+                        : sourceLabels[source]}
+                    </strong>
+                    <small>
+                      {current
+                        ? sourceStateLabels[current.state]
+                        : unavailable
+                          ? "Configure below"
+                          : sourceDescriptions[source]}
+                    </small>
+                  </span>
+                </label>
+              );
+            })}
           </div>
+          <div className="source-fallback-row" aria-label="Craigslist fallback options">
+            <span>
+              <strong>Craigslist fallback:</strong> Search alerts connected
+            </span>
+            <Link href="/capture">Capture listing manually</Link>
+          </div>
+          <details className="custom-source-configurator">
+            <summary>Add another housing website</summary>
+            <div className="custom-source-form">
+              <label>
+                <span>Source name</span>
+                <input
+                  type="text"
+                  value={customSourceName}
+                  disabled={running}
+                  maxLength={160}
+                  onChange={(event) => setCustomSourceName(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Starting URL</span>
+                <input
+                  type="url"
+                  value={customStartingUrl}
+                  disabled={running}
+                  placeholder="https://housing.example.edu/search"
+                  onChange={(event) => setCustomStartingUrl(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Allowed domain</span>
+                <input
+                  type="text"
+                  value={customAllowedDomain}
+                  disabled={running}
+                  placeholder="housing.example.edu"
+                  onChange={(event) => setCustomAllowedDomain(event.target.value)}
+                />
+              </label>
+              <label>
+                <span>Login required</span>
+                <select
+                  value={customLoginRequired}
+                  disabled={running}
+                  onChange={(event) =>
+                    setCustomLoginRequired(event.target.value as HousingSourceLoginRequirement)
+                  }
+                >
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                  <option value="unknown">Unknown</option>
+                </select>
+              </label>
+              <label className="custom-source-toggle">
+                <input
+                  type="checkbox"
+                  checked={customDefaultInclude}
+                  disabled={running}
+                  onChange={(event) => setCustomDefaultInclude(event.target.checked)}
+                />
+                <span>Include by default</span>
+              </label>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={running}
+                onClick={saveCustomSource}
+              >
+                Save housing source
+              </button>
+            </div>
+            {customConfiguration ? (
+              <p className="custom-source-saved">
+                Saved for <strong>{customConfiguration.allowedDomain}</strong>. Vera will remain on
+                this exact domain.
+              </p>
+            ) : null}
+            {customSourceError ? <p className="form-error">{customSourceError}</p> : null}
+          </details>
+          {showCurrentPageFallback ? (
+            <div className="current-page-fallback" role="status">
+              <p>Vera could not recognize repeated housing cards on this layout.</p>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={running || !browserReady}
+                onClick={() => void run(["custom_website"], status?.searchRunId ?? null, true)}
+              >
+                Capture current listing page
+              </button>
+            </div>
+          ) : null}
           {browserSourceSelected ? (
             <p
               className={`browser-readiness ${browserReady ? "browser-readiness-ready" : "browser-readiness-blocked"}`}

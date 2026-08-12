@@ -33,7 +33,7 @@ export async function POST(request: Request): Promise<Response> {
     assertSameOriginMutation(request);
     if (context.demoMode) throw new LiveSearchServiceError("disabled", 503, null, false);
     assertLiveSearchFounder(context.userId, parseLiveSearchEnvironment(process.env));
-    const input = await readBoundedJson(request, { maxBytes: 2_000 });
+    const input = await readBoundedJson(request, { maxBytes: 12_000 });
     const policyRegistry = await createPersistedPolicyRegistry(context.repositories);
     const liveDependencies = createLiveSearchDependencies(
       context.userId,

@@ -9,7 +9,14 @@ export const UrlClassificationSchema = z
   .object({
     canonicalUrl: z.string().url().max(MAX_PROVENANCE_URL_LENGTH),
     hostname: z.string().min(1).max(253),
-    source: z.enum(["zillow", "facebook_marketplace", "craigslist", "apartments_com", "other"]),
+    source: z.enum([
+      "zillow",
+      "facebook_marketplace",
+      "craigslist",
+      "apartments_com",
+      "bu_off_campus",
+      "other"
+    ]),
     browserAccess: z.enum(["policy_entry_present", "manual_policy_required"])
   })
   .strict();
@@ -54,6 +61,9 @@ function classifySource(hostname: string, pathname: string): ListingSourceLabel 
   }
   if (matchesDomain(hostname, "apartments.com")) {
     return "apartments_com";
+  }
+  if (hostname === "offcampus.bu.edu") {
+    return "bu_off_campus";
   }
   return "other";
 }

@@ -29,6 +29,8 @@ const sourceNames = {
   facebook_marketplace: "Facebook Marketplace",
   craigslist: "Craigslist",
   apartments_com: "Apartments.com",
+  bu_off_campus: "BU Off-Campus Housing",
+  custom_website: "Custom housing site",
   other: "Other"
 } as const;
 

@@ -258,6 +258,15 @@ The readiness bridge runs only on the reviewed Vera application origins and publ
 relay, shared-tab count, and typed readiness state. It publishes no URLs, tab titles, page content,
 cookies, credentials, pairing values, extension identifiers, or raw Chrome errors.
 
+Configured housing sources use the same prepared single tab and signed bounded tool. BU Off-Campus
+is a registry entry for the reusable Off Campus Partners adapter. A custom website supplies one
+public HTTPS starting URL and one exact allowed domain; the Gateway never accepts model-generated
+URLs, selectors, JavaScript, form submission, or cross-domain navigation. Generic discovery is
+limited to ten observed cards, two scrolls, and three observed same-domain details. When repeated
+cards are not recognized, Vera exposes a navigation-free **Capture current listing page** fallback.
+Craigslist is founder-only, user-triggered, limited to ten housing results and five observed detail
+URLs, and keeps Reply, relay email, phone, posting, payment, upload, and download controls forbidden.
+
 ## Exact founder live-test procedure
 
 All real outputs belong under `release-evidence/private/`, mode `0700`; individual evidence files
