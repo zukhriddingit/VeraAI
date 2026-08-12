@@ -17,6 +17,7 @@ import {
 import {
   ActivityEventSchema,
   EnrichmentResponseSchema,
+  EntityIdSchema,
   ListingDetailFieldsSchema,
   ListingDetailPhotoSchema,
   ListingEnrichmentSnapshotSchema,
@@ -453,13 +454,27 @@ export async function queueTopListingsPerSource(
   return queued;
 }
 
-async function currentProfile(dependencies: ListingEnrichmentDependencies): Promise<SearchProfile> {
-  const profiles = await dependencies.repositories.searchProfiles.list();
+export async function resolveEnrichmentProfile(
+  record: ListingSourceRecord,
+  repositories: Pick<UserRepositories, "rawListings" | "searchProfiles">
+): Promise<SearchProfile> {
+  const rawListing = await repositories.rawListings.getById(record.rawListingId);
+  const storedProfileId = rawListing?.captureMetadata.searchProfileId;
+  if (storedProfileId !== undefined && storedProfileId !== null) {
+    const persistedProfileId = EntityIdSchema.safeParse(storedProfileId);
+    if (!persistedProfileId.success) throw new Error("enrichment_profile_unavailable");
+    const persistedProfile = await repositories.searchProfiles.getById(persistedProfileId.data);
+    if (persistedProfile !== null) return persistedProfile;
+    throw new Error("enrichment_profile_unavailable");
+  }
+
+  // Legacy captures predate profile provenance. They are safe only when no choice is possible.
+  const profiles = await repositories.searchProfiles.list();
   if (profiles.length !== 1) throw new Error("enrichment_profile_unavailable");
   return profiles[0]!;
 }
 
-async function processEnrichment(
+export async function processEnrichment(
   claimed: ListingEnrichmentRecord,
   dependencies: ListingEnrichmentDependencies
 ): Promise<void> {
@@ -487,27 +502,53 @@ async function processEnrichment(
     }
     return;
   }
-  const profile = await currentProfile(dependencies);
-  const adapter = getBrowserSourceAdapter(
-    source,
-    await customConfigurationForRecord(sourceRecord, dependencies)
-  );
   const startedAt = nowIso(dependencies);
   const jobId = dependencies.createId();
-  const plan = adapter.createPlan({
-    veraRunId: jobId,
-    profile,
-    startingTabReference: {
-      kind: "single_shared_tab",
-      value: ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE
-    },
-    signingKey: dependencies.planSigningKey,
-    issuedAt: new Date(startedAt),
-    mode: "enrichment",
-    targetListingUrl: sourceRecord.sourceUrl,
-    maxResults: 1,
-    maxDetailPages: 1
-  });
+  let plan: BrowserResearchPlan;
+  try {
+    const profile = await resolveEnrichmentProfile(sourceRecord, dependencies.repositories);
+    const adapter = getBrowserSourceAdapter(
+      source,
+      await customConfigurationForRecord(sourceRecord, dependencies)
+    );
+    plan = adapter.createPlan({
+      veraRunId: jobId,
+      profile,
+      startingTabReference: {
+        kind: "single_shared_tab",
+        value: ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE
+      },
+      signingKey: dependencies.planSigningKey,
+      issuedAt: new Date(startedAt),
+      mode: "enrichment",
+      targetListingUrl: sourceRecord.sourceUrl,
+      maxResults: 1,
+      maxDetailPages: 1
+    });
+  } catch (error: unknown) {
+    const failedAt = nowIso(dependencies);
+    const errorCode =
+      error instanceof Error && error.message === "enrichment_profile_unavailable"
+        ? "enrichment_profile_unavailable"
+        : "enrichment_preflight_failed";
+    await dependencies.repositories.listingEnrichments.fail({
+      listingSourceRecordId: sourceRecord.id,
+      leaseOwner,
+      errorCode,
+      retryable: false,
+      failedAt,
+      retryAt: new Date(Date.parse(failedAt) + 30_000).toISOString()
+    });
+    await appendActivity(dependencies, {
+      action: "listing.enrichment_failed",
+      targetType: "listing_source_record",
+      targetId: sourceRecord.id,
+      outcome: "failed",
+      metadata: { source, retryable: false, errorCode },
+      correlationId: jobId
+    });
+    return;
+  }
   const jobPayload = {
     acquisitionMode: "local_browser" as const,
     captureKind: "detail_enrichment" as const,
