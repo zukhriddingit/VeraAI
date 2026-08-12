@@ -123,7 +123,10 @@ export class LoopbackBrowserResearchClient {
         throw new MaritimeBrowserResearchError("maritime_auth_failed", false);
       }
       if (!response.ok) {
-        throw new MaritimeBrowserResearchError("gateway_unavailable", response.status >= 500);
+        throw new MaritimeBrowserResearchError(
+          "gateway_unavailable",
+          response.status === 409 || response.status >= 500
+        );
       }
       const output = BrowserResearchOutputSchema.safeParse(
         await readBoundedJson(response, this.#maxResponseBytes)
