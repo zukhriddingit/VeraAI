@@ -85,4 +85,17 @@ describe("LoopbackBrowserResearchClient", () => {
       expect(() => new LoopbackBrowserResearchClient({ url, token })).toThrow();
     }
   });
+
+  it("retries a serialized bridge conflict instead of permanently failing enrichment", async () => {
+    const client = new LoopbackBrowserResearchClient({
+      url: "http://127.0.0.1:3002/research",
+      token,
+      fetch: async () => Response.json({ error: "research_already_active" }, { status: 409 })
+    });
+
+    await expect(client.run(plan, { signal: new AbortController().signal })).rejects.toMatchObject({
+      code: "gateway_unavailable",
+      retryable: true
+    });
+  });
 });
