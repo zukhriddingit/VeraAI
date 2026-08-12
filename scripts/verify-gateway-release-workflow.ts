@@ -94,13 +94,13 @@ export function findGatewayReleaseWorkflowViolations(
   );
   requireText(
     workflow,
-    "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
-    "Gateway release must use the temporary package-write credential for the existing unlinked package.",
+    "password: ${{ github.token }}",
+    "Gateway release must use only the ephemeral repository-scoped package credential.",
     violations
   );
-  if (workflow.includes("password: ${{ github.token }}")) {
+  if (workflow.includes("secrets.GHCR_PUBLISH_TOKEN")) {
     violations.push(
-      "Gateway release must not use the repository token for the existing unlinked package."
+      "Gateway release must not depend on a persistent package-publishing repository secret."
     );
   }
   if (workflow.includes("--cert-identity")) {
@@ -303,7 +303,7 @@ export function findGatewayReleaseWorkflowViolations(
     "node scripts/verify-gateway-image-layout.mjs",
     '--image-ref "$GATEWAY_IMAGE_REF"',
     "--simulate-bootstrap",
-    "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
+    "password: ${{ github.token }}",
     'buildType: "https://actions.github.io/buildtypes/workflow/v1"',
     'path: ".github/workflows/attest-openclaw-gateway.yml"',
     '--arg serverUrl "$GITHUB_SERVER_URL"',

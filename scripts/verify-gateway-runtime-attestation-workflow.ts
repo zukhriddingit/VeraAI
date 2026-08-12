@@ -59,7 +59,7 @@ export function findGatewayRuntimeAttestationWorkflowViolations(workflow: string
     "gateway-runtime.spdx.json",
     "--scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 1",
     "[.Results[]?.Vulnerabilities[]?] | length",
-    "password: ${{ secrets.GHCR_PUBLISH_TOKEN }}",
+    "password: ${{ github.token }}",
     "existingRuntimeDigest",
     "originalPublicationRunId",
     'recoveryMode: "attest-existing-runtime-without-rebuild"',
@@ -128,7 +128,7 @@ export function findGatewayRuntimeAttestationWorkflowViolations(workflow: string
   const zeroScan = workflow.indexOf(
     "--scanners vuln --ignore-unfixed=false --severity CRITICAL,HIGH --exit-code 1"
   );
-  const login = workflow.indexOf("password: ${{ secrets.GHCR_PUBLISH_TOKEN }}");
+  const login = workflow.indexOf("password: ${{ github.token }}");
   const attest = workflow.indexOf("      - name: Attest exact-child source provenance");
   const sign = workflow.indexOf('cosign sign --yes "$RUNTIME_IMAGE_REF"');
   if (
