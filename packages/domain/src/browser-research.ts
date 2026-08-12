@@ -62,9 +62,10 @@ export const BrowserResearchSourcePolicy = {
     maxDetailPages: 3
   },
   craigslist: {
-    hostnames: ["boston.craigslist.org"],
+    hostnames: ["www.craigslist.org"],
     urlPatterns: [
-      "^https://boston\\.craigslist\\.org/(?:search/(?:apa|roo|sub)|[^?#]+/[0-9]+\\.html)(?:/|\\?|$)"
+      "^https://www\\.craigslist\\.org/search/area/boston\\?(?=(?:[^#]*&)?cat=apa(?:&|#|$))[^#]*(?:#search=[a-z0-9~_-]+)?$",
+      "^https://www\\.craigslist\\.org/view/d/[a-z0-9-]+/[A-Za-z0-9]+(?:\\?[^#]*)?$"
     ],
     maxDetailPages: 5
   }
@@ -76,6 +77,19 @@ function escapeRegex(value: string): string {
 
 export function configuredBrowserResearchPolicy(configuration: HousingSourceConfiguration) {
   const parsed = HousingSourceConfigurationSchema.parse(configuration);
+  if (parsed.adapterKind === "craigslist" && parsed.allowedDomain === "www.craigslist.org") {
+    return BrowserResearchSourcePolicy.craigslist;
+  }
+  if (parsed.adapterKind === "craigslist") {
+    const hostname = escapeRegex(parsed.allowedDomain);
+    return {
+      hostnames: [parsed.allowedDomain],
+      urlPatterns: [
+        `^https://${hostname}/(?:search/(?:apa|roo|sub)|[^?#]+/[0-9]+\\.html)(?:/|\\?|$)`
+      ],
+      maxDetailPages: 5
+    } as const;
+  }
   return {
     hostnames: [parsed.allowedDomain],
     urlPatterns: [`^https://${escapeRegex(parsed.allowedDomain)}/[^#]*$`],

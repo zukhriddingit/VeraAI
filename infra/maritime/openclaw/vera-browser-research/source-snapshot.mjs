@@ -520,7 +520,9 @@ function sourceId(url, source) {
       url.match(/\/([0-9]+)_zpid\/?/u)?.[1] ?? url.match(/\/([A-Za-z0-9]{5,16})\/$/u)?.[1] ?? null
     );
   }
-  if (source === "craigslist") return url.match(/\/([0-9]+)\.html(?:\?|$)/u)?.[1] ?? null;
+  if (source === "craigslist") {
+    return url.match(/\/view\/d\/[a-z0-9-]+\/([A-Za-z0-9]+)(?:\?|$)/u)?.[1] ?? null;
+  }
   if (source === "bu_off_campus" || source === "custom_website") {
     return url.match(/\/([a-zA-Z0-9_-]{4,80})\/?(?:\?|$)/u)?.[1] ?? null;
   }

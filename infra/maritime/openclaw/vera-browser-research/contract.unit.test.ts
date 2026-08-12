@@ -3,6 +3,7 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import {
+  BOSTON_CRAIGSLIST_STARTING_URL,
   CURRENT_PAGE_SAFE_ACTIONS,
   ENRICHMENT_SAFE_ACTIONS,
   SAFE_ACTIONS,
@@ -89,6 +90,15 @@ function configuredPlan(
 ) {
   const base = plan();
   const { signature: _signature, ...payload } = base;
+  const configuredPolicy =
+    source === "craigslist"
+      ? SOURCE_POLICY.craigslist
+      : {
+          hostnames: [sourceConfiguration.allowedDomain],
+          urlPatterns: [
+            `^https://${sourceConfiguration.allowedDomain.replaceAll(".", "\\.")}/[^#]*$`
+          ]
+        };
   const configuredPayload = {
     ...payload,
     veraRunId: `run-${source}`,
@@ -96,10 +106,8 @@ function configuredPlan(
     maxResults: mode === "current_page" ? 1 : 10,
     maxDetailPages: mode === "current_page" ? 1 : 3,
     maxActions: mode === "current_page" ? 10 : 50,
-    allowedHostnames: [sourceConfiguration.allowedDomain],
-    allowedUrlPatterns: [
-      `^https://${sourceConfiguration.allowedDomain.replaceAll(".", "\\.")}/[^#]*$`
-    ],
+    allowedHostnames: [...configuredPolicy.hostnames],
+    allowedUrlPatterns: [...configuredPolicy.urlPatterns],
     enabledSafeActionTypes:
       mode === "current_page" ? [...CURRENT_PAGE_SAFE_ACTIONS] : [...SAFE_ACTIONS],
     ...(mode === "current_page" ? { mode, targetListingUrl: null } : {}),
@@ -213,5 +221,34 @@ describe("vera_browser_research_v1 contract", () => {
         key
       )
     ).toThrow("invalid_tool_input");
+  });
+
+  it("accepts only Craigslist's exact Boston search and observed detail routes", () => {
+    const configuration = {
+      sourceId: "craigslist",
+      displayName: "Craigslist",
+      adapterKind: "craigslist" as const,
+      startingUrl: BOSTON_CRAIGSLIST_STARTING_URL,
+      allowedDomain: "www.craigslist.org",
+      loginRequired: "no" as const,
+      defaultInclude: false
+    };
+    expect(validateResearchPlan(configuredPlan("craigslist", configuration), key)).toMatchObject({
+      allowedHostnames: ["www.craigslist.org"],
+      allowedUrlPatterns: SOURCE_POLICY.craigslist.urlPatterns
+    });
+    for (const unsafe of [
+      { ...configuration, startingUrl: "https://www.craigslist.org/search/area/newyork?cat=apa" },
+      { ...configuration, startingUrl: "https://www.craigslist.org/search/area/boston?cat=sss" },
+      {
+        ...configuration,
+        startingUrl: "https://boston.craigslist.org/search/apa",
+        allowedDomain: "boston.craigslist.org"
+      }
+    ]) {
+      expect(() => validateResearchPlan(configuredPlan("craigslist", unsafe), key)).toThrow(
+        "invalid_tool_input"
+      );
+    }
   });
 });

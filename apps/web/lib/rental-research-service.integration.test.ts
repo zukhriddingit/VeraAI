@@ -354,7 +354,7 @@ function browserOutput(
         : plan.source === "bu_off_campus"
           ? "https://offcampus.bu.edu/housing/property/12-bay-state-road/ocp-123"
           : plan.source === "craigslist"
-            ? "https://boston.craigslist.org/gbs/apa/d/boston-beacon-hill-apartment/1234567890.html"
+            ? "https://www.craigslist.org/view/d/boston-beacon-hill-apartment/1234567890"
             : "https://housing.example.edu/listings/green-house";
   return {
     version: "1",

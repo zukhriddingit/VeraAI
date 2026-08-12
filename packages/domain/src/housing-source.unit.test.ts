@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  BOSTON_CRAIGSLIST_CONFIGURATION,
   BU_OFF_CAMPUS_CONFIGURATION,
   HousingSourceConfigurationSchema,
   SelectedHousingSourceConfigurationSchema
@@ -56,6 +57,33 @@ describe("housing-source configuration", () => {
         defaultInclude: false
       })
     ).toThrow(/housing search surface/iu);
+  });
+
+  it("pins Craigslist to the observed Boston-area route after the regional redirect", () => {
+    expect(BOSTON_CRAIGSLIST_CONFIGURATION).toEqual({
+      sourceId: "craigslist",
+      displayName: "Craigslist",
+      adapterKind: "craigslist",
+      startingUrl: "https://www.craigslist.org/search/area/boston?cat=apa",
+      allowedDomain: "www.craigslist.org",
+      loginRequired: "no",
+      defaultInclude: false
+    });
+
+    expect(() =>
+      HousingSourceConfigurationSchema.parse({
+        ...BOSTON_CRAIGSLIST_CONFIGURATION,
+        startingUrl: "https://www.craigslist.org/search/area/newyork?cat=apa"
+      })
+    ).toThrow(/Boston housing search surface/iu);
+    expect(() =>
+      SelectedHousingSourceConfigurationSchema.parse({
+        ...BOSTON_CRAIGSLIST_CONFIGURATION,
+        source: "craigslist",
+        startingUrl: "https://www.craigslist.org/search/area/boston?cat=sss",
+        captureCurrentPage: false
+      })
+    ).toThrow(/cannot be widened/iu);
   });
 
   it("does not let a request widen the built-in BU configuration", () => {

@@ -36,17 +36,17 @@ describe("bounded source snapshots", () => {
         sourceId: "craigslist",
         displayName: "Craigslist",
         adapterKind: "craigslist",
-        startingUrl: "https://boston.craigslist.org/search/apa",
-        allowedDomain: "boston.craigslist.org",
+        startingUrl: "https://www.craigslist.org/search/area/boston?cat=apa",
+        allowedDomain: "www.craigslist.org",
         loginRequired: "no",
         defaultInclude: false
       }
     };
     expect(sourceStartUrl(plan)).toContain(
-      "https://boston.craigslist.org/search/apa?max_price=2800&min_bedrooms=1&min_bathrooms=1"
+      "https://www.craigslist.org/search/area/boston?cat=apa&max_price=2800&min_bedrooms=1&min_bathrooms=1"
     );
     const listingUrl =
-      "https://boston.craigslist.org/gbs/apa/d/boston-sunny-one-bedroom/1234567890.html";
+      "https://www.craigslist.org/view/d/boston-sunny-one-bedroom/1Dn8j1xVrmWNhxYMAKRmmE";
     const document = parseSourceSnapshot(
       {
         ok: true,
@@ -67,7 +67,7 @@ describe("bounded source snapshots", () => {
     );
     expect(extractSourceCards(document, plan, observedAt)[0]).toMatchObject({
       source: "craigslist",
-      sourceListingId: "1234567890",
+      sourceListingId: "1Dn8j1xVrmWNhxYMAKRmmE",
       canonicalObservedUrl: listingUrl,
       rentUsd: 2_450,
       bedrooms: 1,

@@ -356,8 +356,8 @@ export const CRAIGSLIST_RENTAL_RESEARCH_MANIFEST = freezeManifest(
     execution: "manual",
     capabilities: ["browser.capture"],
     allowedOperations: ["craigslist.rental_research.v1"],
-    allowedDomains: ["boston.craigslist.org"],
-    allowedOrigins: ["https://boston.craigslist.org/"],
+    allowedDomains: ["www.craigslist.org"],
+    allowedOrigins: ["https://www.craigslist.org/"],
     allowedHttpMethods: ["GET"],
     requiresUserSession: true,
     requiresApproval: true,
@@ -372,7 +372,7 @@ export const CRAIGSLIST_RENTAL_RESEARCH_MANIFEST = freezeManifest(
     reviewedAt: "2026-08-12",
     decisionRecord: "AGENTS.md",
     notes:
-      "Founder-only, user-triggered, disabled-by-default Craigslist housing research. Reply, relay email, phone, posting, account, contact, payment, upload, and download actions are absent and forbidden.",
+      "Founder-only, user-triggered, disabled-by-default Craigslist research limited to the observed Boston search route and same-source listing details. Reply, relay email, phone, posting, account, contact, payment, upload, and download actions are absent and forbidden.",
     createdAt: "2026-08-12T00:00:00.000Z",
     updatedAt: "2026-08-12T00:00:00.000Z"
   })
