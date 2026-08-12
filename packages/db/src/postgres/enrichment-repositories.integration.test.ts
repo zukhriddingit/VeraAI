@@ -1,6 +1,6 @@
 import type { ListingEnrichmentSnapshot, VeraUserId } from "@vera/domain";
 import { eq } from "drizzle-orm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CANONICAL_FIXTURES, DEMO_SEARCH_PROFILE, SOURCE_FIXTURES } from "../fixtures.ts";
 import { createPostgresRepositoryProvider } from "./repositories.ts";
@@ -113,6 +113,25 @@ describe("PostgreSQL listing enrichment repository", () => {
         listingSourceRecordId: source.sourceRecord.id,
         isPrimary: true
       });
+      const secondSource = SOURCE_FIXTURES.find(
+        ({ sourceRecord }) => sourceRecord.id !== source.sourceRecord.id
+      )!;
+      const secondCanonical = CANONICAL_FIXTURES.find(({ memberSourceRecordIds }) =>
+        memberSourceRecordIds.includes(secondSource.sourceRecord.id)
+      )!;
+      await alice.rawListings.import(secondSource.capture);
+      await alice.sourceRecords.insert(secondSource.sourceRecord);
+      await alice.canonicalListings.insert({
+        ...secondCanonical.listing,
+        id: "canonical-enrichment-batch-control",
+        duplicateClusterId: null,
+        primarySourceRecordId: secondSource.sourceRecord.id
+      });
+      await alice.canonicalListings.addSource({
+        canonicalListingId: "canonical-enrichment-batch-control",
+        listingSourceRecordId: secondSource.sourceRecord.id,
+        isPrimary: true
+      });
 
       await expect(
         alice.listingEnrichments.queue({
@@ -153,7 +172,11 @@ describe("PostgreSQL listing enrichment repository", () => {
         completeness: { basisPoints: 8_000 },
         photos: [{ position: 0 }]
       });
-      await expect(alice.canonicalListings.listSummaries()).resolves.toEqual(
+      const querySpy = vi.spyOn(connection.pool, "query");
+      const summaries = await alice.canonicalListings.listSummaries();
+      expect(querySpy).toHaveBeenCalledTimes(6);
+      querySpy.mockRestore();
+      expect(summaries).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             id: canonicalListing.id,
@@ -180,6 +203,78 @@ describe("PostgreSQL listing enrichment repository", () => {
       await expect(
         alice.listingEnrichments.getBySourceRecordId(source.sourceRecord.id)
       ).resolves.toMatchObject({ state: "stale" });
+      await expect(
+        alice.listingEnrichments.queue({
+          listingSourceRecordId: source.sourceRecord.id,
+          reason: "user_refresh",
+          requestedAt: "2026-08-12T02:03:00.000Z",
+          force: true
+        })
+      ).resolves.toMatchObject({ queued: true, record: { state: "queued" } });
+      await expect(
+        alice.listingEnrichments.claim({
+          leaseOwner: "enrichment-worker-2",
+          now: "2026-08-12T02:03:00.000Z",
+          leaseExpiresAt: "2026-08-12T02:05:00.000Z"
+        })
+      ).resolves.toMatchObject({ state: "enriching" });
+      await expect(
+        alice.listingEnrichments.block({
+          listingSourceRecordId: source.sourceRecord.id,
+          leaseOwner: "enrichment-worker-2",
+          manualAction: "tab_required",
+          completedAt: "2026-08-12T02:04:00.000Z"
+        })
+      ).resolves.toMatchObject({ state: "blocked_manual_action" });
+      await expect(
+        alice.listingEnrichments.queue({
+          listingSourceRecordId: source.sourceRecord.id,
+          reason: "listing_opened",
+          requestedAt: "2026-08-12T02:05:00.000Z",
+          force: false
+        })
+      ).resolves.toMatchObject({ queued: false, record: { state: "blocked_manual_action" } });
+      await expect(
+        alice.listingEnrichments.queue({
+          listingSourceRecordId: source.sourceRecord.id,
+          reason: "user_refresh",
+          requestedAt: "2026-08-12T02:05:00.000Z",
+          force: true
+        })
+      ).resolves.toMatchObject({ queued: true, record: { state: "queued" } });
+      await expect(
+        alice.listingEnrichments.claim({
+          leaseOwner: "enrichment-worker-3",
+          now: "2026-08-12T02:05:00.000Z",
+          leaseExpiresAt: "2026-08-12T02:07:00.000Z"
+        })
+      ).resolves.toMatchObject({ state: "enriching" });
+      await expect(
+        alice.listingEnrichments.fail({
+          listingSourceRecordId: source.sourceRecord.id,
+          leaseOwner: "enrichment-worker-3",
+          errorCode: "layout_changed",
+          retryable: false,
+          failedAt: "2026-08-12T02:06:00.000Z",
+          retryAt: "2026-08-12T02:07:00.000Z"
+        })
+      ).resolves.toMatchObject({ state: "failed" });
+      await expect(
+        alice.listingEnrichments.queue({
+          listingSourceRecordId: source.sourceRecord.id,
+          reason: "listing_opened",
+          requestedAt: "2026-08-12T02:07:00.000Z",
+          force: false
+        })
+      ).resolves.toMatchObject({ queued: false, record: { state: "failed" } });
+      await expect(
+        alice.listingEnrichments.queue({
+          listingSourceRecordId: source.sourceRecord.id,
+          reason: "user_refresh",
+          requestedAt: "2026-08-12T02:07:00.000Z",
+          force: true
+        })
+      ).resolves.toMatchObject({ queued: true, record: { state: "queued" } });
       await expect(
         bob.listingEnrichments.getBySourceRecordId(source.sourceRecord.id)
       ).resolves.toBeNull();

@@ -34,7 +34,7 @@ function iso(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-function mapState(row: StateRow): ListingEnrichmentRecord {
+export function mapPostgresEnrichmentStateRow(row: StateRow): ListingEnrichmentRecord {
   return ListingEnrichmentRecordSchema.parse({
     listingSourceRecordId: row.listingSourceRecordId,
     state: row.state,
@@ -53,7 +53,7 @@ function mapState(row: StateRow): ListingEnrichmentRecord {
   });
 }
 
-function mapSnapshot(row: SnapshotRow): ListingEnrichmentSnapshot {
+export function mapPostgresEnrichmentSnapshotRow(row: SnapshotRow): ListingEnrichmentSnapshot {
   return ListingEnrichmentSnapshotSchema.parse({
     id: row.id,
     listingSourceRecordId: row.listingSourceRecordId,
@@ -91,7 +91,7 @@ export function createPostgresEnrichmentRepository(
           )
         )
         .limit(1);
-      return rows[0] ? mapState(rows[0]) : null;
+      return rows[0] ? mapPostgresEnrichmentStateRow(rows[0]) : null;
     },
     async listByCanonicalListingId(input) {
       const canonicalListingId = EntityIdSchema.parse(input);
@@ -115,7 +115,9 @@ export function createPostgresEnrichmentRepository(
           )
         )
         .orderBy(asc(canonicalListingSources.listingSourceRecordId));
-      return rows.flatMap(({ state }) => (state === null ? [] : [mapState(state)]));
+      return rows.flatMap(({ state }) =>
+        state === null ? [] : [mapPostgresEnrichmentStateRow(state)]
+      );
     },
     async getCurrentSnapshot(input) {
       const sourceRecordId = EntityIdSchema.parse(input);
@@ -136,7 +138,7 @@ export function createPostgresEnrichmentRepository(
           )
         )
         .limit(1);
-      return rows[0] ? mapSnapshot(rows[0].snapshot) : null;
+      return rows[0] ? mapPostgresEnrichmentSnapshotRow(rows[0].snapshot) : null;
     },
     async markExpiredStale(input) {
       const now = instant(input);
@@ -164,6 +166,12 @@ export function createPostgresEnrichmentRepository(
       const current = await repository.getBySourceRecordId(listingSourceRecordId);
       const snapshot = await repository.getCurrentSnapshot(listingSourceRecordId);
       if (current?.state === "queued" || current?.state === "enriching") {
+        return { record: current, queued: false, reusedFresh: false };
+      }
+      if (
+        !input.force &&
+        (current?.state === "blocked_manual_action" || current?.state === "failed")
+      ) {
         return { record: current, queued: false, reusedFresh: false };
       }
       const fresh =
@@ -211,7 +219,11 @@ export function createPostgresEnrichmentRepository(
             }
           })
           .returning();
-        return { record: mapState(rows[0]!), queued: true, reusedFresh: false };
+        return {
+          record: mapPostgresEnrichmentStateRow(rows[0]!),
+          queued: true,
+          reusedFresh: false
+        };
       } catch (error: unknown) {
         throw mapPostgresError(error);
       }
@@ -273,7 +285,7 @@ export function createPostgresEnrichmentRepository(
             )
           )
           .returning();
-        return rows[0] ? mapState(rows[0]) : null;
+        return rows[0] ? mapPostgresEnrichmentStateRow(rows[0]) : null;
       } catch (error: unknown) {
         throw mapPostgresError(error);
       }
@@ -327,7 +339,7 @@ export function createPostgresEnrichmentRepository(
             .returning();
         });
         if (!rows[0]) throw new RepositoryJobLeaseError(sourceRecordId);
-        return mapState(rows[0]);
+        return mapPostgresEnrichmentStateRow(rows[0]);
       } catch (error: unknown) {
         if (error instanceof RepositoryJobLeaseError) throw error;
         throw mapPostgresError(error);
@@ -357,7 +369,7 @@ export function createPostgresEnrichmentRepository(
         )
         .returning();
       if (!rows[0]) throw new RepositoryJobLeaseError(sourceRecordId);
-      return mapState(rows[0]);
+      return mapPostgresEnrichmentStateRow(rows[0]);
     },
     async fail(input) {
       const sourceRecordId = EntityIdSchema.parse(input.listingSourceRecordId);
@@ -391,7 +403,7 @@ export function createPostgresEnrichmentRepository(
         )
         .returning();
       if (!rows[0]) throw new RepositoryJobLeaseError(sourceRecordId);
-      return mapState(rows[0]);
+      return mapPostgresEnrichmentStateRow(rows[0]);
     }
   };
   return repository;
