@@ -42,7 +42,10 @@ import {
   type UserRepositories
 } from "../repositories.ts";
 import { mapPostgresError, PostgresRepositoryError } from "./errors.ts";
-import { createPostgresEnrichmentRepository } from "./enrichment-repositories.ts";
+import {
+  mapPostgresEnrichmentSnapshotRow,
+  mapPostgresEnrichmentStateRow
+} from "./enrichment-repositories.ts";
 import {
   mapApprovalRow,
   mapBrowserNodeRow,
@@ -64,6 +67,8 @@ import {
   canonicalListings,
   contactWorkflows,
   duplicateClusters,
+  listingEnrichmentSnapshots,
+  listingEnrichmentStates,
   listingScores,
   listingSourceRecords,
   normalizationJobs,
@@ -156,11 +161,89 @@ function fitLabel(score: number): "strong_fit" | "possible_fit" | "needs_review"
   return "needs_review";
 }
 
+type ListingScoreRow = typeof listingScores.$inferSelect;
+type RiskSignalRow = typeof riskSignals.$inferSelect;
+
+function mapCurrentListingScoreV2Row(row: ListingScoreRow | undefined) {
+  if (
+    row === undefined ||
+    row.searchProfileId === null ||
+    row.eligible === null ||
+    row.hardConstraintsV2 === null ||
+    row.factorsV2 === null ||
+    row.baseScoreBasisPoints === null ||
+    row.stalePenaltyBasisPoints === null ||
+    row.lowConfidencePenaltyBasisPoints === null ||
+    row.riskPenaltyBasisPoints === null ||
+    row.finalScoreBasisPoints === null ||
+    row.explanation === null
+  ) {
+    return null;
+  }
+  return ListingScoreV2Schema.parse({
+    id: row.id,
+    schemaVersion: 2,
+    canonicalListingId: row.canonicalListingId,
+    searchProfileId: row.searchProfileId,
+    algorithmVersion: row.algorithmVersion,
+    inputHash: row.inputHash,
+    eligible: row.eligible,
+    hardConstraints: row.hardConstraintsV2,
+    factors: row.factorsV2,
+    baseScoreBasisPoints: row.baseScoreBasisPoints,
+    stalePenaltyBasisPoints: row.stalePenaltyBasisPoints,
+    lowConfidencePenaltyBasisPoints: row.lowConfidencePenaltyBasisPoints,
+    riskPenaltyBasisPoints: row.riskPenaltyBasisPoints,
+    finalScoreBasisPoints: row.finalScoreBasisPoints,
+    reasonCodes: row.reasonCodes,
+    explanation: row.explanation,
+    computedAt: row.computedAt.toISOString()
+  });
+}
+
+function mapCurrentRiskSignalV2Row(row: RiskSignalRow) {
+  if (
+    row.algorithmVersion === null ||
+    row.inputHash === null ||
+    row.idempotencyKey === null ||
+    row.evidenceV2 === null ||
+    row.evaluatedAt === null
+  ) {
+    throw new Error("Current v2 risk row is incomplete.");
+  }
+  return RiskSignalV2Schema.parse({
+    id: row.id,
+    schemaVersion: 2,
+    canonicalListingId: row.canonicalListingId,
+    algorithmVersion: row.algorithmVersion,
+    inputHash: row.inputHash,
+    idempotencyKey: row.idempotencyKey,
+    code: row.code,
+    severity: row.severity === "info" ? "informational" : row.severity,
+    confidenceBasisPoints: row.confidenceBasisPoints,
+    evidence: row.evidenceV2,
+    needsVerification: row.needsVerification,
+    verificationAction: row.verificationAction,
+    status: row.status,
+    createdAt: row.evaluatedAt.toISOString()
+  });
+}
+
+function groupRowsBy<Row, Key>(rows: readonly Row[], keyFor: (row: Row) => Key): Map<Key, Row[]> {
+  const grouped = new Map<Key, Row[]>();
+  for (const row of rows) {
+    const key = keyFor(row);
+    const current = grouped.get(key);
+    if (current) current.push(row);
+    else grouped.set(key, [row]);
+  }
+  return grouped;
+}
+
 export function createStandardPostgresRepositories(
   db: PostgresExecutor,
   userId: VeraUserId
 ): StandardPostgresRepositories {
-  const enrichmentRepository = createPostgresEnrichmentRepository(db, userId);
   const listingScoreRepository: StandardPostgresRepositories["listingScores"] = {
     async insert(input) {
       const score = ListingScoreSchema.parse(input);
@@ -210,41 +293,7 @@ export function createStandardPostgresRepositories(
           )
         )
         .limit(1);
-      const row = rows[0];
-      if (
-        row === undefined ||
-        row.searchProfileId === null ||
-        row.eligible === null ||
-        row.hardConstraintsV2 === null ||
-        row.factorsV2 === null ||
-        row.baseScoreBasisPoints === null ||
-        row.stalePenaltyBasisPoints === null ||
-        row.lowConfidencePenaltyBasisPoints === null ||
-        row.riskPenaltyBasisPoints === null ||
-        row.finalScoreBasisPoints === null ||
-        row.explanation === null
-      ) {
-        return null;
-      }
-      return ListingScoreV2Schema.parse({
-        id: row.id,
-        schemaVersion: 2,
-        canonicalListingId: row.canonicalListingId,
-        searchProfileId: row.searchProfileId,
-        algorithmVersion: row.algorithmVersion,
-        inputHash: row.inputHash,
-        eligible: row.eligible,
-        hardConstraints: row.hardConstraintsV2,
-        factors: row.factorsV2,
-        baseScoreBasisPoints: row.baseScoreBasisPoints,
-        stalePenaltyBasisPoints: row.stalePenaltyBasisPoints,
-        lowConfidencePenaltyBasisPoints: row.lowConfidencePenaltyBasisPoints,
-        riskPenaltyBasisPoints: row.riskPenaltyBasisPoints,
-        finalScoreBasisPoints: row.finalScoreBasisPoints,
-        reasonCodes: row.reasonCodes,
-        explanation: row.explanation,
-        computedAt: row.computedAt.toISOString()
-      });
+      return mapCurrentListingScoreV2Row(rows[0]);
     },
     async count() {
       const rows = await db
@@ -305,33 +354,7 @@ export function createStandardPostgresRepositories(
           )
         )
         .orderBy(desc(riskSignals.createdAt), asc(riskSignals.id));
-      return rows.map((row) => {
-        if (
-          row.algorithmVersion === null ||
-          row.inputHash === null ||
-          row.idempotencyKey === null ||
-          row.evidenceV2 === null ||
-          row.evaluatedAt === null
-        ) {
-          throw new Error("Current v2 risk row is incomplete.");
-        }
-        return RiskSignalV2Schema.parse({
-          id: row.id,
-          schemaVersion: 2,
-          canonicalListingId: row.canonicalListingId,
-          algorithmVersion: row.algorithmVersion,
-          inputHash: row.inputHash,
-          idempotencyKey: row.idempotencyKey,
-          code: row.code,
-          severity: row.severity === "info" ? "informational" : row.severity,
-          confidenceBasisPoints: row.confidenceBasisPoints,
-          evidence: row.evidenceV2,
-          needsVerification: row.needsVerification,
-          verificationAction: row.verificationAction,
-          status: row.status,
-          createdAt: row.evaluatedAt.toISOString()
-        });
-      });
+      return rows.map(mapCurrentRiskSignalV2Row);
     },
     async count() {
       const rows = await db
@@ -408,51 +431,91 @@ export function createStandardPostgresRepositories(
       return rows.map(mapCanonicalListingRow);
     },
     async listSummaries() {
-      const listings = await canonicalListingRepository.list();
-      const memberships = await db
-        .select({
-          canonicalListingId: canonicalListingSources.canonicalListingId,
-          listingSourceRecordId: canonicalListingSources.listingSourceRecordId,
-          isPrimary: canonicalListingSources.isPrimary,
-          source: listingSourceRecords.source,
-          sourceUrl: listingSourceRecords.sourceUrl,
-          observedAt: listingSourceRecords.observedAt,
-          sourcePostedAt: listingSourceRecords.sourcePostedAt,
-          rawJson: rawListings.rawJson,
-          captureMetadata: rawListings.captureMetadata
-        })
-        .from(canonicalListingSources)
-        .innerJoin(
-          listingSourceRecords,
-          and(
-            eq(canonicalListingSources.userId, listingSourceRecords.userId),
-            eq(canonicalListingSources.listingSourceRecordId, listingSourceRecords.id)
-          )
-        )
-        .innerJoin(
-          rawListings,
-          and(
-            eq(listingSourceRecords.userId, rawListings.userId),
-            eq(listingSourceRecords.rawListingId, rawListings.id)
-          )
-        )
-        .where(eq(canonicalListingSources.userId, userId));
+      const [listings, memberships, stateRows, snapshotRows, scoreRows, riskRows] =
+        await Promise.all([
+          canonicalListingRepository.list(),
+          db
+            .select({
+              canonicalListingId: canonicalListingSources.canonicalListingId,
+              listingSourceRecordId: canonicalListingSources.listingSourceRecordId,
+              isPrimary: canonicalListingSources.isPrimary,
+              source: listingSourceRecords.source,
+              sourceUrl: listingSourceRecords.sourceUrl,
+              observedAt: listingSourceRecords.observedAt,
+              sourcePostedAt: listingSourceRecords.sourcePostedAt,
+              rawJson: rawListings.rawJson,
+              captureMetadata: rawListings.captureMetadata
+            })
+            .from(canonicalListingSources)
+            .innerJoin(
+              listingSourceRecords,
+              and(
+                eq(canonicalListingSources.userId, listingSourceRecords.userId),
+                eq(canonicalListingSources.listingSourceRecordId, listingSourceRecords.id)
+              )
+            )
+            .innerJoin(
+              rawListings,
+              and(
+                eq(listingSourceRecords.userId, rawListings.userId),
+                eq(listingSourceRecords.rawListingId, rawListings.id)
+              )
+            )
+            .where(eq(canonicalListingSources.userId, userId)),
+          db
+            .select()
+            .from(listingEnrichmentStates)
+            .where(eq(listingEnrichmentStates.userId, userId)),
+          db
+            .select({ snapshot: listingEnrichmentSnapshots })
+            .from(listingEnrichmentStates)
+            .innerJoin(
+              listingEnrichmentSnapshots,
+              and(
+                eq(listingEnrichmentStates.userId, listingEnrichmentSnapshots.userId),
+                eq(listingEnrichmentStates.currentSnapshotId, listingEnrichmentSnapshots.id)
+              )
+            )
+            .where(eq(listingEnrichmentStates.userId, userId)),
+          db
+            .select()
+            .from(listingScores)
+            .where(eq(listingScores.userId, userId))
+            .orderBy(desc(listingScores.computedAt), asc(listingScores.id)),
+          db
+            .select()
+            .from(riskSignals)
+            .where(eq(riskSignals.userId, userId))
+            .orderBy(desc(riskSignals.createdAt), asc(riskSignals.id))
+        ]);
+
+      const membershipsByListingId = groupRowsBy(
+        memberships,
+        (membership) => membership.canonicalListingId
+      );
+      const statesBySourceRecordId = new Map(
+        stateRows.map((row) => [row.listingSourceRecordId, mapPostgresEnrichmentStateRow(row)])
+      );
+      const snapshotsBySourceRecordId = new Map(
+        snapshotRows.map(({ snapshot }) => [
+          snapshot.listingSourceRecordId,
+          mapPostgresEnrichmentSnapshotRow(snapshot)
+        ])
+      );
+      const scoresByListingId = groupRowsBy(scoreRows, (row) => row.canonicalListingId);
+      const risksByListingId = groupRowsBy(riskRows, (row) => row.canonicalListingId);
       const summaries: CanonicalListingSummary[] = [];
       for (const listing of listings) {
-        const listingMemberships = memberships.filter(
-          (membership) => membership.canonicalListingId === listing.id
-        );
-        const enrichmentStates = await enrichmentRepository.listByCanonicalListingId(listing.id);
-        const enrichmentSnapshots = (
-          await Promise.all(
-            listingMemberships.map(async (membership) => ({
-              membership,
-              snapshot: await enrichmentRepository.getCurrentSnapshot(
-                membership.listingSourceRecordId
-              )
-            }))
-          )
-        )
+        const listingMemberships = membershipsByListingId.get(listing.id) ?? [];
+        const enrichmentStates = listingMemberships.flatMap((membership) => {
+          const state = statesBySourceRecordId.get(membership.listingSourceRecordId);
+          return state ? [state] : [];
+        });
+        const enrichmentSnapshots = listingMemberships
+          .map((membership) => ({
+            membership,
+            snapshot: snapshotsBySourceRecordId.get(membership.listingSourceRecordId) ?? null
+          }))
           .filter(
             (entry): entry is typeof entry & { snapshot: NonNullable<typeof entry.snapshot> } =>
               entry.snapshot !== null
@@ -521,22 +584,29 @@ export function createStandardPostgresRepositories(
           sourceLinkCandidates.find(({ source, url }) =>
             isExpectedSourceUrl(ListingSourceLabelSchema.parse(source), url)
           )?.url ?? null;
-        const score =
-          (await listingScoreRepository.listByCanonicalListingId(listing.id))[0] ?? null;
+        const listingScoreRows = scoresByListingId.get(listing.id) ?? [];
+        const score = listingScoreRows[0] ? mapListingScoreRow(listingScoreRows[0]) : null;
         const v2 =
           listing.updatedByDecisionRunId === null
             ? null
-            : await listingScoreRepository.getCurrentV2ByCanonicalListingId(
-                listing.id,
-                listing.updatedByDecisionRunId
+            : mapCurrentListingScoreV2Row(
+                listingScoreRows.find(
+                  (row) =>
+                    row.decisionRunId === listing.updatedByDecisionRunId &&
+                    row.schemaVersion === "listing-score.v2"
+                )
               );
+        const listingRiskRows = risksByListingId.get(listing.id) ?? [];
         const currentRisks =
           listing.updatedByDecisionRunId === null
-            ? await riskSignalRepository.listByCanonicalListingId(listing.id)
-            : await riskSignalRepository.listCurrentV2ByCanonicalListingId(
-                listing.id,
-                listing.updatedByDecisionRunId
-              );
+            ? listingRiskRows.map(mapRiskSignalRow)
+            : listingRiskRows
+                .filter(
+                  (row) =>
+                    row.decisionRunId === listing.updatedByDecisionRunId &&
+                    row.schemaVersion === "listing-risk.v2"
+                )
+                .map(mapCurrentRiskSignalV2Row);
         const freshestMembership = [...listingMemberships].sort(
           (left, right) => right.observedAt.getTime() - left.observedAt.getTime()
         )[0];
