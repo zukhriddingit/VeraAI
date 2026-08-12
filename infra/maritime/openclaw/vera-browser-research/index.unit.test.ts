@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { SAFE_ACTIONS, SOURCE_POLICY } from "./contract.mjs";
+import { ENRICHMENT_SAFE_ACTIONS, SAFE_ACTIONS, SOURCE_POLICY } from "./contract.mjs";
 import { researchRentals } from "./index.mjs";
 
 const signingKey = "generic-gateway-replay-signing-key-000000000000000";
@@ -75,6 +75,40 @@ function signedFacebookPlan() {
     enabledSafeActionTypes: [...SAFE_ACTIONS],
     issuedAt: issuedAt.toISOString(),
     expiresAt: new Date(issuedAt.getTime() + 120_000).toISOString()
+  };
+  return {
+    ...payload,
+    signature: createHmac("sha256", signingKey).update(canonical(payload)).digest("hex")
+  };
+}
+
+function signedZillowEnrichmentPlan() {
+  const issuedAt = new Date();
+  const payload = {
+    version: "1",
+    veraRunId: "zillow-enrichment-replay-1",
+    source: "zillow",
+    profile: {
+      location: "Boston, MA",
+      maximumRentUsd: 3_000,
+      minimumBedrooms: 1,
+      minimumBathrooms: 1
+    },
+    maxResults: 1,
+    maxDetailPages: 1,
+    maxActions: 10,
+    maxDurationMilliseconds: 90_000,
+    startingTabReference: {
+      kind: "single_shared_tab",
+      value: "explicitly_shared_zillow_rental_tab"
+    },
+    allowedHostnames: [...SOURCE_POLICY.zillow.hostnames],
+    allowedUrlPatterns: [...SOURCE_POLICY.zillow.urlPatterns],
+    enabledSafeActionTypes: [...ENRICHMENT_SAFE_ACTIONS],
+    issuedAt: issuedAt.toISOString(),
+    expiresAt: new Date(issuedAt.getTime() + 120_000).toISOString(),
+    mode: "enrichment",
+    targetListingUrl: "https://www.zillow.com/apartments/allston-ma/kelton-street/CjkfBg/"
   };
   return {
     ...payload,
@@ -229,6 +263,78 @@ describe("vera_browser_research_v1 local adapter replay", () => {
     delete process.env.VERA_BROWSER_RESEARCH_CHECKPOINT_URL;
     delete process.env.VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN;
     delete process.env.VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY;
+  });
+
+  it("enriches one exact observed Zillow URL without exposing a generic browser surface", async () => {
+    let currentUrl = "https://www.zillow.com/homes/for_rent/";
+    const browserBodies: unknown[] = [];
+    let monotonic = 500;
+    const result = await researchRentals(signedZillowEnrichmentPlan(), {
+      now: () => new Date(),
+      monotonicNow: () => (monotonic += 10),
+      wait: async () => {},
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input.toString());
+        if (url.hostname === "vera-checkpoint.example.test") {
+          return Response.json({
+            allowed: true,
+            reason: "allowed",
+            checkedAt: new Date().toISOString()
+          });
+        }
+        if (url.pathname === "/tabs") {
+          return Response.json({
+            tabs: [{ targetId: "shared-target-1", tabId: "stable-tab-1", url: currentUrl }]
+          });
+        }
+        if (url.pathname === "/snapshot") {
+          return Response.json({
+            ok: true,
+            format: "ai",
+            targetId: "shared-target-1",
+            url: currentUrl,
+            refs: { e1: { role: "button", name: "Contact property manager" } },
+            snapshot: [
+              '- heading "Kelton Street"',
+              "- paragraph: 221 Kelton St, Allston, MA 02134",
+              "- paragraph: $2,375, 1 Bed, 1 Bath, 620 sq ft",
+              "- paragraph: Available 2026-09-01. 12 month lease. Cats allowed. Heat and hot water included.",
+              "- paragraph: In-unit washer and dryer. Dishwasher. Professionally managed by Example Property Management.",
+              "- image: https://photos.zillowstatic.com/fp/example-photo.webp",
+              '- button "Contact property manager" [ref=e1]'
+            ].join("\n")
+          });
+        }
+        const body = JSON.parse(String(init?.body)) as { url?: string; kind?: string };
+        browserBodies.push(body);
+        if (url.pathname === "/navigate" && body.url) currentUrl = body.url;
+        return Response.json({ ok: true, targetId: "shared-target-1", url: currentUrl });
+      }
+    });
+
+    expect(result).toMatchObject({
+      state: "completed",
+      source: "zillow",
+      resultCardsObserved: 0,
+      detailPagesOpened: 1,
+      listings: [
+        {
+          sourceListingId: "CjkfBg",
+          rentUsd: 2_375,
+          bedrooms: 1,
+          bathrooms: 1,
+          leaseTermMonths: 12,
+          laundry: "in_unit",
+          photos: [{ url: "https://photos.zillowstatic.com/fp/example-photo.webp" }]
+        }
+      ]
+    });
+    expect(browserBodies).toEqual([
+      expect.objectContaining({
+        url: "https://www.zillow.com/apartments/allston-ma/kelton-street/CjkfBg/"
+      })
+    ]);
+    expect(JSON.stringify(browserBodies)).not.toMatch(/contact|apply|tour|message|email|phone/iu);
   });
 
   it("applies reviewed filters and extracts one real-shaped card without a forbidden action", async () => {

@@ -19,6 +19,7 @@ export * from "./gmail.ts";
 export * from "./jobs.ts";
 export * from "./lifecycle.ts";
 export * from "./listing.ts";
+export * from "./listing-enrichment.ts";
 export * from "./live-search.ts";
 export * from "./maritime.ts";
 export * from "./notifications.ts";

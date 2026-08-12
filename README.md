@@ -91,7 +91,16 @@ Use separate Google Web Application clients for Vera identity and integration ac
 
 See [OpenClaw founder setup](docs/OPENCLAW_FOUNDER_SETUP.md), [Google integration setup](docs/GOOGLE_INTEGRATION_SETUP.md), [PostgreSQL operations](docs/POSTGRES_OPERATIONS.md), [architecture](docs/ARCHITECTURE.md), [data model](docs/DATA_MODEL.md), and [security](docs/SECURITY.md).
 
-The first real browser path is an unsupported, disabled-by-default founder experiment: an authenticated user may capture one already-open exact Zillow listing tab through a selected local OpenClaw `2026.6.33` node/profile. It performs no navigation or site action. Use `pnpm verify:browser-boundaries` to check the static safety surface; the default test suite never invokes OpenClaw.
+The real browser path remains a disabled-by-default founder experiment for Zillow, Apartments.com,
+and Facebook Marketplace. A user-triggered search first imports result-card evidence without waiting
+for detail pages. Vera may then enrich the top three records per enabled browser source, an opened or
+shortlisted listing, or an explicit **Refresh details** request. Enrichment is limited to exact
+observed same-source listing URLs, at most two concurrent detail jobs, bounded retries, and read-only
+semantic snapshots. It stops for an unshared tab, login, 2FA, CAPTCHA, checkpoint, consent, or an
+unrecognized layout, and it never selects contact, application, tour, message, payment, upload, or
+download controls. Source-hosted photo URLs are validated but are not downloaded or rehosted. Use
+`pnpm verify:browser-boundaries` to check the static safety surface; the default test suite never
+invokes a live browser or consumer site.
 
 ## Deployment assumptions
 

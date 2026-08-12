@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { join } from "node:path";
 
-const port = 3000;
+const port = Number.parseInt(process.env.VERA_E2E_PORT ?? "3000", 10);
 const baseURL = "http://127.0.0.1:" + String(port);
 const e2eDataDirectory = join(process.cwd(), "test-results", "vera-e2e-data");
 const nodeExecutable = JSON.stringify(process.execPath);
@@ -29,13 +29,17 @@ export default defineConfig({
   ],
   webServer: {
     command: [
+      "pnpm --filter @vera/web run build",
       runTypeScript("scripts/demo-reset.ts"),
       runTypeScript("scripts/demo-seed.ts"),
       runTypeScript("scripts/demo-start.ts")
     ].join(" && "),
     env: {
       NEXT_TELEMETRY_DISABLED: "1",
+      PORT: String(port),
+      VERA_DEMO_SERVER_MODE: "production",
       VERA_DEMO_DATA_DIR: e2eDataDirectory,
+      VERA_NEXT_DIST_DIR: ".next-e2e",
       VERA_PUBLIC_BASE_URL: baseURL
     },
     url: baseURL + "/api/health",

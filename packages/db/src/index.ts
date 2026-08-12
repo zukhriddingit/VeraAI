@@ -9,6 +9,7 @@ export * from "./postgres/calendar-transactions.ts";
 export * from "./postgres/connection.ts";
 export * from "./postgres/decision-repositories.ts";
 export * from "./postgres/decision-reconciliation.ts";
+export * from "./postgres/enrichment-repositories.ts";
 export * from "./postgres/ephemeral-cleanup.ts";
 export * from "./postgres/errors.ts";
 export * from "./postgres/migrations.ts";

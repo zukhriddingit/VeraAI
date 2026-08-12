@@ -36,6 +36,13 @@
       "when": 1784746949081,
       "tag": "0004_founder_security_hardening",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1786497705387,
+      "tag": "0005_listing_enrichment",
+      "breakpoints": true
     }
   ]
 }

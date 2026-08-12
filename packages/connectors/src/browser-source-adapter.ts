@@ -9,6 +9,7 @@ import {
   BrowserResearchPlanSchema,
   BrowserResearchSourcePolicy,
   type BrowserResearchObservedListing,
+  type BrowserResearchObservedListingInput,
   type BrowserResearchPlan,
   type BrowserResearchPlanPayload,
   type BrowserResearchSource,
@@ -150,6 +151,8 @@ export interface CreateBrowserResearchPlanInput {
   readonly issuedAt: Date;
   readonly maxResults?: number;
   readonly maxDetailPages?: number;
+  readonly mode?: "discovery" | "enrichment";
+  readonly targetListingUrl?: string;
 }
 
 export interface BrowserSourceAdapter {
@@ -158,9 +161,9 @@ export interface BrowserSourceAdapter {
   readonly operation: string;
   readonly maxDetailPages: number;
   createPlan(input: CreateBrowserResearchPlanInput): BrowserResearchPlan;
-  toEnvelope(listing: BrowserResearchObservedListing): RawListingEnvelope;
+  toEnvelope(listing: BrowserResearchObservedListingInput): RawListingEnvelope;
   safeCaptureMetadata(
-    listing: BrowserResearchObservedListing,
+    listing: BrowserResearchObservedListingInput,
     input: { readonly veraRunId: string; readonly searchProfileId: string }
   ): JsonObject;
 }
@@ -180,27 +183,41 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
           veraRunId: input.veraRunId,
           source,
           profile: profileInput(input.profile),
-          maxResults: input.maxResults ?? BROWSER_RESEARCH_MAX_RESULTS,
-          maxDetailPages: input.maxDetailPages ?? policy.maxDetailPages,
-          maxActions: BROWSER_RESEARCH_MAX_ACTIONS,
+          maxResults:
+            input.maxResults ?? (input.mode === "enrichment" ? 1 : BROWSER_RESEARCH_MAX_RESULTS),
+          maxDetailPages: input.maxDetailPages ?? (input.mode === "enrichment" ? 1 : 0),
+          maxActions: input.mode === "enrichment" ? 10 : BROWSER_RESEARCH_MAX_ACTIONS,
           maxDurationMilliseconds: BROWSER_RESEARCH_MAX_DURATION_MS,
           startingTabReference: input.startingTabReference,
           allowedHostnames: [...policy.hostnames],
           allowedUrlPatterns: [...policy.urlPatterns],
-          enabledSafeActionTypes: [
-            "inspect_shared_tabs",
-            "create_source_tab",
-            "navigate_same_source",
-            "snapshot",
-            "scroll_bounded",
-            "select_reviewed_filter",
-            "fill_approved_search_field",
-            "open_observed_listing",
-            "return_to_results",
-            "extract_observed_facts"
-          ],
+          enabledSafeActionTypes:
+            input.mode === "enrichment"
+              ? [
+                  "inspect_shared_tabs",
+                  "create_source_tab",
+                  "navigate_same_source",
+                  "snapshot",
+                  "scroll_bounded",
+                  "extract_observed_facts"
+                ]
+              : [
+                  "inspect_shared_tabs",
+                  "create_source_tab",
+                  "navigate_same_source",
+                  "snapshot",
+                  "scroll_bounded",
+                  "select_reviewed_filter",
+                  "fill_approved_search_field",
+                  "open_observed_listing",
+                  "return_to_results",
+                  "extract_observed_facts"
+                ],
           issuedAt,
-          expiresAt: new Date(input.issuedAt.getTime() + 120_000).toISOString()
+          expiresAt: new Date(input.issuedAt.getTime() + 120_000).toISOString(),
+          ...(input.mode === "enrichment"
+            ? { mode: "enrichment" as const, targetListingUrl: input.targetListingUrl ?? null }
+            : {})
         },
         input.signingKey
       );
@@ -241,7 +258,7 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
         sourceUrl,
         captureMethod: "local_browser",
         observedAt: listing.observedAt,
-        sourcePostedAt: null,
+        sourcePostedAt: listing.sourceUpdatedAt,
         rawText: null,
         rawJson: structured,
         captureMetadata: {
@@ -262,6 +279,19 @@ function adapter(source: BrowserResearchSource): BrowserSourceAdapter {
         veraRunId: input.veraRunId,
         extractionMethod: "openclaw_semantic_snapshot",
         visibleFees: listing.fees,
+        originalListingUrl: listing.finalDetailPageUrl ?? listing.canonicalObservedUrl,
+        firstObservedPhoto:
+          listing.photos[0] === undefined
+            ? null
+            : {
+                sourceUrl: listing.photos[0].url,
+                position: 0,
+                width: listing.photos[0].width,
+                height: listing.photos[0].height,
+                safeContentHash: null,
+                observedAt: listing.observedAt
+              },
+        latestSourceUpdateTime: listing.sourceUpdatedAt,
         missingFields: listing.missingFields,
         safeExtractionWarnings: [
           ...listing.safeExtractionWarnings,

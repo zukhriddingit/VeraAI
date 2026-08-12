@@ -3,6 +3,10 @@ import { notFound } from "next/navigation";
 
 import { getCalendarIntegrationStatus } from "../../../lib/calendar-service";
 import { getListingDetail } from "../../../lib/listing-presentation";
+import {
+  createListingEnrichmentDependencies,
+  requestCanonicalListingEnrichment
+} from "../../../lib/listing-enrichment-service";
 import { parseRouteEntityId } from "../../../lib/route-entity-id";
 import { requireVeraPageSession } from "../../../lib/server/page-session";
 import { getHostedApplication } from "../../../lib/server/application";
@@ -18,6 +22,13 @@ export default async function ListingDetailPage({ params }: ListingDetailPagePro
   const context = await requireVeraPageSession();
   const listingId = parseRouteEntityId((await params).id);
   if (listingId === null) notFound();
+  if (!context.demoMode) {
+    await requestCanonicalListingEnrichment(
+      listingId,
+      "listing_opened",
+      createListingEnrichmentDependencies(context)
+    ).catch(() => null);
+  }
   const initialDetail = await getListingDetail(context.repositories, listingId);
   if (initialDetail === null) notFound();
   const application = getHostedApplication();

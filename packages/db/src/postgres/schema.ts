@@ -13,6 +13,10 @@ import type {
   JobAttempt,
   JsonObject,
   JsonValue,
+  ListingDetailCompleteness,
+  ListingDetailFields,
+  ListingDetailPhoto,
+  ListingEnrichmentFieldProvenance,
   ListingExtractionRun,
   ListingScore,
   ListingScoreV2,
@@ -646,6 +650,102 @@ export const listingPhotos = pgTable(
     check(
       "listing_photos_perceptual_version_consistency",
       sql`(${table.perceptualHash} IS NULL) = (${table.perceptualHashVersion} IS NULL)`
+    )
+  ]
+);
+
+export const listingEnrichmentStates = pgTable(
+  "listing_enrichment_states",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    listingSourceRecordId: text("listing_source_record_id").notNull(),
+    state: text("state").notNull().default("not_requested"),
+    requestedReason: text("requested_reason"),
+    attemptCount: integer("attempt_count").notNull().default(0),
+    availableAt: instant("available_at"),
+    leaseOwner: text("lease_owner"),
+    leaseExpiresAt: instant("lease_expires_at"),
+    currentSnapshotId: text("current_snapshot_id"),
+    manualAction: text("manual_action"),
+    lastErrorCode: text("last_error_code"),
+    requestedAt: instant("requested_at"),
+    startedAt: instant("started_at"),
+    completedAt: instant("completed_at"),
+    updatedAt: instant("updated_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.listingSourceRecordId] }),
+    foreignKey({
+      name: "listing_enrichment_states_source_record_tenant_fk",
+      columns: [table.userId, table.listingSourceRecordId],
+      foreignColumns: [listingSourceRecords.userId, listingSourceRecords.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    index("listing_enrichment_states_claim_idx").on(
+      table.state,
+      table.availableAt,
+      table.updatedAt
+    ),
+    check(
+      "listing_enrichment_states_state_allowed",
+      sql`${table.state} IN ('not_requested', 'queued', 'enriching', 'enriched', 'partial', 'blocked_manual_action', 'stale', 'failed')`
+    ),
+    check(
+      "listing_enrichment_states_reason_allowed",
+      sql`${table.requestedReason} IS NULL OR ${table.requestedReason} IN ('search_top_three', 'listing_opened', 'listing_shortlisted', 'user_refresh')`
+    ),
+    check("listing_enrichment_states_attempt_range", sql`${table.attemptCount} BETWEEN 0 AND 10`),
+    check(
+      "listing_enrichment_states_lease_pair",
+      sql`(${table.leaseOwner} IS NULL) = (${table.leaseExpiresAt} IS NULL)`
+    )
+  ]
+);
+
+export const listingEnrichmentSnapshots = pgTable(
+  "listing_enrichment_snapshots",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    listingSourceRecordId: text("listing_source_record_id").notNull(),
+    source: text("source").notNull(),
+    details: jsonb("details").$type<ListingDetailFields>().notNull(),
+    photos: jsonb("photos").$type<ListingDetailPhoto[]>().notNull(),
+    fieldProvenance: jsonb("field_provenance")
+      .$type<ListingEnrichmentFieldProvenance[]>()
+      .notNull(),
+    completeness: jsonb("completeness").$type<ListingDetailCompleteness>().notNull(),
+    observedAt: instant("observed_at").notNull(),
+    freshUntil: instant("fresh_until").notNull(),
+    createdAt: instant("created_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "listing_enrichment_snapshots_source_record_tenant_fk",
+      columns: [table.userId, table.listingSourceRecordId],
+      foreignColumns: [listingSourceRecords.userId, listingSourceRecords.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("listing_enrichment_snapshots_source_observed_unique").on(
+      table.userId,
+      table.listingSourceRecordId,
+      table.observedAt
+    ),
+    index("listing_enrichment_snapshots_current_idx").on(
+      table.userId,
+      table.listingSourceRecordId,
+      table.observedAt
+    ),
+    check(
+      "listing_enrichment_snapshots_freshness_order",
+      sql`${table.freshUntil} > ${table.observedAt}`
     )
   ]
 );
@@ -2773,6 +2873,8 @@ export const schema = {
   gmailAlertExternalReferences,
   gmailOauthStates,
   listingExtractions,
+  listingEnrichmentSnapshots,
+  listingEnrichmentStates,
   listingPhotos,
   listingScores,
   listingSourceRecords,

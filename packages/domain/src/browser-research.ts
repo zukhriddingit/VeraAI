@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isExpectedSourcePhotoUrl, isExpectedSourceUrl } from "./listing-enrichment.ts";
 import {
   ZillowRentalResearchProfileSchema,
   ZillowSharedTabReferenceSchema
@@ -52,6 +53,26 @@ const SafeObservedTextSchema = z
   .max(500)
   .refine((value) => !/<\/?[a-z][^>]*>/iu.test(value), "Observed text cannot contain HTML.");
 
+const ContactFreeObservedTextSchema = SafeObservedTextSchema.refine(
+  (value) =>
+    !/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu.test(value) &&
+    !/(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}\b/u.test(value),
+  "Observed listing text cannot retain email addresses or phone numbers."
+);
+
+const ContactFreeDescriptionSchema = z
+  .string()
+  .trim()
+  .min(1)
+  .max(20_000)
+  .refine((value) => !/<\/?[a-z][^>]*>/iu.test(value), "Observed text cannot contain HTML.")
+  .refine(
+    (value) =>
+      !/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu.test(value) &&
+      !/(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}\b/u.test(value),
+    "Observed listing descriptions cannot retain email addresses or phone numbers."
+  );
+
 const ObservedUrlSchema = z
   .url()
   .max(2_048)
@@ -87,7 +108,9 @@ export const BrowserResearchPlanPayloadSchema = z
     allowedUrlPatterns: z.array(z.string().trim().min(1).max(500)).min(1).max(5),
     enabledSafeActionTypes: z.array(BrowserResearchSafeActionTypeSchema).min(1).max(10),
     issuedAt: IsoDateTimeSchema,
-    expiresAt: IsoDateTimeSchema
+    expiresAt: IsoDateTimeSchema,
+    mode: z.enum(["discovery", "enrichment"]).optional(),
+    targetListingUrl: ObservedUrlSchema.nullable().optional()
   })
   .strict()
   .superRefine((plan, context) => {
@@ -127,6 +150,62 @@ export const BrowserResearchPlanPayloadSchema = z
         path: ["expiresAt"],
         message: "A research plan must expire within two minutes of issuance."
       });
+    }
+    const mode = plan.mode ?? "discovery";
+    if (mode === "discovery" && plan.targetListingUrl != null) {
+      context.addIssue({
+        code: "custom",
+        path: ["targetListingUrl"],
+        message: "Discovery plans cannot target a detail URL."
+      });
+    }
+    if (mode === "enrichment") {
+      if (plan.targetListingUrl == null) {
+        context.addIssue({
+          code: "custom",
+          path: ["targetListingUrl"],
+          message: "Enrichment plans require one exact observed listing URL."
+        });
+      } else {
+        const hostname = plan.targetListingUrl.match(/^https:\/\/([^/?#]+)(?:\/|\?|$)/u)?.[1];
+        if (hostname !== policy.hostnames[0]) {
+          context.addIssue({
+            code: "custom",
+            path: ["targetListingUrl"],
+            message: "Enrichment targets must remain on the reviewed source hostname."
+          });
+        }
+      }
+      if (plan.maxResults !== 1 || plan.maxDetailPages !== 1) {
+        context.addIssue({
+          code: "custom",
+          path: ["maxResults"],
+          message: "Enrichment plans are limited to one exact listing and one detail page."
+        });
+      }
+      if (plan.maxActions > 10) {
+        context.addIssue({
+          code: "custom",
+          path: ["maxActions"],
+          message: "Enrichment plans are limited to ten read-only actions."
+        });
+      }
+      if (
+        plan.enabledSafeActionTypes.some((action) =>
+          [
+            "select_reviewed_filter",
+            "fill_approved_search_field",
+            "open_observed_listing",
+            "return_to_results"
+          ].includes(action)
+        )
+      ) {
+        context.addIssue({
+          code: "custom",
+          path: ["enabledSafeActionTypes"],
+          message: "Enrichment plans cannot use discovery-only actions."
+        });
+      }
     }
   });
 
@@ -181,7 +260,23 @@ export const BrowserResearchObservedFieldSchema = z.enum([
   "square_footage",
   "availability",
   "amenities",
-  "fees"
+  "fees",
+  "photos",
+  "description",
+  "deposit",
+  "application_fee",
+  "broker_fee",
+  "lease_duration",
+  "property_type",
+  "pet_policy",
+  "pet_fees",
+  "parking",
+  "utilities",
+  "laundry",
+  "furnished_status",
+  "property_manager",
+  "contact_channel",
+  "source_updated_at"
 ]);
 
 export const BrowserResearchMissingFieldSchema = z.enum([
@@ -194,8 +289,32 @@ export const BrowserResearchMissingFieldSchema = z.enum([
   "square_footage",
   "availability",
   "amenities",
-  "fees"
+  "fees",
+  "photos",
+  "description",
+  "lease_duration",
+  "pet_policy",
+  "parking",
+  "utilities",
+  "laundry"
 ]);
+
+export const BrowserResearchPhotoSchema = z
+  .object({
+    url: ObservedUrlSchema,
+    width: z.number().int().positive().max(20_000).nullable(),
+    height: z.number().int().positive().max(20_000).nullable()
+  })
+  .strict();
+
+export const BrowserResearchObservedFeeSchema = z
+  .object({
+    label: SafeObservedTextSchema.max(160),
+    amountUsd: z.number().int().nonnegative().max(1_000_000).nullable(),
+    cadence: z.enum(["month", "one_time", "year", "unknown"]),
+    required: z.boolean()
+  })
+  .strict();
 
 export const BrowserResearchFieldProvenanceSchema = z
   .object({
@@ -227,7 +346,45 @@ export const BrowserResearchObservedListingSchema = z
     sourceFieldProvenance: z.array(BrowserResearchFieldProvenanceSchema).max(40),
     missingFields: z.array(BrowserResearchMissingFieldSchema).max(10),
     safeExtractionWarnings: z.array(SafeObservedTextSchema.max(240)).max(20),
-    researchNotes: z.array(SafeObservedTextSchema.max(240)).max(20)
+    researchNotes: z.array(SafeObservedTextSchema.max(240)).max(20),
+    photos: z.array(BrowserResearchPhotoSchema).max(30).default([]),
+    description: ContactFreeDescriptionSchema.nullable().default(null),
+    recurringFees: z.array(BrowserResearchObservedFeeSchema).max(30).default([]),
+    estimatedTotalMonthlyCostUsd: z
+      .number()
+      .int()
+      .nonnegative()
+      .max(1_000_000)
+      .nullable()
+      .default(null),
+    depositUsd: z.number().int().nonnegative().max(1_000_000).nullable().default(null),
+    applicationFeeUsd: z.number().int().nonnegative().max(1_000_000).nullable().default(null),
+    brokerFeeUsd: z.number().int().nonnegative().max(1_000_000).nullable().default(null),
+    availableDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .nullable()
+      .default(null),
+    leaseDuration: SafeObservedTextSchema.max(300).nullable().default(null),
+    leaseTermMonths: z.number().int().positive().max(120).nullable().default(null),
+    propertyType: z
+      .enum(["apartment", "condo", "house", "townhouse", "room", "other"])
+      .nullable()
+      .default(null),
+    petPolicyText: SafeObservedTextSchema.max(500).nullable().default(null),
+    petFees: z.array(BrowserResearchObservedFeeSchema).max(10).default([]),
+    parkingText: SafeObservedTextSchema.max(500).nullable().default(null),
+    parkingMonthlyUsd: z.number().int().nonnegative().max(1_000_000).nullable().default(null),
+    utilitiesIncluded: z.array(SafeObservedTextSchema.max(120)).max(20).default([]),
+    laundry: z.enum(["in_unit", "in_building", "hookups", "none", "unknown"]).default("unknown"),
+    furnishedStatus: z
+      .enum(["furnished", "unfurnished", "partially_furnished", "unknown"])
+      .default("unknown"),
+    propertyManagerName: ContactFreeObservedTextSchema.max(300).nullable().default(null),
+    allowedContactChannel: z
+      .enum(["email", "phone", "platform_message", "website_form", "other", "unknown"])
+      .default("unknown"),
+    sourceUpdatedAt: IsoDateTimeSchema.nullable().default(null)
   })
   .strict()
   .superRefine((listing, context) => {
@@ -260,6 +417,24 @@ export const BrowserResearchObservedListingSchema = z
         path: ["missingFields"],
         message: "Missing fields must be unique."
       });
+    }
+    for (const [index, entry] of listing.sourceFieldProvenance.entries()) {
+      if (!isExpectedSourceUrl(listing.source, entry.sourceUrl)) {
+        context.addIssue({
+          code: "custom",
+          path: ["sourceFieldProvenance", index, "sourceUrl"],
+          message: "Observed field provenance must remain on the reviewed source domain."
+        });
+      }
+    }
+    for (const [index, photo] of listing.photos.entries()) {
+      if (!isExpectedSourcePhotoUrl(listing.source, photo.url)) {
+        context.addIssue({
+          code: "custom",
+          path: ["photos", index, "url"],
+          message: "Observed photo URL is outside the reviewed source media domains."
+        });
+      }
     }
   });
 
@@ -382,6 +557,9 @@ export type BrowserResearchPageState = z.infer<typeof BrowserResearchPageStateSc
 export type BrowserResearchCompletionState = z.infer<typeof BrowserResearchCompletionStateSchema>;
 export type BrowserResearchManualAction = z.infer<typeof BrowserResearchManualActionSchema>;
 export type BrowserResearchObservedListing = z.infer<typeof BrowserResearchObservedListingSchema>;
+export type BrowserResearchObservedListingInput = z.input<
+  typeof BrowserResearchObservedListingSchema
+>;
 export type BrowserResearchCheckpointRequest = z.infer<
   typeof BrowserResearchCheckpointRequestSchema
 >;

@@ -40,6 +40,7 @@ describe("bounded source snapshots", () => {
           `  - generic "1575 Tremont St, Boston, MA 02120"`,
           `  - generic: 1 Bed`,
           `  - generic: $2,793+`,
+          `  - generic: Updated 2 hours ago`,
           `  - paragraph: Pets Allowed, Fitness Center, Dishwasher, In Unit Washer & Dryer`,
           `  - button "Email" [ref=e2]`,
           "",
@@ -60,9 +61,10 @@ describe("bounded source snapshots", () => {
       address: "1575 Tremont St, Boston, MA 02120",
       rentUsd: 2_793,
       bedrooms: 1,
+      sourceUpdatedAt: "2026-08-04T13:00:00.000Z",
       amenities: expect.arrayContaining(["Fitness center", "Dishwasher", "In-unit laundry"])
     });
-    expect(JSON.stringify(cards)).not.toMatch(/857|email/iu);
+    expect(JSON.stringify(cards)).not.toMatch(/857|555-0100/iu);
   });
 
   it("canonicalizes an observed Marketplace item URL without tracking data", () => {
@@ -134,6 +136,8 @@ describe("bounded source snapshots", () => {
           "- paragraph: 1575 Tremont St, Boston, MA 02120",
           "- paragraph: $2,793, 1 Bed, 1 Bath, 740 sq ft",
           "- paragraph: Available now. Dishwasher and in-unit laundry.",
+          "- paragraph: Pet rent $50 monthly. Garage parking $200 monthly.",
+          "- paragraph: Last updated: 2026-08-04T14:45:00Z",
           '- button "Email"'
         ].join("\n")
       },
@@ -149,12 +153,19 @@ describe("bounded source snapshots", () => {
       bedrooms: 1,
       bathrooms: 1,
       squareFeet: 740,
-      availability: "Available now"
+      availability: "Available now",
+      petFees: [expect.objectContaining({ label: "Pet rent", amountUsd: 50 })],
+      parkingMonthlyUsd: 200,
+      sourceUpdatedAt: "2026-08-04T14:45:00.000Z"
     });
     expect(enriched.sourceFieldProvenance).toContainEqual(
       expect.objectContaining({ field: "bathrooms", observedFrom: "detail_page" })
     );
-    expect(JSON.stringify(enriched)).not.toMatch(/email/iu);
+    expect(enriched.sourceFieldProvenance).toContainEqual(
+      expect.objectContaining({ field: "source_updated_at", observedFrom: "detail_page" })
+    );
+    expect(enriched.allowedContactChannel).toBe("email");
+    expect(JSON.stringify(enriched)).not.toMatch(/857|555-0100/iu);
   });
 
   it("rejects forbidden or unobserved controls", () => {

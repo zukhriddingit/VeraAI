@@ -53,7 +53,7 @@ describe("BrowserSourceAdapter", () => {
       source: "apartments_com",
       allowedHostnames: ["www.apartments.com"],
       maxResults: 10,
-      maxDetailPages: 5,
+      maxDetailPages: 0,
       maxActions: 50,
       maxDurationMilliseconds: 90_000
     });
@@ -99,6 +99,7 @@ describe("BrowserSourceAdapter", () => {
       amenities: [],
       fees: [],
       observedAt: issuedAt.toISOString(),
+      sourceUpdatedAt: "2026-08-04T13:30:00.000Z",
       sourceFieldProvenance: [],
       missingFields: ["address" as const],
       safeExtractionWarnings: [],
@@ -122,6 +123,12 @@ describe("BrowserSourceAdapter", () => {
         "Separated exact adjacent Facebook price and bedroom markers from visible evidence."
       ]
     });
+    expect(() =>
+      FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER.toEnvelope({
+        ...listing,
+        description: "Call 617-555-1212 for this apartment."
+      })
+    ).toThrow(/phone numbers/iu);
   });
 
   it("recovers exact visible Facebook card facts when separate fields are missing", () => {
@@ -174,6 +181,7 @@ describe("BrowserSourceAdapter", () => {
       amenities: ["Laundry"],
       fees: ["Application fee visible; amount not shown"],
       observedAt: issuedAt.toISOString(),
+      sourceUpdatedAt: "2026-08-04T13:30:00.000Z",
       sourceFieldProvenance: [
         {
           field: "address" as const,
@@ -195,6 +203,7 @@ describe("BrowserSourceAdapter", () => {
       source: "apartments_com",
       acquisitionMode: "local_browser",
       sourceUrl: url,
+      sourcePostedAt: "2026-08-04T13:30:00.000Z",
       rawJson: {
         title: "Beacon Hill Apartments",
         monthlyRentCents: 275_000,

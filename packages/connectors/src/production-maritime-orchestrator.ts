@@ -234,7 +234,8 @@ export class ProductionMaritimeOrchestrator implements MaritimeOrchestrator {
     }
     if (
       job.payload.acquisitionMode === "local_browser" &&
-      job.payload.captureKind === "research_tab"
+      (job.payload.captureKind === "research_tab" ||
+        job.payload.captureKind === "detail_enrichment")
     ) {
       // The generic production orchestrator cannot execute the bounded research tool.
       return false;

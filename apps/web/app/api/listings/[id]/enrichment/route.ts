@@ -1,12 +1,5 @@
-import { randomUUID } from "node:crypto";
+import { EnrichmentRequestSchema, ListingActionErrorResponseSchema } from "@vera/domain";
 
-import {
-  InvalidListingTransitionError,
-  ListingActionErrorResponseSchema,
-  ShortlistRequestSchema
-} from "@vera/domain";
-
-import { setListingShortlist } from "../../../../../lib/listing-presentation";
 import {
   createListingEnrichmentDependencies,
   requestCanonicalListingEnrichment
@@ -32,13 +25,14 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
   try {
     const session = await requireVeraSession(request.headers);
     assertSameOriginMutation(request);
-    const input = await readBoundedJson(request, { maxBytes: 16_384 });
-    const parsed = ShortlistRequestSchema.safeParse(input);
-    if (!parsed.success) {
+    const input = EnrichmentRequestSchema.safeParse(
+      await readBoundedJson(request, { maxBytes: 4_096 })
+    );
+    if (!input.success) {
       return Response.json(
         ListingActionErrorResponseSchema.parse({
           code: "malformed_request",
-          message: "Shortlist request is malformed."
+          message: "Detail refresh request is malformed."
         }),
         { status: 400, headers }
       );
@@ -53,20 +47,13 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         { status: 404, headers }
       );
     }
-    const result = await setListingShortlist(listingId, parsed.data.shortlisted, {
-      userId: session.userId,
-      repositoryProvider: session.repositoryProvider,
-      now: () => new Date(),
-      createId: randomUUID
-    });
-    if (parsed.data.shortlisted && !session.demoMode) {
-      await requestCanonicalListingEnrichment(
-        listingId,
-        "listing_shortlisted",
-        createListingEnrichmentDependencies(session)
-      ).catch(() => null);
-    }
-    return Response.json(result, { status: 200, headers });
+    const result = await requestCanonicalListingEnrichment(
+      listingId,
+      "user_refresh",
+      createListingEnrichmentDependencies(session),
+      input.data.force
+    );
+    return Response.json(result, { status: 202, headers });
   } catch (error: unknown) {
     if (error instanceof AuthenticationRequiredError) {
       return Response.json(
@@ -82,19 +69,25 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
     }
     if (error instanceof MutationRequestError) {
       return Response.json(
-        { code: "malformed_request", message: "Shortlist request is malformed." },
+        { code: "malformed_request", message: "Detail refresh request is malformed." },
         { status: error.status, headers }
       );
     }
-    const invalid = error instanceof InvalidListingTransitionError;
+    if (error instanceof Error && error.message === "listing_not_found") {
+      return Response.json(
+        ListingActionErrorResponseSchema.parse({
+          code: "not_found",
+          message: "Listing not found."
+        }),
+        { status: 404, headers }
+      );
+    }
     return Response.json(
       ListingActionErrorResponseSchema.parse({
-        code: invalid ? "invalid_transition" : "database_unavailable",
-        message: invalid
-          ? "The listing cannot move to that shortlist state."
-          : "Shortlist state is unavailable."
+        code: "database_unavailable",
+        message: "Listing detail enrichment is unavailable."
       }),
-      { status: invalid ? 409 : 503, headers }
+      { status: 503, headers }
     );
   }
 }

@@ -511,7 +511,8 @@ export class LocalMockMaritimeOrchestrator implements MaritimeOrchestrator {
     }
     if (
       job.payload.acquisitionMode === "local_browser" &&
-      job.payload.captureKind === "research_tab"
+      (job.payload.captureKind === "research_tab" ||
+        job.payload.captureKind === "detail_enrichment")
     ) {
       // This path is owned exclusively by the bounded Vera Gateway tool.
       return false;

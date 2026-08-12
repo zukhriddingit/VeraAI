@@ -34,7 +34,9 @@ function networkForJob(job: SourceJob) {
         ? job.payload.expectedUrl
         : job.payload.captureKind === "research_tab"
           ? "https://www.zillow.com/homes/for_rent/"
-          : job.payload.savedSearchUrl;
+          : job.payload.captureKind === "detail_enrichment"
+            ? job.payload.targetListingUrl
+            : job.payload.savedSearchUrl;
     const url = new URL(browserUrl);
     return { origin: `${url.origin}/`, domain: url.hostname, httpMethod: "GET" as const };
   }

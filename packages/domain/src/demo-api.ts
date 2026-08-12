@@ -11,6 +11,10 @@ import {
   ListingSourceRecordSchema,
   RiskSignalSchema
 } from "./listing.ts";
+import {
+  ListingEnrichmentRecordSchema,
+  ListingEnrichmentSnapshotSchema
+} from "./listing-enrichment.ts";
 import { EntityIdSchema, IsoDateTimeSchema } from "./primitives.ts";
 import { SearchProfileSchema } from "./search-profile.ts";
 
@@ -84,7 +88,9 @@ export const ActivityCollectionResponseSchema = z
 export const ListingSourceEvidenceSchema = z
   .object({
     record: ListingSourceRecordSchema,
-    provenance: z.array(FieldProvenanceSchema)
+    provenance: z.array(FieldProvenanceSchema),
+    enrichment: ListingEnrichmentRecordSchema.nullable(),
+    snapshot: ListingEnrichmentSnapshotSchema.nullable()
   })
   .strict();
 

@@ -81,7 +81,9 @@ export function trustedPublicOrigin(request: Request): string {
       const url = new URL(configured);
       if (
         url.origin !== configured ||
-        (process.env.NODE_ENV === "production" && url.protocol !== "https:") ||
+        (process.env.NODE_ENV === "production" &&
+          process.env.VERA_DEMO_MODE !== "1" &&
+          url.protocol !== "https:") ||
         url.pathname !== "/" ||
         url.search ||
         url.hash ||

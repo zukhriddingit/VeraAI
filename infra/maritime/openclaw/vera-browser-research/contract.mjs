@@ -41,6 +41,14 @@ export const SAFE_ACTIONS = Object.freeze([
   "return_to_results",
   "extract_observed_facts"
 ]);
+export const ENRICHMENT_SAFE_ACTIONS = Object.freeze([
+  "inspect_shared_tabs",
+  "create_source_tab",
+  "navigate_same_source",
+  "snapshot",
+  "scroll_bounded",
+  "extract_observed_facts"
+]);
 
 const PROPERTY_TYPES = new Set(["apartment", "house", "townhouse", "condo"]);
 const PLAN_KEYS = new Set([
@@ -58,8 +66,13 @@ const PLAN_KEYS = new Set([
   "enabledSafeActionTypes",
   "issuedAt",
   "expiresAt",
+  "mode",
+  "targetListingUrl",
   "signature"
 ]);
+const REQUIRED_PLAN_KEYS = new Set(
+  [...PLAN_KEYS].filter((key) => key !== "mode" && key !== "targetListingUrl")
+);
 const PROFILE_KEYS = new Set([
   "location",
   "maximumRentUsd",
@@ -148,7 +161,7 @@ export function validateResearchPlan(
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, PLAN_KEYS) ||
-    Object.keys(value).length !== PLAN_KEYS.size
+    [...REQUIRED_PLAN_KEYS].some((key) => !(key in value))
   ) {
     throw new VeraBrowserResearchError("invalid_tool_input");
   }
@@ -165,7 +178,10 @@ export function validateResearchPlan(
     !validateTabReference(value.startingTabReference) ||
     !exactArray(value.allowedHostnames, policy.hostnames) ||
     !exactArray(value.allowedUrlPatterns, policy.urlPatterns) ||
-    !exactArray(value.enabledSafeActionTypes, SAFE_ACTIONS) ||
+    !exactArray(
+      value.enabledSafeActionTypes,
+      (value.mode ?? "discovery") === "enrichment" ? ENRICHMENT_SAFE_ACTIONS : SAFE_ACTIONS
+    ) ||
     !iso(value.issuedAt) ||
     !iso(value.expiresAt) ||
     Date.parse(value.expiresAt) <= Date.parse(value.issuedAt) ||
@@ -174,6 +190,19 @@ export function validateResearchPlan(
   ) {
     throw new VeraBrowserResearchError("invalid_tool_input");
   }
+  const mode = value.mode ?? "discovery";
+  if (
+    !["discovery", "enrichment"].includes(mode) ||
+    (mode === "discovery" && value.targetListingUrl != null) ||
+    (mode === "enrichment" &&
+      (!text(value.targetListingUrl, 2_048) ||
+        value.maxResults !== 1 ||
+        value.maxDetailPages !== 1 ||
+        value.maxActions > 10))
+  ) {
+    throw new VeraBrowserResearchError("invalid_tool_input");
+  }
+  if (mode === "enrichment") validateObservedUrl(value.targetListingUrl, value.source, "detail");
   const profile = value.profile;
   if (
     !isRecord(profile) ||
@@ -280,7 +309,7 @@ export function validateResearchOutput(value, plan) {
 export const toolParameters = {
   type: "object",
   additionalProperties: false,
-  required: [...PLAN_KEYS],
+  required: [...REQUIRED_PLAN_KEYS],
   properties: {
     version: { const: "1" },
     veraRunId: {
@@ -322,6 +351,8 @@ export const toolParameters = {
     },
     issuedAt: { type: "string", format: "date-time" },
     expiresAt: { type: "string", format: "date-time" },
+    mode: { enum: ["discovery", "enrichment"] },
+    targetListingUrl: { type: ["string", "null"], maxLength: 2_048 },
     signature: { type: "string", pattern: "^[a-f0-9]{64}$" }
   }
 };

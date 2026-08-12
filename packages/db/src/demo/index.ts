@@ -15,6 +15,7 @@ import type {
   GmailAlertExternalReferenceRepository,
   GmailOAuthStateRepository,
   IntegrationRefreshLeaseRepository,
+  ListingEnrichmentRepository,
   MaritimeDispatchRepository,
   NotificationDeliveryRepository,
   NotificationPreferenceRepository,
@@ -290,6 +291,36 @@ const unavailableGmailExternalReferences: AsyncRepository<GmailAlertExternalRefe
   }
 };
 
+const unavailableListingEnrichments: AsyncRepository<ListingEnrichmentRepository> = {
+  async getBySourceRecordId() {
+    return null;
+  },
+  async listByCanonicalListingId() {
+    return [];
+  },
+  async getCurrentSnapshot() {
+    return null;
+  },
+  async markExpiredStale() {
+    return 0;
+  },
+  async queue() {
+    return unavailable("Hosted listing enrichment");
+  },
+  async claim() {
+    return null;
+  },
+  async complete() {
+    return unavailable("Hosted listing enrichment");
+  },
+  async block() {
+    return unavailable("Hosted listing enrichment");
+  },
+  async fail() {
+    return unavailable("Hosted listing enrichment");
+  }
+};
+
 function asyncUserRepositories(
   repositories: SyncVeraRepositories,
   calendarSidecar: DemoCalendarSidecar
@@ -305,6 +336,7 @@ function asyncUserRepositories(
     rawListings: asyncRepository(repositories.rawListings),
     sourceRecords: asyncRepository(repositories.sourceRecords),
     listingPhotos: asyncRepository(repositories.listingPhotos),
+    listingEnrichments: unavailableListingEnrichments,
     fieldProvenance: asyncRepository(repositories.fieldProvenance),
     listingExtractions: asyncRepository(repositories.listingExtractions),
     duplicateClusters: asyncRepository(repositories.duplicateClusters),

@@ -16,6 +16,7 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  distDir: process.env.VERA_NEXT_DIST_DIR?.trim() || ".next",
   poweredByHeader: false,
   reactStrictMode: true,
   serverExternalPackages: ["better-sqlite3"],

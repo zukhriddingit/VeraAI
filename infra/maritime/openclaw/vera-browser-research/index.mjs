@@ -11,6 +11,7 @@ import {
 import {
   assertSafeControl,
   enrichSourceListingFromDetail,
+  extractSourceDetailListing,
   extractSourceCardCandidates,
   findControl,
   parseSourceSnapshot,
@@ -648,6 +649,38 @@ export async function researchRentals(
     observedUrls: new Set()
   };
   try {
+    if (plan.mode === "enrichment") {
+      const targetUrl = plan.targetListingUrl;
+      state.observedUrls.add(targetUrl);
+      await navigate(targetUrl, "open_observed_listing", state, dependencies);
+      await dependencies.wait(650);
+      const detailDocument = await snapshot(state, dependencies);
+      await authorize("extract_observed_facts", state, dependencies);
+      state.listings = [
+        extractSourceDetailListing(plan.source, targetUrl, detailDocument, safeNow(dependencies))
+      ];
+      state.detailPagesOpened = 1;
+      record(state, "extract_observed_facts", dependencies, targetUrl);
+      return validateResearchOutput(
+        {
+          version: "1",
+          veraRunId: plan.veraRunId,
+          source: plan.source,
+          state: "completed",
+          pageState: "ready",
+          manualAction: null,
+          listings: state.listings,
+          resultCardsObserved: 0,
+          detailPagesOpened: 1,
+          actionsUsed: state.actionsUsed,
+          startedAt: state.startedAt,
+          completedAt: safeNow(dependencies),
+          safeActionTrail: state.safeActionTrail,
+          warnings: []
+        },
+        plan
+      );
+    }
     if (plan.source === "zillow")
       throw new VeraBrowserResearchError("source_uses_accepted_zillow_tool");
     const resultPage = sourceStartUrl(plan);

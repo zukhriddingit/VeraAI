@@ -127,6 +127,19 @@ describe("PostgreSQL migration readiness", () => {
     expect(migration).not.toContain('REFERENCES "public".');
   });
 
+  it("keeps listing enrichment additive, portable, and its evidence append-only", () => {
+    const migration = readFileSync(
+      join(postgresMigrationsFolder, "0005_listing_enrichment.sql"),
+      "utf8"
+    );
+    expect(migration).not.toMatch(/\b(?:DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE)\b/iu);
+    expect(migration).not.toContain('REFERENCES "public".');
+    expect(migration).toContain('CREATE TABLE "listing_enrichment_states"');
+    expect(migration).toContain('CREATE TABLE "listing_enrichment_snapshots"');
+    expect(migration).toContain('CREATE TRIGGER "listing_enrichment_snapshots_append_only"');
+    expect(migration).toContain("'blocked_manual_action'");
+  });
+
   it("reports ready only when the expected migration hash is present", async () => {
     await withPostgresTestDatabase(async ({ connection, schemaName }) => {
       await expect(
@@ -259,7 +272,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 5 }]);
+      expect(migrationCount.rows).toEqual([{ count: 6 }]);
     });
   });
 
@@ -320,7 +333,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 5 }]);
+      expect(migrationCount.rows).toEqual([{ count: 6 }]);
     }, 4);
   });
 
