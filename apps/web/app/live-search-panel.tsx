@@ -652,7 +652,7 @@ export function LiveSearchPanel({
           <p>Compare Vera fit scores, source freshness, missing facts, and research notes.</p>
         </div>
         <ListingDashboard
-          initialListings={staticAcceptanceSnapshot ? initialListings : []}
+          initialListings={initialListings}
           refreshKey={refreshKey}
           researchRunning={running}
           observedSince={observedSince}
