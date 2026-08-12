@@ -127,6 +127,21 @@ describe("listing detail enrichment", () => {
     expect(isExpectedSourceUrl("zillow", "https://www.zillow.com:444/listing")).toBe(false);
     expect(isExpectedSourceUrl("rentcast", "https://api.rentcast.io/listings/example")).toBe(false);
     expect(
+      isExpectedSourceUrl(
+        "craigslist",
+        "https://www.craigslist.org/view/d/somerville-renovated-apartment/eok9SmyfAgVn49wCv4TNYh"
+      )
+    ).toBe(true);
+    expect(
+      isExpectedSourceUrl("craigslist", "https://www.craigslist.org/search/area/boston?cat=apa")
+    ).toBe(false);
+    expect(
+      isExpectedSourceUrl(
+        "craigslist",
+        "https://www.craigslist.org.evil.test/view/d/somerville-apartment/eok9SmyfAgVn49wCv4TNYh"
+      )
+    ).toBe(false);
+    expect(
       isExpectedSourcePhotoUrl("zillow", "https://photos.zillowstatic.com/fp/example.webp")
     ).toBe(true);
     expect(
