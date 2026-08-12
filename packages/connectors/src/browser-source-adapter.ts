@@ -356,6 +356,30 @@ function adapter(
 export const ZILLOW_BROWSER_SOURCE_ADAPTER = adapter("zillow");
 export const APARTMENTS_BROWSER_SOURCE_ADAPTER = adapter("apartments_com");
 export const FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER = adapter("facebook_marketplace");
+
+function assertOffCampusPartnersPropertyUrl(
+  configuration: HousingSourceConfiguration,
+  listing: BrowserResearchObservedListingInput
+): void {
+  const sourceUrl = listing.finalDetailPageUrl ?? listing.canonicalObservedUrl;
+  try {
+    const parsed = new URL(sourceUrl);
+    const path = parsed.pathname.split("/").filter((segment) => segment.length > 0);
+    if (
+      parsed.protocol === "https:" &&
+      parsed.hostname === configuration.allowedDomain &&
+      path.length === 4 &&
+      path[0] === "housing" &&
+      path[1] === "property"
+    ) {
+      return;
+    }
+  } catch {
+    // The shared listing schema reports malformed URLs; this guard reports the adapter contract.
+  }
+  throw new Error("offcampus_partners_property_url_required");
+}
+
 export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
   readonly source = "bu_off_campus" as const;
   readonly connectorId = BROWSER_SOURCE_CONNECTOR_IDS.bu_off_campus;
@@ -376,6 +400,7 @@ export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
   }
 
   toEnvelope(listing: BrowserResearchObservedListingInput): RawListingEnvelope {
+    assertOffCampusPartnersPropertyUrl(this.configuration, listing);
     return this.#delegate.toEnvelope(listing);
   }
 
@@ -383,6 +408,7 @@ export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
     listing: BrowserResearchObservedListingInput,
     input: { readonly veraRunId: string; readonly searchProfileId: string }
   ): JsonObject {
+    assertOffCampusPartnersPropertyUrl(this.configuration, listing);
     return this.#delegate.safeCaptureMetadata(listing, input);
   }
 }

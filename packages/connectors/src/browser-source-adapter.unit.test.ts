@@ -83,6 +83,51 @@ describe("BrowserSourceAdapter", () => {
     });
   });
 
+  it("rejects Off Campus Partners navigation links while preserving property-detail listings", () => {
+    const adapter = new OffCampusPartnersAdapter(BU_OFF_CAMPUS_CONFIGURATION);
+    const propertyUrl = "https://offcampus.bu.edu/housing/property/the-longwood/c4n4rhf";
+    const listing = {
+      source: "bu_off_campus" as const,
+      sourceConfiguration: BU_OFF_CAMPUS_CONFIGURATION,
+      sourceListingId: "c4n4rhf",
+      canonicalObservedUrl: propertyUrl,
+      finalDetailPageUrl: propertyUrl,
+      propertyName: "The Longwood",
+      address: "1575 Tremont St, Boston, MA 02120",
+      rentUsd: 2_613,
+      bedrooms: 1,
+      bathrooms: 1,
+      squareFeet: null,
+      availability: null,
+      amenities: [],
+      fees: [],
+      observedAt: issuedAt.toISOString(),
+      sourceFieldProvenance: [],
+      missingFields: ["square_footage" as const, "availability" as const],
+      safeExtractionWarnings: [],
+      researchNotes: ["Read-only extraction."]
+    };
+
+    expect(adapter.toEnvelope(listing)).toMatchObject({
+      sourceListingId: "c4n4rhf",
+      sourceUrl: propertyUrl,
+      rawJson: { title: "The Longwood" }
+    });
+    for (const navigationUrl of [
+      "https://offcampus.bu.edu/housing/neighborhood-Allston",
+      "https://offcampus.bu.edu/housing/campus-Charles-River-Campus",
+      "https://offcampus.bu.edu/housing"
+    ]) {
+      expect(() =>
+        adapter.toEnvelope({
+          ...listing,
+          canonicalObservedUrl: navigationUrl,
+          finalDetailPageUrl: navigationUrl
+        })
+      ).toThrow("offcampus_partners_property_url_required");
+    }
+  });
+
   it("creates a navigation-free current-page fallback for a custom public site", () => {
     const source = new GenericHousingSourceAdapter({
       sourceId: "example_housing",
