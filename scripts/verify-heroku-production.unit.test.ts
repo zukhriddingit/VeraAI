@@ -8,15 +8,29 @@ const manifest = {
   productDomain: "app.verahousing.app",
   marketingDomain: "verahousing.app",
   processes: {
-    web: { dockerfile: "Dockerfile.web", quantity: 1, readinessPath: "/api/ready" },
-    worker: { dockerfile: "Dockerfile", quantity: 1, readinessPath: "/health" }
+    web: {
+      dockerfile: "Dockerfile.web",
+      quantity: 1,
+      dynoSize: "eco",
+      readinessPath: "/api/ready"
+    },
+    worker: {
+      dockerfile: "Dockerfile",
+      quantity: 1,
+      dynoSize: "eco",
+      readinessPath: "/health"
+    }
   },
   database: {
     provider: "heroku-postgresql",
-    minimumPlan: "standard-0",
+    plan: "essential-0",
     attachment: "VERA_GREEN_DATABASE",
-    sameRegion: true
+    sameRegion: true,
+    storageBytes: 1_000_000_000,
+    connectionLimit: 20,
+    poolMaxPerProcess: 3
   },
+  billing: { maximumMonthlyUsd: 10, automaticUpgrade: false },
   release: {
     processTypes: ["web", "worker"],
     sourceRevisionLabel: "org.opencontainers.image.revision",
@@ -68,6 +82,16 @@ describe("Heroku production boundaries", () => {
     ["wrong app", { ...manifest, app: "vera-staging" }],
     ["wrong product domain", { ...manifest, productDomain: "verahousing.app" }],
     [
+      "Basic dynos",
+      {
+        ...manifest,
+        processes: {
+          web: { ...manifest.processes.web, dynoSize: "basic" },
+          worker: { ...manifest.processes.worker, dynoSize: "basic" }
+        }
+      }
+    ],
+    [
       "two workers",
       {
         ...manifest,
@@ -78,8 +102,17 @@ describe("Heroku production boundaries", () => {
       }
     ],
     [
-      "development database",
-      { ...manifest, database: { ...manifest.database, minimumPlan: "essential-0" } }
+      "different database plan",
+      { ...manifest, database: { ...manifest.database, plan: "essential-1" } }
+    ],
+    ["oversized pool", { ...manifest, database: { ...manifest.database, poolMaxPerProcess: 4 } }],
+    [
+      "billing above ceiling",
+      { ...manifest, billing: { ...manifest.billing, maximumMonthlyUsd: 11 } }
+    ],
+    [
+      "automatic upgrade",
+      { ...manifest, billing: { ...manifest.billing, automaticUpgrade: true } }
     ],
     ["automatic deploy", { ...manifest, release: { ...manifest.release, automaticDeploy: true } }],
     [

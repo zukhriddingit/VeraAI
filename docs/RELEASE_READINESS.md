@@ -3,10 +3,12 @@
 ## 2026-08-13 production application cutover
 
 Current application decision: **no-go until cutover acceptance completes**. The approved target is
-Heroku web + Heroku deterministic worker + same-region Heroku Postgres, with marketing on Vercel and
-approved browser dispatch through Maritime to the unchanged signed DigitalOcean Gateway. The
-historical founder-core/browser findings below remain evidence history rather than the current
-application placement contract.
+one Heroku Eco web process + one Eco deterministic worker + same-region Heroku Postgres Essential-0,
+with marketing on Vercel and approved browser dispatch through Maritime to the unchanged signed
+DigitalOcean Gateway. The approved recurring ceiling is $10 monthly with no automatic upgrade.
+Eco cold starts and Essential-0's founder-MVP service limits are accepted; this is not a 24/7 or HA
+claim. The historical founder-core/browser findings below remain evidence history rather than the
+current application placement contract.
 
 Production promotion requires all of these current, directly observed gates:
 
@@ -14,6 +16,8 @@ Production promotion requires all of these current, directly observed gates:
 - migrations current and the hosted seed idempotent;
 - web and worker images built from and labeled with the same merged source SHA;
 - one Heroku release containing both process types;
+- exactly one Eco web and one Eco worker, with no uptime pinger and `VERA_DB_POOL_MAX=3`;
+- exactly one Essential-0 database and no paid Heroku product beyond the $10 monthly ceiling;
 - `/api/ready` returning ready ten consecutive times across at least five minutes;
 - founder authentication, inbox, listing detail, source links, provenance, and activity history;
 - one idempotent deterministic worker job without an external side effect;

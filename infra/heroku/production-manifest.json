@@ -7,19 +7,28 @@
     "web": {
       "dockerfile": "Dockerfile.web",
       "quantity": 1,
+      "dynoSize": "eco",
       "readinessPath": "/api/ready"
     },
     "worker": {
       "dockerfile": "Dockerfile",
       "quantity": 1,
+      "dynoSize": "eco",
       "readinessPath": "/health"
     }
   },
   "database": {
     "provider": "heroku-postgresql",
-    "minimumPlan": "standard-0",
+    "plan": "essential-0",
     "attachment": "VERA_GREEN_DATABASE",
-    "sameRegion": true
+    "sameRegion": true,
+    "storageBytes": 1000000000,
+    "connectionLimit": 20,
+    "poolMaxPerProcess": 3
+  },
+  "billing": {
+    "maximumMonthlyUsd": 10,
+    "automaticUpgrade": false
   },
   "release": {
     "processTypes": ["web", "worker"],
