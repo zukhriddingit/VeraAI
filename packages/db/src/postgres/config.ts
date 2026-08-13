@@ -7,8 +7,8 @@ export const PostgresConfigSchema = z
     DATABASE_URL: z
       .string()
       .url()
-      .refine((value) => value.startsWith("postgresql://"), {
-        message: "DATABASE_URL must use postgresql://"
+      .refine((value) => /^postgres(?:ql)?:\/\//u.test(value), {
+        message: "DATABASE_URL must use a PostgreSQL URI"
       }),
     VERA_DB_POOL_MAX: z.coerce.number().int().min(1).max(50).default(5),
     VERA_DB_CONNECTION_TIMEOUT_MS: BoundedMillisecondsSchema.default(5_000),

@@ -12,6 +12,13 @@ const valid = {
 };
 
 describe("parsePostgresConfig", () => {
+  it("accepts the standard postgres URI emitted by Heroku", () => {
+    expect(
+      parsePostgresConfig({ ...valid, DATABASE_URL: "postgres://vera:secret@db.example.test/vera" })
+        .connectionString
+    ).toBe("postgres://vera:secret@db.example.test/vera");
+  });
+
   it("requires DATABASE_URL", () => {
     expect(() => parsePostgresConfig({})).toThrow("DATABASE_URL");
   });
@@ -25,7 +32,7 @@ describe("parsePostgresConfig", () => {
   it("rejects non-PostgreSQL URLs", () => {
     expect(() =>
       parsePostgresConfig({ ...valid, DATABASE_URL: "https://database.example.test/vera" })
-    ).toThrow("DATABASE_URL must use postgresql://");
+    ).toThrow("DATABASE_URL must use a PostgreSQL URI");
   });
 
   it("returns bounded production settings", () => {
