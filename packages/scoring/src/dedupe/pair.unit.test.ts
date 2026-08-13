@@ -112,7 +112,51 @@ describe("duplicate pair evaluation", () => {
     expect(evaluate(left, { ...right, rentCents: 250_000 }).decision).toBe("separate");
     expect(
       evaluate({ ...left, rentCents: 248_000 }, { ...right, rentCents: 250_000 }).decision
-    ).toBe("link");
+    ).toBe("separate");
+  });
+
+  it("never auto-links cross-source records from rent and rooms alone", () => {
+    const left = source("source-a", {
+      source: "craigslist",
+      normalizedAddress: null,
+      normalizedUnit: null,
+      normalizedCity: "somerville",
+      normalizedRegion: "MA",
+      normalizedPostalCode: null,
+      addressMatchKey: null,
+      latitude: null,
+      longitude: null,
+      canonicalUrl: "https://www.craigslist.org/view/d/somerville-renovated-apartment/example",
+      rentCents: 261_300,
+      bedrooms: 1,
+      bathrooms: null,
+      squareFeet: null,
+      descriptionText: "Renovated one bedroom apartment",
+      photoHashes: []
+    });
+    const right = source("source-b", {
+      source: "apartments_com",
+      normalizedAddress: null,
+      normalizedUnit: null,
+      normalizedCity: "boston",
+      normalizedRegion: "MA",
+      normalizedPostalCode: null,
+      addressMatchKey: null,
+      latitude: null,
+      longitude: null,
+      canonicalUrl: "https://www.apartments.com/the-longwood-boston-ma/example/",
+      rentCents: 261_300,
+      bedrooms: 1,
+      bathrooms: null,
+      squareFeet: null,
+      descriptionText: "One bedroom apartment",
+      photoHashes: []
+    });
+
+    expect(evaluate(left, right)).toMatchObject({
+      decision: "separate",
+      conflictReasonCodes: ["insufficient_property_anchor"]
+    });
   });
 
   it("does not merge a reused photo across materially different addresses", () => {

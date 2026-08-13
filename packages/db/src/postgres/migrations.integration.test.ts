@@ -272,7 +272,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 6 }]);
+      expect(migrationCount.rows).toEqual([{ count: 7 }]);
     });
   });
 
@@ -333,7 +333,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 6 }]);
+      expect(migrationCount.rows).toEqual([{ count: 7 }]);
     }, 4);
   });
 

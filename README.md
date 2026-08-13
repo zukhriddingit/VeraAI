@@ -79,6 +79,7 @@ Use separate Google Web Application clients for Vera identity and integration ac
 | `pnpm test:integration:postgres`  | Run PostgreSQL constraints, isolation, transactions, and concurrency tests     |
 | `pnpm test:e2e`                   | Run the deterministic Playwright flow                                          |
 | `pnpm build`                      | Build the Next.js web app and Node worker                                      |
+| `pnpm listing-integrity:repair`   | Preview/apply/verify an exact append-only private corpus repair                |
 
 ## Persistence boundaries
 
@@ -105,6 +106,14 @@ message, payment, upload, or download controls. Source-hosted photo URLs are val
 downloaded or rehosted. Craigslist alert-email and manual-capture paths remain available. Use `pnpm
 verify:browser-boundaries` to check the static safety surface; the default test suite never invokes a
 live browser or consumer site.
+
+Retained-data corrections use `pnpm listing-integrity:repair` in three explicit modes: `preview`,
+`apply`, and `verify`. The command accepts the database URL, user ID, reviewed source-record IDs, and
+preview artifact only through permission-restricted files under `/private/tmp` or
+`release-evidence/private`. Preview is read-only and binds the exact corpus revision and hash; apply
+appends dispositions and audit evidence before enqueueing normal deterministic reconciliation;
+verify proves counts did not decrease and forbidden browser actions remain zero. The command never
+deletes source evidence, invokes a browser, fetches a URL or image, or edits canonical rows directly.
 
 ## Deployment assumptions
 

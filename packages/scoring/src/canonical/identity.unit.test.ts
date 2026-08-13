@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { DuplicateClusterPlan, DuplicateOverride, PriorCanonicalIdentity } from "@vera/domain";
 
 import { assignCanonicalIdentities } from "./identity.ts";
+import { stableEntityId } from "../determinism.ts";
 
 const now = "2026-07-20T18:00:00.000Z";
 
@@ -86,6 +87,26 @@ describe("stable canonical identity", () => {
     expect(plan.supersessions).toEqual([]);
   });
 
+  it("does not regenerate a prior ID for a different split component", () => {
+    const priorId = stableEntityId("canonical", ["source-a"]);
+    const plan = assignCanonicalIdentities({
+      clusters: [cluster("cluster-a", ["source-a"]), cluster("cluster-b", ["source-b"])],
+      priorCanonicals: [prior(priorId, ["source-a", "source-b"], "source-b")],
+      activeOverrides: [],
+      createdAt: now
+    });
+
+    expect(plan.assignments.find(({ clusterId }) => clusterId === "cluster-b")).toMatchObject({
+      canonicalListingId: priorId
+    });
+    expect(plan.assignments.find(({ clusterId }) => clusterId === "cluster-a")).toMatchObject({
+      identityReasonCode: "split_new_canonical"
+    });
+    expect(
+      plan.assignments.find(({ clusterId }) => clusterId === "cluster-a")?.canonicalListingId
+    ).not.toBe(priorId);
+  });
+
   it("uses an explicit merge survivor and supersedes the loser", () => {
     const merge: DuplicateOverride = {
       id: "override-merge",
@@ -131,5 +152,43 @@ describe("stable canonical identity", () => {
       createdAt: now
     });
     expect(plan.assignments[0]?.canonicalListingId).toBe("canonical-older");
+  });
+
+  it("allocates a split prior identity to only one of multiple newly merged components", () => {
+    const plan = assignCanonicalIdentities({
+      clusters: [
+        cluster("cluster-a", ["source-a", "source-x"]),
+        cluster("cluster-b", ["source-b", "source-y"])
+      ],
+      priorCanonicals: [
+        prior("canonical-shared", ["source-a", "source-b"], "source-a", "2026-01-01T00:00:00.000Z"),
+        prior("canonical-x", ["source-x"], "source-x", "2026-02-01T00:00:00.000Z"),
+        prior("canonical-y", ["source-y"], "source-y", "2026-03-01T00:00:00.000Z")
+      ],
+      activeOverrides: [],
+      createdAt: now
+    });
+
+    expect(plan.assignments).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          clusterId: "cluster-a",
+          canonicalListingId: "canonical-shared",
+          priorCanonicalListingIds: ["canonical-shared", "canonical-x"]
+        }),
+        expect.objectContaining({
+          clusterId: "cluster-b",
+          canonicalListingId: "canonical-y",
+          priorCanonicalListingIds: ["canonical-y"]
+        })
+      ])
+    );
+    expect(plan.supersessions).toEqual([
+      {
+        supersededCanonicalListingId: "canonical-x",
+        survivorCanonicalListingId: "canonical-shared",
+        reasonCode: "cluster_merge"
+      }
+    ]);
   });
 });

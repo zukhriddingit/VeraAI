@@ -11,6 +11,7 @@ import {
   Sha256Schema,
   type ListingSourceLabel
 } from "./primitives.ts";
+import { classifyObservedListingUrl, observedHttpsHostname } from "./source-listing-url.ts";
 
 const ContactFreeListingTextSchema = z
   .string()
@@ -31,6 +32,18 @@ export const ListingEnrichmentStateSchema = z.enum([
   "partial",
   "blocked_manual_action",
   "stale",
+  "failed"
+]);
+
+export const ListingEnrichmentPresentationStateSchema = z.enum([
+  "not_requested",
+  "queued",
+  "retrying",
+  "enriching",
+  "partial",
+  "enriched",
+  "stale",
+  "manual_action_required",
   "failed"
 ]);
 
@@ -193,7 +206,7 @@ export const ListingEnrichmentSnapshotSchema = z
       });
     }
     for (const [index, photo] of snapshot.photos.entries()) {
-      if (!isExpectedSourcePhotoUrl(snapshot.source, photo.sourceUrl)) {
+      if (!isExpectedSourcePhotoUrl(snapshot.source, photo.sourceUrl, snapshot.details.sourceUrl)) {
         context.addIssue({
           code: "custom",
           path: ["photos", index, "sourceUrl"],
@@ -248,6 +261,17 @@ export const ListingEnrichmentRecordSchema = z
     updatedAt: IsoDateTimeSchema
   })
   .strict();
+
+export function presentListingEnrichmentState(
+  record: ListingEnrichmentRecord | null
+): ListingEnrichmentPresentationState {
+  if (record === null) return "not_requested";
+  if (record.state === "queued" && record.attemptCount > 0 && record.lastErrorCode !== null) {
+    return "retrying";
+  }
+  if (record.state === "blocked_manual_action") return "manual_action_required";
+  return record.state;
+}
 
 export const EnrichmentRequestSchema = z
   .object({
@@ -345,37 +369,14 @@ export function expectedSourceHostname(source: ListingSourceLabel): string | nul
 }
 
 export function isExpectedSourceUrl(source: ListingSourceLabel, value: string): boolean {
-  const hostname = expectedSourceHostname(source);
-  const match = value.match(/^https:\/\/([^/?#:@]+)([^#]*)$/u);
-  const suffix = match?.[2] ?? "";
-  if (source === "craigslist") {
-    const currentSharedListing =
-      match?.[1] === "www.craigslist.org" &&
-      /^\/view\/d\/[a-z0-9-]+\/[A-Za-z0-9]+(?:\?|$)/u.test(suffix);
-    const legacyRegionalListing =
-      match?.[1] !== undefined &&
-      match[1].endsWith(".craigslist.org") &&
-      /\/\d+\.html(?:\?|$)/u.test(suffix);
-    return (currentSharedListing || legacyRegionalListing) && safeSourceQuery(suffix);
-  }
-  if (source === "custom_website") {
-    return (
-      match?.[1] !== undefined &&
-      match[1].includes(".") &&
-      !match[1].endsWith(".local") &&
-      match[1] !== "localhost" &&
-      safeSourceQuery(suffix)
-    );
-  }
-  if (hostname === null) return false;
-  return (
-    match?.[1] === hostname &&
-    (suffix === "" || suffix.startsWith("/") || suffix.startsWith("?")) &&
-    safeSourceQuery(suffix)
-  );
+  return classifyObservedListingUrl({ source, url: value }) !== "non_listing";
 }
 
-export function isExpectedSourcePhotoUrl(source: ListingSourceLabel, value: string): boolean {
+export function isExpectedSourcePhotoUrl(
+  source: ListingSourceLabel,
+  value: string,
+  sourceUrl?: string
+): boolean {
   const match = value.match(/^https:\/\/([^/?#:@]+)([^#]*)$/u);
   const hostname = match?.[1];
   const suffix = match?.[2] ?? "";
@@ -395,6 +396,9 @@ export function isExpectedSourcePhotoUrl(source: ListingSourceLabel, value: stri
   }
   if (source === "bu_off_campus") return hostname === "offcampus.bu.edu";
   if (source === "craigslist") return hostname === "images.craigslist.org";
+  if (source === "custom_website" && sourceUrl !== undefined) {
+    return hostname === observedHttpsHostname(sourceUrl);
+  }
   return false;
 }
 
@@ -414,6 +418,9 @@ function safeSourceQuery(pathAndQuery: string): boolean {
 }
 
 export type ListingEnrichmentState = z.infer<typeof ListingEnrichmentStateSchema>;
+export type ListingEnrichmentPresentationState = z.infer<
+  typeof ListingEnrichmentPresentationStateSchema
+>;
 export type ListingEnrichmentReason = z.infer<typeof ListingEnrichmentReasonSchema>;
 export type ListingFee = z.infer<typeof ListingFeeSchema>;
 export type ListingDetailFields = z.infer<typeof ListingDetailFieldsSchema>;

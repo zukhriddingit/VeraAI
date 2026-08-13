@@ -7,7 +7,8 @@ import {
   ListingEnrichmentSnapshotSchema,
   computeListingDetailCompleteness,
   isExpectedSourcePhotoUrl,
-  isExpectedSourceUrl
+  isExpectedSourceUrl,
+  presentListingEnrichmentState
 } from "./listing-enrichment.ts";
 
 const fields = ListingDetailFieldsSchema.parse({
@@ -70,6 +71,33 @@ describe("listing detail enrichment", () => {
       expect(ListingEnrichmentRecordSchema.parse({ ...base, state }).state).toBe(state);
     }
     expect(() => ListingEnrichmentRecordSchema.parse({ ...base, state: "sent" })).toThrow();
+  });
+
+  it("distinguishes retrying and manual-action states for presentation", () => {
+    const base = ListingEnrichmentRecordSchema.parse({
+      listingSourceRecordId: "source-record-1",
+      state: "queued",
+      requestedReason: "listing_opened",
+      attemptCount: 1,
+      availableAt: "2026-08-11T22:01:00.000Z",
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      currentSnapshotId: null,
+      manualAction: null,
+      lastErrorCode: "gateway_timeout",
+      requestedAt: "2026-08-11T22:00:00.000Z",
+      startedAt: "2026-08-11T22:00:10.000Z",
+      completedAt: null,
+      updatedAt: "2026-08-11T22:00:30.000Z"
+    });
+    expect(presentListingEnrichmentState(base)).toBe("retrying");
+    expect(
+      presentListingEnrichmentState({
+        ...base,
+        state: "blocked_manual_action",
+        manualAction: "captcha_required"
+      })
+    ).toBe("manual_action_required");
   });
 
   it("scores only important observed fields and stays separate from fit", () => {
@@ -143,6 +171,13 @@ describe("listing detail enrichment", () => {
     ).toBe(false);
     expect(
       isExpectedSourcePhotoUrl("zillow", "https://photos.zillowstatic.com/fp/example.webp")
+    ).toBe(true);
+    expect(
+      isExpectedSourcePhotoUrl(
+        "custom_website",
+        "https://housing.example.edu/media/listing.webp",
+        "https://housing.example.edu/listings/42"
+      )
     ).toBe(true);
     expect(
       isExpectedSourcePhotoUrl(

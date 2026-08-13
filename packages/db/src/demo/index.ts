@@ -16,6 +16,7 @@ import type {
   GmailOAuthStateRepository,
   IntegrationRefreshLeaseRepository,
   ListingEnrichmentRepository,
+  ListingSourceRecordDispositionRepository,
   MaritimeDispatchRepository,
   NotificationDeliveryRepository,
   NotificationPreferenceRepository,
@@ -301,6 +302,9 @@ const unavailableListingEnrichments: AsyncRepository<ListingEnrichmentRepository
   async getCurrentSnapshot() {
     return null;
   },
+  async projectCurrentObservedPhotos() {
+    return 0;
+  },
   async markExpiredStale() {
     return 0;
   },
@@ -321,6 +325,21 @@ const unavailableListingEnrichments: AsyncRepository<ListingEnrichmentRepository
   }
 };
 
+const demoSourceRecordDispositions: AsyncRepository<ListingSourceRecordDispositionRepository> = {
+  async append() {
+    return unavailable("Hosted source-record disposition repair");
+  },
+  async getCurrent() {
+    return null;
+  },
+  async listCurrent() {
+    return [];
+  },
+  async isEligible() {
+    return true;
+  }
+};
+
 function asyncUserRepositories(
   repositories: SyncVeraRepositories,
   calendarSidecar: DemoCalendarSidecar
@@ -336,6 +355,7 @@ function asyncUserRepositories(
     rawListings: asyncRepository(repositories.rawListings),
     sourceRecords: asyncRepository(repositories.sourceRecords),
     listingPhotos: asyncRepository(repositories.listingPhotos),
+    sourceRecordDispositions: demoSourceRecordDispositions,
     listingEnrichments: unavailableListingEnrichments,
     fieldProvenance: asyncRepository(repositories.fieldProvenance),
     listingExtractions: asyncRepository(repositories.listingExtractions),

@@ -346,6 +346,16 @@ export function createSqliteRepositories(connection: VeraDatabaseConnection): Ve
       const id = EntityIdSchema.parse(idInput);
       const row = db.select().from(listingPhotos).where(eq(listingPhotos.id, id)).get();
       return row ? mapListingPhotoRow(row) : null;
+    },
+    listBySourceRecordId(listingSourceRecordIdInput) {
+      const listingSourceRecordId = EntityIdSchema.parse(listingSourceRecordIdInput);
+      return db
+        .select()
+        .from(listingPhotos)
+        .where(eq(listingPhotos.listingSourceRecordId, listingSourceRecordId))
+        .orderBy(asc(listingPhotos.position), asc(listingPhotos.id))
+        .all()
+        .map(mapListingPhotoRow);
     }
   };
 

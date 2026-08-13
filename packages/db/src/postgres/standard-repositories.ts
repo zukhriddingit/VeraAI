@@ -31,6 +31,7 @@ import {
   transitionViewingState,
   isExpectedSourcePhotoUrl,
   isExpectedSourceUrl,
+  presentListingEnrichmentState,
   type CanonicalListingSummary,
   type VeraUserId
 } from "@vera/domain";
@@ -70,6 +71,7 @@ import {
   listingEnrichmentSnapshots,
   listingEnrichmentStates,
   listingScores,
+  listingSourceRecordDispositions,
   listingSourceRecords,
   normalizationJobs,
   rawListings,
@@ -431,64 +433,87 @@ export function createStandardPostgresRepositories(
       return rows.map(mapCanonicalListingRow);
     },
     async listSummaries() {
-      const [listings, memberships, stateRows, snapshotRows, scoreRows, riskRows] =
-        await Promise.all([
-          canonicalListingRepository.list(),
-          db
-            .select({
-              canonicalListingId: canonicalListingSources.canonicalListingId,
-              listingSourceRecordId: canonicalListingSources.listingSourceRecordId,
-              isPrimary: canonicalListingSources.isPrimary,
-              source: listingSourceRecords.source,
-              sourceUrl: listingSourceRecords.sourceUrl,
-              observedAt: listingSourceRecords.observedAt,
-              sourcePostedAt: listingSourceRecords.sourcePostedAt,
-              rawJson: rawListings.rawJson,
-              captureMetadata: rawListings.captureMetadata
-            })
-            .from(canonicalListingSources)
-            .innerJoin(
-              listingSourceRecords,
-              and(
-                eq(canonicalListingSources.userId, listingSourceRecords.userId),
-                eq(canonicalListingSources.listingSourceRecordId, listingSourceRecords.id)
-              )
+      const [
+        listings,
+        allMemberships,
+        dispositionRows,
+        stateRows,
+        snapshotRows,
+        scoreRows,
+        riskRows
+      ] = await Promise.all([
+        canonicalListingRepository.list(),
+        db
+          .select({
+            canonicalListingId: canonicalListingSources.canonicalListingId,
+            listingSourceRecordId: canonicalListingSources.listingSourceRecordId,
+            isPrimary: canonicalListingSources.isPrimary,
+            source: listingSourceRecords.source,
+            sourceUrl: listingSourceRecords.sourceUrl,
+            observedAt: listingSourceRecords.observedAt,
+            sourcePostedAt: listingSourceRecords.sourcePostedAt,
+            rawJson: rawListings.rawJson,
+            captureMetadata: rawListings.captureMetadata
+          })
+          .from(canonicalListingSources)
+          .innerJoin(
+            listingSourceRecords,
+            and(
+              eq(canonicalListingSources.userId, listingSourceRecords.userId),
+              eq(canonicalListingSources.listingSourceRecordId, listingSourceRecords.id)
             )
-            .innerJoin(
-              rawListings,
-              and(
-                eq(listingSourceRecords.userId, rawListings.userId),
-                eq(listingSourceRecords.rawListingId, rawListings.id)
-              )
+          )
+          .innerJoin(
+            rawListings,
+            and(
+              eq(listingSourceRecords.userId, rawListings.userId),
+              eq(listingSourceRecords.rawListingId, rawListings.id)
             )
-            .where(eq(canonicalListingSources.userId, userId)),
-          db
-            .select()
-            .from(listingEnrichmentStates)
-            .where(eq(listingEnrichmentStates.userId, userId)),
-          db
-            .select({ snapshot: listingEnrichmentSnapshots })
-            .from(listingEnrichmentStates)
-            .innerJoin(
-              listingEnrichmentSnapshots,
-              and(
-                eq(listingEnrichmentStates.userId, listingEnrichmentSnapshots.userId),
-                eq(listingEnrichmentStates.currentSnapshotId, listingEnrichmentSnapshots.id)
-              )
+          )
+          .where(eq(canonicalListingSources.userId, userId)),
+        db
+          .select()
+          .from(listingSourceRecordDispositions)
+          .where(eq(listingSourceRecordDispositions.userId, userId))
+          .orderBy(
+            asc(listingSourceRecordDispositions.listingSourceRecordId),
+            desc(listingSourceRecordDispositions.observedAt),
+            desc(listingSourceRecordDispositions.id)
+          ),
+        db.select().from(listingEnrichmentStates).where(eq(listingEnrichmentStates.userId, userId)),
+        db
+          .select({ snapshot: listingEnrichmentSnapshots })
+          .from(listingEnrichmentStates)
+          .innerJoin(
+            listingEnrichmentSnapshots,
+            and(
+              eq(listingEnrichmentStates.userId, listingEnrichmentSnapshots.userId),
+              eq(listingEnrichmentStates.currentSnapshotId, listingEnrichmentSnapshots.id)
             )
-            .where(eq(listingEnrichmentStates.userId, userId)),
-          db
-            .select()
-            .from(listingScores)
-            .where(eq(listingScores.userId, userId))
-            .orderBy(desc(listingScores.computedAt), asc(listingScores.id)),
-          db
-            .select()
-            .from(riskSignals)
-            .where(eq(riskSignals.userId, userId))
-            .orderBy(desc(riskSignals.createdAt), asc(riskSignals.id))
-        ]);
+          )
+          .where(eq(listingEnrichmentStates.userId, userId)),
+        db
+          .select()
+          .from(listingScores)
+          .where(eq(listingScores.userId, userId))
+          .orderBy(desc(listingScores.computedAt), asc(listingScores.id)),
+        db
+          .select()
+          .from(riskSignals)
+          .where(eq(riskSignals.userId, userId))
+          .orderBy(desc(riskSignals.createdAt), asc(riskSignals.id))
+      ]);
 
+      const currentDisposition = new Map<string, (typeof dispositionRows)[number]>();
+      for (const row of dispositionRows) {
+        if (!currentDisposition.has(row.listingSourceRecordId)) {
+          currentDisposition.set(row.listingSourceRecordId, row);
+        }
+      }
+      const memberships = allMemberships.filter(
+        ({ listingSourceRecordId }) =>
+          currentDisposition.get(listingSourceRecordId)?.disposition !== "invalid_non_listing"
+      );
       const membershipsByListingId = groupRowsBy(
         memberships,
         (membership) => membership.canonicalListingId
@@ -507,6 +532,7 @@ export function createStandardPostgresRepositories(
       const summaries: CanonicalListingSummary[] = [];
       for (const listing of listings) {
         const listingMemberships = membershipsByListingId.get(listing.id) ?? [];
+        if (listingMemberships.length === 0) continue;
         const enrichmentStates = listingMemberships.flatMap((membership) => {
           const state = statesBySourceRecordId.get(membership.listingSourceRecordId);
           return state ? [state] : [];
@@ -532,7 +558,12 @@ export function createStandardPostgresRepositories(
               membership.captureMetadata.firstObservedPhoto
             );
             const source = ListingSourceLabelSchema.parse(membership.source);
-            return photo.success && isExpectedSourcePhotoUrl(source, photo.data.sourceUrl)
+            return photo.success &&
+              isExpectedSourcePhotoUrl(
+                source,
+                photo.data.sourceUrl,
+                membership.sourceUrl ?? undefined
+              )
               ? [photo.data]
               : [];
           })[0] ?? null;
@@ -567,6 +598,9 @@ export function createStandardPostgresRepositories(
         const enrichmentState =
           statePriority.find((state) => enrichmentStates.some((entry) => entry.state === state)) ??
           "not_requested";
+        const enrichmentPresentationState = presentListingEnrichmentState(
+          enrichmentStates.find((entry) => entry.state === enrichmentState) ?? null
+        );
         const sourceLinkCandidates = [
           ...(bestEnrichment
             ? [
@@ -683,6 +717,7 @@ export function createStandardPostgresRepositories(
             completenessBasisPoints: listing.completenessBasisPoints,
             detailCompletenessBasisPoints: bestEnrichment?.snapshot.completeness.basisPoints ?? 0,
             enrichmentState,
+            enrichmentPresentationState,
             primaryPhoto: bestEnrichment?.snapshot.photos[0] ?? discoveredPrimaryPhoto,
             originalListingUrl,
             freshestObservedAt: listing.freshestObservedAt,

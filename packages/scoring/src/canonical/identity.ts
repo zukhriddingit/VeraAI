@@ -89,6 +89,44 @@ function explicitMergeSurvivor(
   return survivor;
 }
 
+function priorOwnerCluster(
+  prior: PriorCanonicalIdentity,
+  clusters: readonly DuplicateClusterPlan[]
+): DuplicateClusterPlan | null {
+  const overlapping = clusters.filter((cluster) => overlap(cluster, prior));
+  if (overlapping.length === 0) return null;
+  const primaryOwner = overlapping.find((cluster) =>
+    cluster.memberSourceRecordIds.includes(prior.primarySourceRecordId)
+  );
+  if (primaryOwner) return primaryOwner;
+  const priorMembers = new Set(prior.memberSourceRecordIds);
+  return [...overlapping].sort((left, right) => {
+    const rightOverlap = right.memberSourceRecordIds.filter((id) => priorMembers.has(id)).length;
+    const leftOverlap = left.memberSourceRecordIds.filter((id) => priorMembers.has(id)).length;
+    return (
+      rightOverlap - leftOverlap ||
+      left.memberSourceRecordIds[0]!.localeCompare(right.memberSourceRecordIds[0]!, "en")
+    );
+  })[0]!;
+}
+
+function availableCanonicalId(
+  cluster: DuplicateClusterPlan,
+  reservedIds: ReadonlySet<string>
+): string {
+  const firstSourceRecordId = cluster.memberSourceRecordIds[0]!;
+  const ordinary = stableEntityId("canonical", [firstSourceRecordId]);
+  if (!reservedIds.has(ordinary)) return ordinary;
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    const split = stableEntityId("canonical", [firstSourceRecordId, "split", String(attempt)]);
+    if (!reservedIds.has(split)) return split;
+  }
+  throw new CanonicalIdentityError(
+    "ambiguous_canonical_identity",
+    "A collision-free deterministic canonical identity could not be allocated."
+  );
+}
+
 export function assignCanonicalIdentities(
   input: AssignCanonicalIdentitiesInput
 ): CanonicalIdentityPlan {
@@ -105,11 +143,13 @@ export function assignCanonicalIdentities(
     );
   }
   const clustersByPrior = new Map<string, DuplicateClusterPlan[]>();
+  const ownerClusterIdByPrior = new Map<string, string>();
+  const reservedCanonicalIds = new Set(priorById.keys());
   for (const prior of input.priorCanonicals) {
-    clustersByPrior.set(
-      prior.canonicalListingId,
-      clusters.filter((cluster) => overlap(cluster, prior))
-    );
+    const overlapping = clusters.filter((cluster) => overlap(cluster, prior));
+    clustersByPrior.set(prior.canonicalListingId, overlapping);
+    const owner = priorOwnerCluster(prior, clusters);
+    if (owner) ownerClusterIdByPrior.set(prior.canonicalListingId, owner.clusterId);
   }
 
   const assignments: CanonicalIdentityAssignment[] = [];
@@ -117,36 +157,34 @@ export function assignCanonicalIdentities(
     const touched = input.priorCanonicals
       .filter((prior) => overlap(cluster, prior))
       .sort((left, right) => left.canonicalListingId.localeCompare(right.canonicalListingId, "en"));
+    const assigned = touched.filter(
+      (prior) => ownerClusterIdByPrior.get(prior.canonicalListingId) === cluster.clusterId
+    );
     let winner: PriorCanonicalIdentity | null = null;
     let identityReasonCode: CanonicalIdentityAssignment["identityReasonCode"];
 
-    if (touched.length === 0) {
-      identityReasonCode = "new_canonical";
-    } else if (touched.length === 1) {
-      const prior = touched[0]!;
+    if (assigned.length === 0) {
+      identityReasonCode = touched.length === 0 ? "new_canonical" : "split_new_canonical";
+    } else if (assigned.length === 1) {
+      const prior = assigned[0]!;
       const splitComponents = clustersByPrior.get(prior.canonicalListingId) ?? [];
-      if (splitComponents.length <= 1) {
-        winner = prior;
-        identityReasonCode = "preserved_canonical";
-      } else if (cluster.memberSourceRecordIds.includes(prior.primarySourceRecordId)) {
-        winner = prior;
-        identityReasonCode = "split_primary_preserved";
-      } else {
-        identityReasonCode = "split_new_canonical";
-      }
+      winner = prior;
+      identityReasonCode =
+        splitComponents.length <= 1 ? "preserved_canonical" : "split_primary_preserved";
     } else {
-      const overrideSurvivor = explicitMergeSurvivor(cluster, touched, input.activeOverrides);
-      winner = overrideSurvivor ?? oldestCanonical(touched);
+      const overrideSurvivor = explicitMergeSurvivor(cluster, assigned, input.activeOverrides);
+      winner = overrideSurvivor ?? oldestCanonical(assigned);
       identityReasonCode =
         overrideSurvivor === null ? "merge_oldest_survivor" : "merge_override_survivor";
     }
 
+    const canonicalListingId =
+      winner?.canonicalListingId ?? availableCanonicalId(cluster, reservedCanonicalIds);
+    reservedCanonicalIds.add(canonicalListingId);
     assignments.push({
       clusterId: cluster.clusterId,
-      canonicalListingId:
-        winner?.canonicalListingId ??
-        stableEntityId("canonical", [cluster.memberSourceRecordIds[0]!]),
-      priorCanonicalListingIds: touched.map((prior) => prior.canonicalListingId),
+      canonicalListingId,
+      priorCanonicalListingIds: assigned.map((prior) => prior.canonicalListingId),
       lifecycleState: winner?.lifecycleState ?? "new",
       createdAt: winner?.createdAt ?? input.createdAt,
       identityReasonCode

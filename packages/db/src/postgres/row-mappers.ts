@@ -16,6 +16,7 @@ import {
   ListingExtractionRunSchema,
   ListingScoreSchema,
   ListingSourceRecordSchema,
+  ListingSourceRecordDispositionEventSchema,
   NormalizationJobSchema,
   RawListingSchema,
   RiskSignalSchema,
@@ -41,6 +42,7 @@ import {
   type ListingExtractionRun,
   type ListingScore,
   type ListingSourceRecord,
+  type ListingSourceRecordDispositionEvent,
   type NormalizationJob,
   type RawListing,
   type RiskSignal,
@@ -68,6 +70,7 @@ import type {
   listingExtractions,
   listingScores,
   listingSourceRecords,
+  listingSourceRecordDispositions,
   normalizationJobs,
   rawListings,
   riskSignals,
@@ -81,6 +84,7 @@ import type {
 type SearchProfileRow = typeof searchProfiles.$inferSelect;
 type RawListingRow = typeof rawListings.$inferSelect;
 type ListingSourceRecordRow = typeof listingSourceRecords.$inferSelect;
+type ListingSourceRecordDispositionRow = typeof listingSourceRecordDispositions.$inferSelect;
 type NormalizationJobRow = typeof normalizationJobs.$inferSelect;
 type ListingPhotoRow = typeof listingPhotos.$inferSelect;
 type ListingExtractionRow = typeof listingExtractions.$inferSelect;
@@ -200,6 +204,21 @@ export function mapListingSourceRecordRow(row: ListingSourceRecordRow): ListingS
     completenessBasisPoints: row.completenessBasisPoints,
     observedAt: toIso(row.observedAt),
     createdAt: toIso(row.createdAt)
+  });
+}
+
+export function mapListingSourceRecordDispositionRow(
+  row: ListingSourceRecordDispositionRow
+): ListingSourceRecordDispositionEvent {
+  return ListingSourceRecordDispositionEventSchema.parse({
+    id: row.id,
+    listingSourceRecordId: row.listingSourceRecordId,
+    disposition: row.disposition,
+    reasonCode: row.reasonCode,
+    evidence: row.evidence,
+    payloadHash: row.payloadHash,
+    actor: row.actor,
+    observedAt: toIso(row.observedAt)
   });
 }
 

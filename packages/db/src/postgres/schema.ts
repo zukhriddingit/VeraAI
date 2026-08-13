@@ -18,6 +18,7 @@ import type {
   ListingDetailPhoto,
   ListingEnrichmentFieldProvenance,
   ListingExtractionRun,
+  ListingSourceRecordDispositionEvent,
   ListingScore,
   ListingScoreV2,
   NotificationPayload,
@@ -598,6 +599,58 @@ export const listingSourceRecords = pgTable(
   ]
 );
 
+export const listingSourceRecordDispositions = pgTable(
+  "listing_source_record_dispositions",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    id: text("id").notNull(),
+    listingSourceRecordId: text("listing_source_record_id").notNull(),
+    disposition: text("disposition")
+      .$type<ListingSourceRecordDispositionEvent["disposition"]>()
+      .notNull(),
+    reasonCode: text("reason_code").notNull(),
+    evidence: jsonb("evidence").$type<ListingSourceRecordDispositionEvent["evidence"]>().notNull(),
+    payloadHash: text("payload_hash").notNull(),
+    actor: text("actor").$type<ListingSourceRecordDispositionEvent["actor"]>().notNull(),
+    observedAt: instant("observed_at").notNull()
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.id] }),
+    foreignKey({
+      name: "listing_source_record_dispositions_source_record_tenant_fk",
+      columns: [table.userId, table.listingSourceRecordId],
+      foreignColumns: [listingSourceRecords.userId, listingSourceRecords.id]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    uniqueIndex("listing_source_record_dispositions_payload_unique").on(
+      table.userId,
+      table.listingSourceRecordId,
+      table.payloadHash
+    ),
+    index("listing_source_record_dispositions_current_idx").on(
+      table.userId,
+      table.listingSourceRecordId,
+      table.observedAt,
+      table.id
+    ),
+    check(
+      "listing_source_record_dispositions_allowed",
+      sql`${table.disposition} IN ('accepted', 'invalid_non_listing')`
+    ),
+    check(
+      "listing_source_record_dispositions_actor_allowed",
+      sql`${table.actor} IN ('system', 'founder')`
+    ),
+    check(
+      "listing_source_record_dispositions_payload_hash_valid",
+      sql`${table.payloadHash} ~ '^[a-f0-9]{64}$'`
+    )
+  ]
+);
+
 export const listingPhotos = pgTable(
   "listing_photos",
   {
@@ -627,11 +680,9 @@ export const listingPhotos = pgTable(
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
-    uniqueIndex("listing_photos_user_source_position_unique").on(
-      table.userId,
-      table.listingSourceRecordId,
-      table.position
-    ),
+    uniqueIndex("listing_photos_user_source_url_position_unique")
+      .on(table.userId, table.listingSourceRecordId, table.sourceUrl, table.position)
+      .where(sql`${table.sourceUrl} IS NOT NULL`),
     index("listing_photos_user_byte_hash_idx").on(table.userId, table.byteHash),
     index("listing_photos_user_perceptual_hash_idx").on(
       table.userId,
@@ -644,8 +695,12 @@ export const listingPhotos = pgTable(
     ),
     check("listing_photos_position_nonnegative", sql`${table.position} >= 0`),
     check(
-      "listing_photos_decoded_metadata_consistency",
-      sql`num_nonnulls(${table.byteSize}, ${table.width}, ${table.height}, ${table.mimeType}) IN (0, 4)`
+      "listing_photos_observed_dimensions_consistency",
+      sql`(${table.width} IS NULL) = (${table.height} IS NULL)`
+    ),
+    check(
+      "listing_photos_fetched_metadata_consistency",
+      sql`(${table.byteSize} IS NULL) = (${table.mimeType} IS NULL)`
     ),
     check(
       "listing_photos_perceptual_version_consistency",

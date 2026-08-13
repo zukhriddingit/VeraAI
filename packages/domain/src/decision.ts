@@ -21,7 +21,7 @@ import { AcquisitionModeSchema } from "./source-policy.ts";
 
 export const DECISION_NORMALIZATION_VERSION = "decision-normalization.v1" as const;
 export const PHOTO_HASH_VERSION = "listing-photo.dhash64.v1" as const;
-export const DEDUPE_VERSION = "listing-dedupe.v1" as const;
+export const DEDUPE_VERSION = "listing-dedupe.v2" as const;
 export const STITCH_VERSION = "canonical-stitch.v1" as const;
 export const SCORE_VERSION = "listing-score.v2" as const;
 export const RISK_VERSION = "listing-risk.v2" as const;
@@ -29,7 +29,7 @@ export const DECISION_PLAN_VERSION = "decision-plan.v1" as const;
 
 export const DecisionNormalizationVersionSchema = z.literal(DECISION_NORMALIZATION_VERSION);
 export const PhotoHashVersionSchema = z.literal(PHOTO_HASH_VERSION);
-export const DedupeVersionSchema = z.literal(DEDUPE_VERSION);
+export const DedupeVersionSchema = z.enum(["listing-dedupe.v1", DEDUPE_VERSION]);
 export const StitchVersionSchema = z.literal(STITCH_VERSION);
 export const ScoreVersionSchema = z.literal(SCORE_VERSION);
 export const RiskVersionSchema = z.literal(RISK_VERSION);
@@ -251,7 +251,8 @@ export const DuplicateExactReasonCodeSchema = z.enum([
 export const DuplicateConflictReasonCodeSchema = z.enum([
   "different_source_listing_ids",
   "conflicting_units",
-  "material_location_conflict"
+  "material_location_conflict",
+  "insufficient_property_anchor"
 ]);
 
 export const DuplicatePairFeatureSchema = z
@@ -285,7 +286,7 @@ export const DuplicatePairEvaluationSchema = z
     automaticLinkThresholdBasisPoints: PercentageBasisPointsSchema,
     reviewThresholdBasisPoints: PercentageBasisPointsSchema,
     exactReasonCodes: z.array(DuplicateExactReasonCodeSchema).max(5),
-    conflictReasonCodes: z.array(DuplicateConflictReasonCodeSchema).max(3),
+    conflictReasonCodes: z.array(DuplicateConflictReasonCodeSchema).max(4),
     contactMatched: z.boolean(),
     features: z.array(DuplicatePairFeatureSchema).max(8),
     evaluatedAt: IsoDateTimeSchema

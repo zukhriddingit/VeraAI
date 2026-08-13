@@ -129,7 +129,6 @@ export function evaluateDuplicatePair(input: EvaluateDuplicatePairInput): Duplic
   const geographic = featureByCode(rawFeatures, "geographic");
   const rent = featureByCode(rawFeatures, "rent");
   const bedsBaths = featureByCode(rawFeatures, "beds_baths");
-  const squareFeet = featureByCode(rawFeatures, "square_feet");
   const exactReasonCodes: DuplicateExactReasonCode[] = [];
   const conflictReasonCodes: DuplicateConflictReasonCode[] = [];
 
@@ -177,12 +176,14 @@ export function evaluateDuplicatePair(input: EvaluateDuplicatePairInput): Duplic
     (rent.status === "known" && rent.scoreBasisPoints === 0) ||
     (bedsBaths.status === "known" && bedsBaths.scoreBasisPoints === 0) ||
     (geographic.status === "known" && geographic.scoreBasisPoints === 0);
-  const compatiblePropertyFeature =
-    knownAtLeast(address, 6_000) ||
-    knownAtLeast(geographic, 5_000) ||
-    knownAtLeast(rent, 7_500) ||
-    knownAtLeast(bedsBaths, 5_000) ||
-    knownAtLeast(squareFeet, 5_000);
+  const strongPropertyAnchor =
+    knownAtLeast(address, 6_000) || knownAtLeast(geographic, 5_000) || photoMatched;
+  const missingCrossSourcePropertyAnchor =
+    left.source !== right.source && !hardIdentity && !strongPropertyAnchor;
+
+  if (missingCrossSourcePropertyAnchor) {
+    conflictReasonCodes.push("insufficient_property_anchor");
+  }
 
   let decision: DuplicatePairEvaluation["decision"];
   if (differentSourceListingIds || conflictingUnits) decision = "separate";
@@ -194,11 +195,9 @@ export function evaluateDuplicatePair(input: EvaluateDuplicatePairInput): Duplic
       weighted.scoreBasisPoints >= config.reviewThresholdBasisPoints
         ? "review"
         : "separate";
-  } else if (
-    (contactMatched || photoMatched) &&
-    !materialLocationConflict &&
-    compatiblePropertyFeature
-  ) {
+  } else if (missingCrossSourcePropertyAnchor) {
+    decision = "separate";
+  } else if ((contactMatched || photoMatched) && !materialLocationConflict) {
     decision = "link";
   } else if (
     weighted.scoreBasisPoints !== null &&

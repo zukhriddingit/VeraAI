@@ -304,7 +304,7 @@ function ListingCard({
           )}
           <span>
             {String(Math.round(listing.detailCompletenessBasisPoints / 100))}% details ·{" "}
-            {listing.enrichmentState.replaceAll("_", " ")}
+            {listing.enrichmentPresentationState.replaceAll("_", " ")}
           </span>
         </div>
 
@@ -327,7 +327,7 @@ function ListingCard({
               View original listing ↗
             </a>
           ) : (
-            <span className="source-link-unavailable">Original link unavailable</span>
+            <span className="source-link-unavailable">Original link unavailable from source</span>
           )}
           {canShortlist ? (
             <button

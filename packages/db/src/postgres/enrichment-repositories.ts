@@ -8,9 +8,11 @@ import {
   type ListingEnrichmentSnapshot,
   type VeraUserId
 } from "@vera/domain";
-import { and, asc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 
+import { sha256Text } from "../hashing.ts";
 import {
+  RepositoryIneligibleListingError,
   RepositoryJobLeaseError,
   type AsyncRepository,
   type ListingEnrichmentRepository
@@ -19,7 +21,9 @@ import { mapPostgresError } from "./errors.ts";
 import {
   canonicalListingSources,
   listingEnrichmentSnapshots,
-  listingEnrichmentStates
+  listingEnrichmentStates,
+  listingPhotos,
+  listingSourceRecordDispositions
 } from "./schema.ts";
 import type { PostgresExecutor } from "./types.ts";
 
@@ -74,6 +78,49 @@ function safeErrorCode(value: string): string {
   return code;
 }
 
+function observedPhotoRows(userId: VeraUserId, snapshot: ListingEnrichmentSnapshot) {
+  return snapshot.photos.map((photo) => ({
+    userId,
+    id: `photo-enrichment:${sha256Text(
+      `${userId}:${snapshot.listingSourceRecordId}:${photo.sourceUrl}:${String(photo.position)}`
+    ).slice(0, 40)}`,
+    listingSourceRecordId: snapshot.listingSourceRecordId,
+    sourceUrl: photo.sourceUrl,
+    fixtureAssetLabel: null,
+    byteHash: photo.safeContentHash,
+    perceptualHash: null,
+    byteSize: null,
+    width: photo.width,
+    height: photo.height,
+    mimeType: null,
+    perceptualHashVersion: null,
+    position: photo.position,
+    observedAt: instant(photo.observedAt)
+  }));
+}
+
+async function isEligibleSourceRecord(
+  db: PostgresExecutor,
+  userId: VeraUserId,
+  listingSourceRecordId: string
+): Promise<boolean> {
+  const rows = await db
+    .select({ disposition: listingSourceRecordDispositions.disposition })
+    .from(listingSourceRecordDispositions)
+    .where(
+      and(
+        eq(listingSourceRecordDispositions.userId, userId),
+        eq(listingSourceRecordDispositions.listingSourceRecordId, listingSourceRecordId)
+      )
+    )
+    .orderBy(
+      desc(listingSourceRecordDispositions.observedAt),
+      desc(listingSourceRecordDispositions.id)
+    )
+    .limit(1);
+  return rows[0]?.disposition !== "invalid_non_listing";
+}
+
 export function createPostgresEnrichmentRepository(
   db: PostgresExecutor,
   userId: VeraUserId
@@ -111,7 +158,16 @@ export function createPostgresEnrichmentRepository(
         .where(
           and(
             eq(canonicalListingSources.userId, userId),
-            eq(canonicalListingSources.canonicalListingId, canonicalListingId)
+            eq(canonicalListingSources.canonicalListingId, canonicalListingId),
+            sql`coalesce((
+              select ${listingSourceRecordDispositions.disposition}
+              from ${listingSourceRecordDispositions}
+              where ${listingSourceRecordDispositions.userId} = ${canonicalListingSources.userId}
+                and ${listingSourceRecordDispositions.listingSourceRecordId} = ${canonicalListingSources.listingSourceRecordId}
+              order by ${listingSourceRecordDispositions.observedAt} desc,
+                ${listingSourceRecordDispositions.id} desc
+              limit 1
+            ), 'accepted') <> 'invalid_non_listing'`
           )
         )
         .orderBy(asc(canonicalListingSources.listingSourceRecordId));
@@ -140,6 +196,42 @@ export function createPostgresEnrichmentRepository(
         .limit(1);
       return rows[0] ? mapPostgresEnrichmentSnapshotRow(rows[0].snapshot) : null;
     },
+    async projectCurrentObservedPhotos() {
+      const rows = await db
+        .select({ snapshot: listingEnrichmentSnapshots })
+        .from(listingEnrichmentStates)
+        .innerJoin(
+          listingEnrichmentSnapshots,
+          and(
+            eq(listingEnrichmentStates.userId, listingEnrichmentSnapshots.userId),
+            eq(listingEnrichmentStates.currentSnapshotId, listingEnrichmentSnapshots.id)
+          )
+        )
+        .where(
+          and(
+            eq(listingEnrichmentStates.userId, userId),
+            sql`coalesce((
+              select ${listingSourceRecordDispositions.disposition}
+              from ${listingSourceRecordDispositions}
+              where ${listingSourceRecordDispositions.userId} = ${listingEnrichmentStates.userId}
+                and ${listingSourceRecordDispositions.listingSourceRecordId} = ${listingEnrichmentStates.listingSourceRecordId}
+              order by ${listingSourceRecordDispositions.observedAt} desc,
+                ${listingSourceRecordDispositions.id} desc
+              limit 1
+            ), 'accepted') <> 'invalid_non_listing'`
+          )
+        );
+      const photos = rows.flatMap(({ snapshot }) =>
+        observedPhotoRows(userId, mapPostgresEnrichmentSnapshotRow(snapshot))
+      );
+      if (photos.length === 0) return 0;
+      const inserted = await db
+        .insert(listingPhotos)
+        .values(photos)
+        .onConflictDoNothing()
+        .returning({ id: listingPhotos.id });
+      return inserted.length;
+    },
     async markExpiredStale(input) {
       const now = instant(input);
       const rows = await db
@@ -162,6 +254,9 @@ export function createPostgresEnrichmentRepository(
     },
     async queue(input) {
       const listingSourceRecordId = EntityIdSchema.parse(input.listingSourceRecordId);
+      if (!(await isEligibleSourceRecord(db, userId, listingSourceRecordId))) {
+        throw new RepositoryIneligibleListingError(listingSourceRecordId);
+      }
       const requestedAt = IsoDateTimeSchema.parse(input.requestedAt);
       const current = await repository.getBySourceRecordId(listingSourceRecordId);
       const snapshot = await repository.getCurrentSnapshot(listingSourceRecordId);
@@ -253,7 +348,16 @@ export function createPostgresEnrichmentRepository(
                 isNull(listingEnrichmentStates.leaseExpiresAt),
                 lte(listingEnrichmentStates.leaseExpiresAt, now)
               ),
-              lte(listingEnrichmentStates.attemptCount, 2)
+              lte(listingEnrichmentStates.attemptCount, 2),
+              sql`coalesce((
+                select ${listingSourceRecordDispositions.disposition}
+                from ${listingSourceRecordDispositions}
+                where ${listingSourceRecordDispositions.userId} = ${listingEnrichmentStates.userId}
+                  and ${listingSourceRecordDispositions.listingSourceRecordId} = ${listingEnrichmentStates.listingSourceRecordId}
+                order by ${listingSourceRecordDispositions.observedAt} desc,
+                  ${listingSourceRecordDispositions.id} desc
+                limit 1
+              ), 'accepted') <> 'invalid_non_listing'`
             )
           )
           .orderBy(
@@ -298,6 +402,9 @@ export function createPostgresEnrichmentRepository(
       }
       try {
         const rows = await db.transaction(async (transaction) => {
+          if (!(await isEligibleSourceRecord(transaction, userId, sourceRecordId))) {
+            throw new RepositoryIneligibleListingError(sourceRecordId);
+          }
           await transaction
             .insert(listingEnrichmentSnapshots)
             .values({
@@ -316,6 +423,12 @@ export function createPostgresEnrichmentRepository(
             .onConflictDoNothing({
               target: [listingEnrichmentSnapshots.userId, listingEnrichmentSnapshots.id]
             });
+          if (snapshot.photos.length > 0) {
+            await transaction
+              .insert(listingPhotos)
+              .values(observedPhotoRows(userId, snapshot))
+              .onConflictDoNothing();
+          }
           return transaction
             .update(listingEnrichmentStates)
             .set({
@@ -341,7 +454,12 @@ export function createPostgresEnrichmentRepository(
         if (!rows[0]) throw new RepositoryJobLeaseError(sourceRecordId);
         return mapPostgresEnrichmentStateRow(rows[0]);
       } catch (error: unknown) {
-        if (error instanceof RepositoryJobLeaseError) throw error;
+        if (
+          error instanceof RepositoryJobLeaseError ||
+          error instanceof RepositoryIneligibleListingError
+        ) {
+          throw error;
+        }
         throw mapPostgresError(error);
       }
     },

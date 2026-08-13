@@ -6,7 +6,10 @@ import { describe, expect, it } from "vitest";
 import { DEMO_SEARCH_PROFILE, SOURCE_FIXTURES, normalizedFactEntries } from "../fixtures.ts";
 import { createPostgresDecisionRepositories } from "./decision-repositories.ts";
 import { createPostgresDecisionReconciliation } from "./decision-reconciliation.ts";
-import { createCorePostgresRepositories } from "./repositories.ts";
+import {
+  createCorePostgresRepositories,
+  createPostgresRepositoryProvider
+} from "./repositories.ts";
 import { activityEvents, decisionRuns, listingScores, riskSignals, users } from "./schema.ts";
 import { withPostgresTestDatabase } from "./testing.ts";
 
@@ -45,6 +48,63 @@ async function seedEvidence(db: Parameters<typeof createCorePostgresRepositories
 }
 
 describe("PostgreSQL decision reconciliation", () => {
+  it("excludes current invalid dispositions without deleting retained evidence", async () => {
+    await withPostgresTestDatabase(async ({ connection, db }) => {
+      await seedEvidence(db);
+      const provider = createPostgresRepositoryProvider(connection);
+      const repositories = provider.forUser(userId);
+      const invalidSource = SOURCE_FIXTURES[0]!.sourceRecord;
+      await repositories.sourceRecordDispositions.append({
+        id: "disposition-reconciliation-invalid",
+        listingSourceRecordId: invalidSource.id,
+        disposition: "invalid_non_listing",
+        reasonCode: "integration_non_listing",
+        evidence: { observedUrl: invalidSource.sourceUrl },
+        payloadHash: "e".repeat(64),
+        actor: "founder",
+        observedAt: now
+      });
+      await repositories.decisionJobs.ensureCorpusState(DEMO_SEARCH_PROFILE.id, now);
+      const job = await repositories.decisionJobs.bumpCorpusRevisionAndEnqueue({
+        id: "decision-job-disposition-1",
+        searchProfileId: DEMO_SEARCH_PROFILE.id,
+        trigger: "manual_recompute",
+        now
+      });
+      const claimed = await repositories.decisionJobs.claimNext({
+        leaseOwner: "decision-worker-disposition",
+        now,
+        leaseExpiresAt: "2026-07-20T18:05:00.000Z"
+      });
+      expect(claimed?.id).toBe(job.id);
+      const snapshot = await repositories.decisionReconciliation.readSnapshot({
+        searchProfileId: DEMO_SEARCH_PROFILE.id,
+        targetCorpusRevision: job.targetCorpusRevision
+      });
+      expect(snapshot.sourceRecords.map(({ sourceRecordId }) => sourceRecordId)).not.toContain(
+        invalidSource.id
+      );
+      const plan = evaluateCorpus(snapshot, { now });
+      await repositories.decisionReconciliation.applyPlan({
+        jobId: job.id,
+        leaseOwner: "decision-worker-disposition",
+        plan
+      });
+      await expect(repositories.rawListings.count()).resolves.toBe(SOURCE_FIXTURES.length);
+      await expect(repositories.sourceRecords.count()).resolves.toBe(SOURCE_FIXTURES.length);
+      const summaries = await repositories.canonicalListings.listSummaries();
+      expect(
+        (
+          await Promise.all(
+            summaries.map(({ id }) => repositories.sourceRecords.listByCanonicalListingId(id))
+          )
+        )
+          .flat()
+          .map(({ id }) => id)
+      ).not.toContain(invalidSource.id);
+    });
+  });
+
   it("applies one atomic plan and replays the same result idempotently", async () => {
     await withPostgresTestDatabase(async ({ db }) => {
       await seedEvidence(db);

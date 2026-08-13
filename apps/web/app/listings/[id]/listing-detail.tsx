@@ -216,7 +216,7 @@ export function ListingDetail({
           <p className="detail-title">{fields?.propertyName ?? detail.canonical.title}</p>
           <div className="detail-status-row">
             <span>{String(Math.round(completeness / 100))}% details complete</span>
-            <span>{label(detail.summary.enrichmentState)}</span>
+            <span>{label(detail.summary.enrichmentPresentationState)}</span>
             {best.source ? <span>Best detail source: {sourceNames[best.source]}</span> : null}
           </div>
         </div>
@@ -247,7 +247,7 @@ export function ListingDetail({
               View original listing ↗
             </a>
           ) : (
-            <span className="source-link-unavailable">Original link unavailable</span>
+            <span className="source-link-unavailable">Original link unavailable from source</span>
           )}
         </div>
       </section>
@@ -556,7 +556,9 @@ export function ListingDetail({
                     View original listing ↗
                   </a>
                 ) : (
-                  <span className="source-link-unavailable">Original link unavailable</span>
+                  <span className="source-link-unavailable">
+                    Original link unavailable from source
+                  </span>
                 )}
                 <details>
                   <summary>Field provenance ({provenance.length})</summary>
