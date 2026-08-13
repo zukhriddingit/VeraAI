@@ -93,11 +93,13 @@ describe("production PostgreSQL transfer safety", () => {
     expect(arguments_.join(" ")).not.toMatch(/--clean|--create|--role/iu);
   });
 
-  it("accepts only PostgreSQL's default empty public schema", () => {
+  it("accepts only PostgreSQL's default and Heroku-managed empty schemas", () => {
     expect(restoreTargetIsEmpty({ schemaNames: ["public"], tableCount: 0 })).toBe(true);
     expect(restoreTargetIsEmpty({ schemaNames: "{public}", tableCount: "0" })).toBe(true);
+    expect(restoreTargetIsEmpty({ schemaNames: ["_heroku", "public"], tableCount: 0 })).toBe(true);
     expect(restoreTargetIsEmpty({ schemaNames: ["drizzle", "public"], tableCount: 0 })).toBe(false);
     expect(restoreTargetIsEmpty({ schemaNames: ["public"], tableCount: 1 })).toBe(false);
+    expect(restoreTargetIsEmpty({ schemaNames: ["_heroku", "public"], tableCount: 1 })).toBe(false);
   });
 
   it.each(["vera;drop database vera", "vera/name", ""])(
