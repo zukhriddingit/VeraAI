@@ -16,9 +16,7 @@ describe("parsePostgresConfig", () => {
     expect(
       parsePostgresConfig({ ...valid, DATABASE_URL: "postgres://vera:secret@db.example.test/vera" })
         .connectionString
-    ).toBe(
-      "postgres://vera:secret@db.example.test/vera?sslmode=require&uselibpqcompat=true"
-    );
+    ).toBe("postgres://vera:secret@db.example.test/vera?sslmode=require&uselibpqcompat=true");
   });
 
   it("preserves explicit remote TLS configuration", () => {
