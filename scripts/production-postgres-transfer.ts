@@ -36,7 +36,7 @@ export function privateEvidencePath(input: string): string {
 function parseDatabaseUrl(value: string): URL {
   const url = new URL(value);
   if (
-    url.protocol !== "postgresql:" ||
+    (url.protocol !== "postgresql:" && url.protocol !== "postgres:") ||
     !url.hostname ||
     !url.username ||
     !url.password ||

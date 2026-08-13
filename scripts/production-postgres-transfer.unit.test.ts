@@ -9,6 +9,17 @@ import {
 } from "./production-postgres-transfer.ts";
 
 describe("production PostgreSQL transfer safety", () => {
+  it("accepts the standard postgres URI emitted by Heroku", () => {
+    expect(connectionEnvironment("postgres://vera:secret@db.example.test:5432/vera", {})).toEqual({
+      PGDATABASE: "vera",
+      PGHOST: "db.example.test",
+      PGPASSWORD: "secret",
+      PGPORT: "5432",
+      PGSSLMODE: "require",
+      PGUSER: "vera"
+    });
+  });
+
   it("keeps credentials out of subprocess arguments and diagnostics", () => {
     const url =
       "postgresql://vera:synthetic-secret@db.example.test:5432/vera?sslmode=require&application_name=vera-cutover";
