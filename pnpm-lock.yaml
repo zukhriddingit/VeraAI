@@ -40,6 +40,9 @@ importers:
       '@vera/policy':
         specifier: workspace:*
         version: link:packages/policy
+      '@vera/scoring':
+        specifier: workspace:*
+        version: link:packages/scoring
       '@vitest/coverage-v8':
         specifier: 4.1.10
         version: 4.1.10(vitest@4.1.10)

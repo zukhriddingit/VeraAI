@@ -74,7 +74,8 @@
     "test:live:founder-zillow": "VERA_RUN_LIVE_ZILLOW_RESEARCH_TESTS=1 vitest run --project unit apps/web/lib/live-founder-zillow-research.live.test.ts",
     "test:staging:gateway-http": "tsx scripts/staging/gateway-http-smoke.ts",
     "test:staging:web-push": "VERA_WEB_PUSH_STAGING_TEST=1 vitest run --project unit packages/notifications/src/web-push.staging.test.ts",
-    "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures"
+    "scoring:evaluate-fixtures": "pnpm --filter @vera/scoring run evaluate:fixtures",
+    "listing-integrity:repair": "tsx scripts/listing-integrity-repair.ts"
   },
   "devDependencies": {
     "@playwright/test": "1.61.1",
@@ -86,6 +87,7 @@
     "@vera/db": "workspace:*",
     "@vera/domain": "workspace:*",
     "@vera/policy": "workspace:*",
+    "@vera/scoring": "workspace:*",
     "@vitest/coverage-v8": "4.1.10",
     "esbuild": "0.28.1",
     "eslint": "9.39.5",

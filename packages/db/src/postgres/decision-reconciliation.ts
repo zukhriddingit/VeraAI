@@ -16,7 +16,7 @@ import {
   type PetPolicy,
   type VeraUserId
 } from "@vera/domain";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 
 import { canonicalJson, sha256Text } from "../hashing.ts";
 import {
@@ -48,6 +48,7 @@ import {
   duplicatePairEvaluations,
   fieldProvenance,
   listingPhotos,
+  listingSourceRecordDispositions,
   listingScores,
   listingSourceRecords,
   rawListings,
@@ -56,6 +57,32 @@ import {
 } from "./schema.ts";
 
 export const POSTGRES_DECISION_INSERT_BATCH_SIZE = 1_000;
+
+async function currentInvalidSourceIds(
+  db: PostgresExecutor,
+  userId: VeraUserId
+): Promise<ReadonlySet<string>> {
+  const rows = await db
+    .select({
+      listingSourceRecordId: listingSourceRecordDispositions.listingSourceRecordId,
+      disposition: listingSourceRecordDispositions.disposition
+    })
+    .from(listingSourceRecordDispositions)
+    .where(eq(listingSourceRecordDispositions.userId, userId))
+    .orderBy(
+      asc(listingSourceRecordDispositions.listingSourceRecordId),
+      desc(listingSourceRecordDispositions.observedAt),
+      desc(listingSourceRecordDispositions.id)
+    );
+  const seen = new Set<string>();
+  const invalid = new Set<string>();
+  for (const row of rows) {
+    if (seen.has(row.listingSourceRecordId)) continue;
+    seen.add(row.listingSourceRecordId);
+    if (row.disposition === "invalid_non_listing") invalid.add(row.listingSourceRecordId);
+  }
+  return invalid;
+}
 
 export function chunkForPostgresInsert<T>(values: readonly T[]): T[][] {
   const chunks: T[][] = [];
@@ -301,6 +328,7 @@ export function createPostgresDecisionReconciliation(
         .limit(1);
       const profileRow = profileRows[0];
       if (!profileRow) throw new Error("Decision search profile is missing.");
+      const invalidSourceIds = await currentInvalidSourceIds(db, userId);
       const sourceRows = await db
         .select({ source: listingSourceRecords, raw: rawListings })
         .from(listingSourceRecords)
@@ -339,15 +367,17 @@ export function createPostgresDecisionReconciliation(
           photo
         ]);
       }
-      const sourceRecords = sourceRows.map(({ source, raw }) => {
-        const record = mapListingSourceRecordRow(source);
-        return normalizedDecisionSource({
-          record,
-          raw: mapRawListingRow(raw),
-          provenance: provenanceBySource.get(record.id) ?? [],
-          photos: photosBySource.get(record.id) ?? []
+      const sourceRecords = sourceRows
+        .filter(({ source }) => !invalidSourceIds.has(source.id))
+        .map(({ source, raw }) => {
+          const record = mapListingSourceRecordRow(source);
+          return normalizedDecisionSource({
+            record,
+            raw: mapRawListingRow(raw),
+            provenance: provenanceBySource.get(record.id) ?? [],
+            photos: photosBySource.get(record.id) ?? []
+          });
         });
-      });
       const activeRows = await db
         .select()
         .from(canonicalListings)
@@ -372,10 +402,16 @@ export function createPostgresDecisionReconciliation(
             )
           )
           .orderBy(asc(canonicalListingSources.listingSourceRecordId));
+        const eligibleMemberIds = memberRows
+          .map(({ id }) => id)
+          .filter((id) => !invalidSourceIds.has(id));
+        if (eligibleMemberIds.length === 0) continue;
         priorCanonicals.push({
           canonicalListingId: listing.id,
-          memberSourceRecordIds: memberRows.map(({ id }) => id),
-          primarySourceRecordId: listing.primarySourceRecordId,
+          memberSourceRecordIds: eligibleMemberIds,
+          primarySourceRecordId: eligibleMemberIds.includes(listing.primarySourceRecordId)
+            ? listing.primarySourceRecordId
+            : eligibleMemberIds[0]!,
           lifecycleState: listing.lifecycleState,
           createdAt: listing.createdAt
         });
@@ -445,7 +481,10 @@ export function createPostgresDecisionReconciliation(
           .from(listingSourceRecords)
           .where(eq(listingSourceRecords.userId, userId))
           .orderBy(asc(listingSourceRecords.id));
-        const persistedSourceIds = persistedSources.map(({ id }) => id);
+        const invalidSourceIds = await currentInvalidSourceIds(tx, userId);
+        const persistedSourceIds = persistedSources
+          .map(({ id }) => id)
+          .filter((id) => !invalidSourceIds.has(id));
         if (canonicalJson([...plannedSourceIds].sort()) !== canonicalJson(persistedSourceIds)) {
           throw new Error("Decision plan must assign every persisted source exactly once.");
         }
@@ -473,7 +512,7 @@ export function createPostgresDecisionReconciliation(
             }
           }
         }
-        return applyValidatedPlan(tx, userId, jobRow, plan);
+        return applyValidatedPlan(tx, userId, jobRow, plan, invalidSourceIds);
       });
     }
   };
@@ -483,7 +522,8 @@ async function applyValidatedPlan(
   db: PostgresExecutor,
   userId: VeraUserId,
   job: typeof decisionJobs.$inferSelect,
-  plan: ReturnType<typeof DecisionPlanSchema.parse>
+  plan: ReturnType<typeof DecisionPlanSchema.parse>,
+  invalidSourceIds: ReadonlySet<string>
 ): Promise<AppliedDecisionRun> {
   const outputHash = planOutputHash(plan);
   const runId = safeRunId(job.id);
@@ -584,6 +624,31 @@ async function applyValidatedPlan(
       )
     );
   const createdAtById = new Map(existingActive.map(({ id, createdAt }) => [id, createdAt]));
+  const existingMembershipRows =
+    existingActive.length === 0
+      ? []
+      : await db
+          .select({
+            canonicalListingId: canonicalListingSources.canonicalListingId,
+            listingSourceRecordId: canonicalListingSources.listingSourceRecordId
+          })
+          .from(canonicalListingSources)
+          .where(
+            and(
+              eq(canonicalListingSources.userId, userId),
+              inArray(
+                canonicalListingSources.canonicalListingId,
+                existingActive.map(({ id }) => id)
+              )
+            )
+          );
+  const existingMembershipsByCanonical = new Map<string, string[]>();
+  for (const membership of existingMembershipRows) {
+    existingMembershipsByCanonical.set(membership.canonicalListingId, [
+      ...(existingMembershipsByCanonical.get(membership.canonicalListingId) ?? []),
+      membership.listingSourceRecordId
+    ]);
+  }
   const redirectByLoser = new Map(
     plan.supersessions.map((item) => [
       item.supersededCanonicalListingId,
@@ -594,6 +659,10 @@ async function applyValidatedPlan(
     if (activeIds.includes(id)) continue;
     const survivor = redirectByLoser.get(id);
     if (!survivor || !activeIds.includes(survivor)) {
+      const members = existingMembershipsByCanonical.get(id) ?? [];
+      if (members.length === 0 || members.every((sourceId) => invalidSourceIds.has(sourceId))) {
+        continue;
+      }
       throw new Error("Inactive canonical listing lacks a valid survivor redirect.");
     }
     await db

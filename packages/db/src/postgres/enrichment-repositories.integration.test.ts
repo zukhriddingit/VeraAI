@@ -1,10 +1,10 @@
 import type { ListingEnrichmentSnapshot, VeraUserId } from "@vera/domain";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
 
 import { CANONICAL_FIXTURES, DEMO_SEARCH_PROFILE, SOURCE_FIXTURES } from "../fixtures.ts";
 import { createPostgresRepositoryProvider } from "./repositories.ts";
-import { listingEnrichmentSnapshots, users } from "./schema.ts";
+import { listingEnrichmentSnapshots, listingPhotos, users } from "./schema.ts";
 import { withPostgresTestDatabase } from "./testing.ts";
 
 const aliceId = "018f9f64-7b5a-7c91-a12e-123456789abc" as VeraUserId;
@@ -59,7 +59,7 @@ function snapshot(listingSourceRecordId: string): ListingEnrichmentSnapshot {
         position: 0,
         width: 1024,
         height: 768,
-        safeContentHash: null,
+        safeContentHash: "f".repeat(64),
         observedAt: "2026-08-11T20:01:00.000Z"
       }
     ],
@@ -172,9 +172,32 @@ describe("PostgreSQL listing enrichment repository", () => {
         completeness: { basisPoints: 8_000 },
         photos: [{ position: 0 }]
       });
+      await expect(
+        alice.listingPhotos.listBySourceRecordId(source.sourceRecord.id)
+      ).resolves.toEqual([
+        expect.objectContaining({
+          sourceUrl: "https://photos.zillowstatic.com/fp/sanitized.webp",
+          position: 0,
+          width: 1024,
+          height: 768,
+          byteHash: "f".repeat(64),
+          byteSize: null,
+          mimeType: null
+        })
+      ]);
+      await db
+        .delete(listingPhotos)
+        .where(
+          and(
+            eq(listingPhotos.userId, aliceId),
+            eq(listingPhotos.listingSourceRecordId, source.sourceRecord.id)
+          )
+        );
+      await expect(alice.listingEnrichments.projectCurrentObservedPhotos()).resolves.toBe(1);
+      await expect(alice.listingEnrichments.projectCurrentObservedPhotos()).resolves.toBe(0);
       const querySpy = vi.spyOn(connection.pool, "query");
       const summaries = await alice.canonicalListings.listSummaries();
-      expect(querySpy).toHaveBeenCalledTimes(6);
+      expect(querySpy).toHaveBeenCalledTimes(7);
       querySpy.mockRestore();
       expect(summaries).toEqual(
         expect.arrayContaining([
@@ -287,6 +310,38 @@ describe("PostgreSQL listing enrichment repository", () => {
       await expect(
         alice.listingEnrichments.getCurrentSnapshot(source.sourceRecord.id)
       ).resolves.toMatchObject({ source: "zillow" });
+
+      await alice.sourceRecordDispositions.append({
+        id: "disposition-enrichment-invalid",
+        listingSourceRecordId: source.sourceRecord.id,
+        disposition: "invalid_non_listing",
+        reasonCode: "test_non_listing",
+        evidence: { observedUrl: source.sourceRecord.sourceUrl },
+        payloadHash: "e".repeat(64),
+        actor: "founder",
+        observedAt: "2026-08-12T02:08:00.000Z"
+      });
+      await expect(
+        alice.listingEnrichments.queue({
+          listingSourceRecordId: source.sourceRecord.id,
+          reason: "user_refresh",
+          requestedAt: "2026-08-12T02:09:00.000Z",
+          force: true
+        })
+      ).rejects.toThrow(/ineligible for enrichment/u);
+      await expect(
+        alice.listingEnrichments.claim({
+          leaseOwner: "enrichment-worker-4",
+          now: "2026-08-12T02:09:00.000Z",
+          leaseExpiresAt: "2026-08-12T02:11:00.000Z"
+        })
+      ).resolves.toBeNull();
+      await expect(
+        alice.sourceRecords.listByCanonicalListingId(canonicalListing.id)
+      ).resolves.toEqual([]);
+      await expect(alice.canonicalListings.listSummaries()).resolves.not.toEqual(
+        expect.arrayContaining([expect.objectContaining({ id: canonicalListing.id })])
+      );
     });
   });
 });

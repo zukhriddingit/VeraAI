@@ -169,6 +169,21 @@ export const ListingSourceRecordSchema = z
     }
   });
 
+export const ListingSourceRecordDispositionSchema = z.enum(["accepted", "invalid_non_listing"]);
+
+export const ListingSourceRecordDispositionEventSchema = z
+  .object({
+    id: EntityIdSchema,
+    listingSourceRecordId: EntityIdSchema,
+    disposition: ListingSourceRecordDispositionSchema,
+    reasonCode: z.string().trim().min(1).max(100),
+    evidence: JsonObjectSchema,
+    payloadHash: Sha256Schema,
+    actor: z.enum(["system", "founder"]),
+    observedAt: IsoDateTimeSchema
+  })
+  .strict();
+
 export const ListingPhotoSchema = z
   .object({
     id: EntityIdSchema,
@@ -201,14 +216,18 @@ export const ListingPhotoSchema = z
       });
     }
 
-    const decodedMetadata = [photo.byteSize, photo.width, photo.height, photo.mimeType];
-    const metadataCount = decodedMetadata.filter((value) => value !== null).length;
-    if (metadataCount !== 0 && metadataCount !== decodedMetadata.length) {
+    if ((photo.width === null) !== (photo.height === null)) {
+      context.addIssue({
+        code: "custom",
+        path: ["width"],
+        message: "Observed photo dimensions require both width and height or neither."
+      });
+    }
+    if ((photo.byteSize === null) !== (photo.mimeType === null)) {
       context.addIssue({
         code: "custom",
         path: ["byteSize"],
-        message:
-          "Decoded photo metadata must include byte size, dimensions, and MIME type together."
+        message: "Fetched photo metadata requires byte size and MIME type together."
       });
     }
     if ((photo.perceptualHash === null) !== (photo.perceptualHashVersion === null)) {
@@ -405,6 +424,10 @@ export type PropertyType = z.infer<typeof PropertyTypeSchema>;
 export type RawListingCapture = z.infer<typeof RawListingCaptureSchema>;
 export type RawListing = z.infer<typeof RawListingSchema>;
 export type ListingSourceRecord = z.infer<typeof ListingSourceRecordSchema>;
+export type ListingSourceRecordDisposition = z.infer<typeof ListingSourceRecordDispositionSchema>;
+export type ListingSourceRecordDispositionEvent = z.infer<
+  typeof ListingSourceRecordDispositionEventSchema
+>;
 export type ListingPhoto = z.infer<typeof ListingPhotoSchema>;
 export type FieldProvenance = z.infer<typeof FieldProvenanceSchema>;
 export type FieldExtractionMethod = z.infer<typeof FieldExtractionMethodSchema>;

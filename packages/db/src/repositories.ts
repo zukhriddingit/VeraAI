@@ -35,6 +35,7 @@ import type {
   ListingExtractionRun,
   ListingLifecycleState,
   ListingPhoto,
+  ListingSourceRecordDispositionEvent,
   ListingScore,
   ListingScoreV2,
   ListingSourceRecord,
@@ -143,6 +144,13 @@ export class RepositoryJobLeaseError extends Error {
   }
 }
 
+export class RepositoryIneligibleListingError extends Error {
+  constructor(readonly listingSourceRecordId: string) {
+    super(`Listing source record ${listingSourceRecordId} is ineligible for enrichment.`);
+    this.name = "RepositoryIneligibleListingError";
+  }
+}
+
 export class StaleCorpusRevisionError extends Error {
   readonly expectedRevision: number;
   readonly actualRevision: number;
@@ -214,6 +222,17 @@ export interface ListingSourceRecordRepository {
 export interface ListingPhotoRepository {
   insert(photo: ListingPhoto): ListingPhoto;
   getById(id: string): ListingPhoto | null;
+  listBySourceRecordId(listingSourceRecordId: string): readonly ListingPhoto[];
+}
+
+export interface ListingSourceRecordDispositionRepository {
+  append(event: ListingSourceRecordDispositionEvent): {
+    readonly event: ListingSourceRecordDispositionEvent;
+    readonly inserted: boolean;
+  };
+  getCurrent(listingSourceRecordId: string): ListingSourceRecordDispositionEvent | null;
+  listCurrent(): readonly ListingSourceRecordDispositionEvent[];
+  isEligible(listingSourceRecordId: string): boolean;
 }
 
 export interface QueueListingEnrichmentInput {
@@ -262,6 +281,7 @@ export interface ListingEnrichmentRepository {
   getBySourceRecordId(sourceRecordId: string): ListingEnrichmentRecord | null;
   listByCanonicalListingId(canonicalListingId: string): readonly ListingEnrichmentRecord[];
   getCurrentSnapshot(sourceRecordId: string): ListingEnrichmentSnapshot | null;
+  projectCurrentObservedPhotos(): number;
   markExpiredStale(now: string): number;
   queue(input: QueueListingEnrichmentInput): QueueListingEnrichmentResult;
   claim(input: ClaimListingEnrichmentInput): ListingEnrichmentRecord | null;
@@ -738,6 +758,7 @@ export interface UserRepositories {
   readonly rawListings: AsyncRepository<RawListingRepository>;
   readonly sourceRecords: AsyncRepository<ListingSourceRecordRepository>;
   readonly listingPhotos: AsyncRepository<ListingPhotoRepository>;
+  readonly sourceRecordDispositions: AsyncRepository<ListingSourceRecordDispositionRepository>;
   readonly listingEnrichments: AsyncRepository<ListingEnrichmentRepository>;
   readonly fieldProvenance: AsyncRepository<FieldProvenanceRepository>;
   readonly listingExtractions: AsyncRepository<ListingExtractionRepository>;

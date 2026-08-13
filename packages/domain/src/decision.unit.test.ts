@@ -152,12 +152,23 @@ describe("production decision domain", () => {
     ]).toEqual([
       "decision-normalization.v1",
       "listing-photo.dhash64.v1",
-      "listing-dedupe.v1",
+      "listing-dedupe.v2",
       "canonical-stitch.v1",
       "listing-score.v2",
       "listing-risk.v2",
       "decision-plan.v1"
     ]);
+  });
+
+  it("keeps historical v1 pair evaluations readable after the v2 dedupe bump", () => {
+    expect(
+      DuplicatePairEvaluationSchema.parse({
+        ...pairEvaluation,
+        algorithmVersion: "listing-dedupe.v1"
+      })
+    ).toMatchObject({
+      algorithmVersion: "listing-dedupe.v1"
+    });
   });
 
   it("accepts only the closed decision-job states", () => {

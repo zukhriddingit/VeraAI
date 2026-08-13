@@ -12,6 +12,7 @@ import {
   BOSTON_CRAIGSLIST_CONFIGURATION,
   HousingSourceConfigurationSchema,
   configuredBrowserResearchPolicy,
+  classifyObservedListingUrl,
   type BrowserResearchObservedListing,
   type BrowserResearchObservedListingInput,
   type BrowserResearchPlan,
@@ -188,6 +189,24 @@ function adapter(
     configuredSource === undefined
       ? BrowserResearchSourcePolicy[source]
       : configuredBrowserResearchPolicy(configuredSource);
+  const assertListingUrl = (listing: BrowserResearchObservedListing): void => {
+    const sourceUrl = listing.finalDetailPageUrl ?? listing.canonicalObservedUrl;
+    const classification = classifyObservedListingUrl({
+      source,
+      url: sourceUrl,
+      ...(configuredSource === undefined ? {} : { allowedDomain: configuredSource.allowedDomain })
+    });
+    if (
+      classification === "non_listing" ||
+      (source === "bu_off_campus" && classification !== "listing")
+    ) {
+      throw new Error(
+        source === "bu_off_campus"
+          ? "offcampus_partners_property_url_required"
+          : "observed_non_listing_url"
+      );
+    }
+  };
   return {
     source,
     connectorId: BROWSER_SOURCE_CONNECTOR_IDS[source],
@@ -262,6 +281,7 @@ function adapter(
       ) {
         throw new Error("browser_research_configuration_mismatch");
       }
+      assertListingUrl(listing);
       const sourceUrl = listing.finalDetailPageUrl ?? listing.canonicalObservedUrl;
       const observed = observedFacts(listing);
       const structured = StructuredListingInputSchema.parse({
@@ -314,6 +334,7 @@ function adapter(
       ) {
         throw new Error("browser_research_configuration_mismatch");
       }
+      assertListingUrl(listing);
       const observed = observedFacts(listing);
       return {
         connectorId: BROWSER_SOURCE_CONNECTOR_IDS[source],
@@ -357,29 +378,6 @@ export const ZILLOW_BROWSER_SOURCE_ADAPTER = adapter("zillow");
 export const APARTMENTS_BROWSER_SOURCE_ADAPTER = adapter("apartments_com");
 export const FACEBOOK_MARKETPLACE_BROWSER_SOURCE_ADAPTER = adapter("facebook_marketplace");
 
-function assertOffCampusPartnersPropertyUrl(
-  configuration: HousingSourceConfiguration,
-  listing: BrowserResearchObservedListingInput
-): void {
-  const sourceUrl = listing.finalDetailPageUrl ?? listing.canonicalObservedUrl;
-  try {
-    const parsed = new URL(sourceUrl);
-    const path = parsed.pathname.split("/").filter((segment) => segment.length > 0);
-    if (
-      parsed.protocol === "https:" &&
-      parsed.hostname === configuration.allowedDomain &&
-      path.length === 4 &&
-      path[0] === "housing" &&
-      path[1] === "property"
-    ) {
-      return;
-    }
-  } catch {
-    // The shared listing schema reports malformed URLs; this guard reports the adapter contract.
-  }
-  throw new Error("offcampus_partners_property_url_required");
-}
-
 export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
   readonly source = "bu_off_campus" as const;
   readonly connectorId = BROWSER_SOURCE_CONNECTOR_IDS.bu_off_campus;
@@ -400,7 +398,6 @@ export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
   }
 
   toEnvelope(listing: BrowserResearchObservedListingInput): RawListingEnvelope {
-    assertOffCampusPartnersPropertyUrl(this.configuration, listing);
     return this.#delegate.toEnvelope(listing);
   }
 
@@ -408,7 +405,6 @@ export class OffCampusPartnersAdapter implements BrowserSourceAdapter {
     listing: BrowserResearchObservedListingInput,
     input: { readonly veraRunId: string; readonly searchProfileId: string }
   ): JsonObject {
-    assertOffCampusPartnersPropertyUrl(this.configuration, listing);
     return this.#delegate.safeCaptureMetadata(listing, input);
   }
 }

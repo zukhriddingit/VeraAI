@@ -43,6 +43,13 @@
       "when": 1786497705387,
       "tag": "0005_listing_enrichment",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1786598735922,
+      "tag": "0006_listing_integrity_repair",
+      "breakpoints": true
     }
   ]
 }

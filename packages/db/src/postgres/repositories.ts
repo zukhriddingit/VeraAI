@@ -10,7 +10,7 @@ import {
   VeraUserIdSchema,
   type VeraUserId
 } from "@vera/domain";
-import { and, asc, count, eq } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray } from "drizzle-orm";
 
 import { computeRawContentHash, computeRawImportIdempotencyKey } from "../hashing.ts";
 import type { UserRepositories, UserRepositoryProvider } from "../repositories.ts";
@@ -27,6 +27,7 @@ import { createPostgresIntegrationRefreshLeaseRepository } from "./integration-r
 import { createPostgresMaritimeRepositories } from "./maritime-repositories.ts";
 import { createPostgresNotificationRepositories } from "./notification-repositories.ts";
 import { createPostgresPolicyReader } from "./policy-repository.ts";
+import { createPostgresSourceRecordDispositionRepository } from "./source-record-disposition-repository.ts";
 import {
   mapActivityEventRow,
   mapFieldProvenanceRow,
@@ -43,6 +44,7 @@ import {
   listingExtractions,
   listingPhotos,
   listingSourceRecords,
+  listingSourceRecordDispositions,
   rawListings,
   searchProfiles
 } from "./schema.ts";
@@ -303,7 +305,36 @@ export function createCorePostgresRepositories(
           )
         )
         .orderBy(asc(listingSourceRecords.id));
-      return rows.map(({ sourceRecord }) => mapListingSourceRecordRow(sourceRecord));
+      const sourceIds = rows.map(({ sourceRecord }) => sourceRecord.id);
+      const dispositionRows =
+        sourceIds.length === 0
+          ? []
+          : await db
+              .select()
+              .from(listingSourceRecordDispositions)
+              .where(
+                and(
+                  eq(listingSourceRecordDispositions.userId, userId),
+                  inArray(listingSourceRecordDispositions.listingSourceRecordId, sourceIds)
+                )
+              )
+              .orderBy(
+                asc(listingSourceRecordDispositions.listingSourceRecordId),
+                desc(listingSourceRecordDispositions.observedAt),
+                desc(listingSourceRecordDispositions.id)
+              );
+      const currentDisposition = new Map<string, (typeof dispositionRows)[number]>();
+      for (const row of dispositionRows) {
+        if (!currentDisposition.has(row.listingSourceRecordId)) {
+          currentDisposition.set(row.listingSourceRecordId, row);
+        }
+      }
+      return rows
+        .filter(
+          ({ sourceRecord }) =>
+            currentDisposition.get(sourceRecord.id)?.disposition !== "invalid_non_listing"
+        )
+        .map(({ sourceRecord }) => mapListingSourceRecordRow(sourceRecord));
     },
     async count() {
       const rows = await db
@@ -333,6 +364,20 @@ export function createCorePostgresRepositories(
         .where(and(eq(listingPhotos.userId, userId), eq(listingPhotos.id, id)))
         .limit(1);
       return rows[0] ? mapListingPhotoRow(rows[0]) : null;
+    },
+    async listBySourceRecordId(listingSourceRecordIdInput) {
+      const listingSourceRecordId = EntityIdSchema.parse(listingSourceRecordIdInput);
+      const rows = await db
+        .select()
+        .from(listingPhotos)
+        .where(
+          and(
+            eq(listingPhotos.userId, userId),
+            eq(listingPhotos.listingSourceRecordId, listingSourceRecordId)
+          )
+        )
+        .orderBy(asc(listingPhotos.position), asc(listingPhotos.id));
+      return rows.map(mapListingPhotoRow);
     }
   };
 
@@ -534,6 +579,7 @@ export function createPostgresUserRepositories(
     ...createPostgresMaritimeRepositories(db, userId),
     ...createPostgresNotificationRepositories(db, userId),
     listingEnrichments: createPostgresEnrichmentRepository(db, userId),
+    sourceRecordDispositions: createPostgresSourceRecordDispositionRepository(db, userId),
     ...createCorePostgresRepositories(db, userId),
     ...createStandardPostgresRepositories(db, userId),
     sourcePolicyManifests: createPostgresPolicyReader(db),
