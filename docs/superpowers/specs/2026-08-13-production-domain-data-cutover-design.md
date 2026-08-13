@@ -1,6 +1,6 @@
 # Production Domain and Data Cutover Design
 
-Status: Proposed — architecture approved in the task; written specification pending review
+Status: Approved
 Date: 2026-08-13
 
 ## Purpose
