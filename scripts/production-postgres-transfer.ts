@@ -108,7 +108,13 @@ export function restoreTargetIsEmpty(input: {
       : typeof input.tableCount === "string" && /^\d+$/u.test(input.tableCount)
         ? Number(input.tableCount)
         : -1;
-  return tableCount === 0 && JSON.stringify(schemaNames) === JSON.stringify(["public"]);
+  const allowedEmptySchemaSets = [["public"], ["_heroku", "public"]];
+  return (
+    tableCount === 0 &&
+    allowedEmptySchemaSets.some(
+      (allowedSchemaNames) => JSON.stringify(schemaNames) === JSON.stringify(allowedSchemaNames)
+    )
+  );
 }
 
 async function checkedSpawn(
