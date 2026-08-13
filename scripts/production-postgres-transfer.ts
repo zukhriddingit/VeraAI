@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
 import { createReadStream } from "node:fs";
-import { chmod, readFile, stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { chmod, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { openPostgresConnection, parsePostgresConfig } from "@vera/db";
@@ -86,11 +86,44 @@ export function redactedDatabaseLabel(value: string): string {
   return `${url.hostname}:${url.port || "5432"}${url.pathname}`;
 }
 
-export function restoreArguments(databaseName: string, dumpPath: string): string[] {
+export function restoreArguments(
+  databaseName: string,
+  dumpPath: string,
+  restoreListPath: string
+): string[] {
   if (!/^[a-zA-Z0-9_-]+$/u.test(databaseName)) {
     throw new Error("Restore database name is invalid.");
   }
-  return ["--no-owner", "--no-acl", "--exit-on-error", "--dbname", databaseName, dumpPath];
+  return [
+    "--no-owner",
+    "--no-acl",
+    "--exit-on-error",
+    "--use-list",
+    restoreListPath,
+    "--dbname",
+    databaseName,
+    dumpPath
+  ];
+}
+
+export function filteredRestoreList(value: string): string {
+  const schemaNames: string[] = [];
+  let omittedPublicSchemaDefinitions = 0;
+  const lines = value.split(/\r?\n/u).filter((line) => {
+    const match = line.match(/^\d+; \d+ \d+ SCHEMA - ([^ ]+) [^ ]+$/u);
+    if (!match) return true;
+    schemaNames.push(match[1] ?? "");
+    if (match[1] !== "public") return true;
+    omittedPublicSchemaDefinitions += 1;
+    return false;
+  });
+  if (
+    omittedPublicSchemaDefinitions !== 1 ||
+    JSON.stringify(schemaNames) !== JSON.stringify(["drizzle", "public"])
+  ) {
+    throw new Error("Production archive schema definitions are unexpected.");
+  }
+  return lines.join("\n");
 }
 
 export function restoreTargetIsEmpty(input: {
@@ -139,6 +172,40 @@ async function checkedSpawn(
     child.once("exit", (code) => {
       if (code === 0) resolvePromise();
       else reject(new Error(`${command} failed with redacted output.`));
+    });
+  });
+}
+
+async function capturedRestoreList(
+  dumpPath: string,
+  environment: NodeJS.ProcessEnv
+): Promise<string> {
+  return await new Promise<string>((resolvePromise, reject) => {
+    const child = spawn("pg_restore", ["--list", dumpPath], {
+      env: environment,
+      shell: false,
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    const chunks: Buffer[] = [];
+    let outputBytes = 0;
+    let outputTooLarge = false;
+    child.stdout.on("data", (chunk: Buffer) => {
+      outputBytes += chunk.byteLength;
+      if (outputBytes > 1_048_576) {
+        outputTooLarge = true;
+        child.kill();
+      } else {
+        chunks.push(chunk);
+      }
+    });
+    child.stderr.resume();
+    child.once("error", () => reject(new Error("pg_restore is unavailable.")));
+    child.once("exit", (code) => {
+      if (code === 0 && !outputTooLarge) {
+        resolvePromise(Buffer.concat(chunks).toString("utf8"));
+      } else {
+        reject(new Error("pg_restore list failed with redacted output."));
+      }
     });
   });
 }
@@ -202,7 +269,6 @@ async function prepareEmptyTarget(databaseUrl: string): Promise<void> {
     ) {
       throw new Error("Production restore target is not empty.");
     }
-    await connection.pool.query("drop schema public");
   } catch (error) {
     if (error instanceof Error && error.message === "Production restore target is not empty.") {
       throw error;
@@ -261,7 +327,22 @@ async function main(): Promise<void> {
       await prepareEmptyTarget(databaseUrl);
       const databaseName = environment.PGDATABASE;
       if (!databaseName) throw new Error("Restore target database name is missing.");
-      await checkedSpawn("pg_restore", restoreArguments(databaseName, dumpPath), environment);
+      const restoreListDirectory = await mkdtemp(join(dirname(dumpPath), ".vera-restore-list-"));
+      try {
+        const restoreListPath = join(restoreListDirectory, "toc.list");
+        await writeFile(
+          restoreListPath,
+          filteredRestoreList(await capturedRestoreList(dumpPath, environment)),
+          { mode: 0o600 }
+        );
+        await checkedSpawn(
+          "pg_restore",
+          restoreArguments(databaseName, dumpPath, restoreListPath),
+          environment
+        );
+      } finally {
+        await rm(restoreListDirectory, { recursive: true, force: true });
+      }
     }
   }
 

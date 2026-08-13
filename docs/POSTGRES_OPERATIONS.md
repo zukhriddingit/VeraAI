@@ -76,10 +76,13 @@ chmod 0600 "$VERA_GREEN_DATABASE_URL_FILE"
 ```
 
 Require the new target to contain no application tables and only PostgreSQL's default empty `public`
-schema. The guarded restore removes that empty schema so the dump can recreate both `public` and
-`drizzle`; it refuses any other target state. Restore without `--clean` or `--create`, then compare
-every public table count, migration hash, append-only control, tenant foreign key, and forbidden
-browser action count:
+schema, optionally alongside Heroku's provider-owned `_heroku` schema. Heroku also installs its
+provider-owned `pg_stat_statements` extension in `public`, so the guarded restore keeps `public` and
+omits exactly the archive's `public` schema-definition entry while restoring every application
+object and row. It still requires exactly the reviewed `drizzle` and `public` archive schemas and
+refuses any other target state. Restore without `--clean` or `--create`, then compare every public
+table count, migration hash, append-only control, tenant foreign key, and forbidden browser action
+count:
 
 ```sh
 pnpm postgres:production-transfer restore --database-url-file "$VERA_GREEN_DATABASE_URL_FILE" --dump-file "$VERA_SOURCE_DUMP_FILE" --confirm-empty-target
