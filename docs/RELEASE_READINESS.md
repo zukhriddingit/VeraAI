@@ -1,5 +1,32 @@
 # Vera Founder Release Readiness
 
+## 2026-08-13 production application cutover
+
+Current application decision: **no-go until cutover acceptance completes**. The approved target is
+Heroku web + Heroku deterministic worker + same-region Heroku Postgres, with marketing on Vercel and
+approved browser dispatch through Maritime to the unchanged signed DigitalOcean Gateway. The
+historical founder-core/browser findings below remain evidence history rather than the current
+application placement contract.
+
+Production promotion requires all of these current, directly observed gates:
+
+- a verified encrypted source backup and an exact source/destination safe-count manifest match;
+- migrations current and the hosted seed idempotent;
+- web and worker images built from and labeled with the same merged source SHA;
+- one Heroku release containing both process types;
+- `/api/ready` returning ready ten consecutive times across at least five minutes;
+- founder authentication, inbox, listing detail, source links, provenance, and activity history;
+- one idempotent deterministic worker job without an external side effect;
+- `verahousing.app` serving the Vercel marketing deployment, valid TLS, and `www` redirecting to the
+  apex while `app.verahousing.app` remains the product;
+- forbidden browser-action count zero and unpaired/unshared browser access still fail-closed;
+- DigitalOcean source data, the Railway recovery volume, and the accepted OpenClaw Gateway retained
+  unchanged.
+
+A liveness response, static marketing page, cached count, or local tunnel is not production
+acceptance. Use `infra/heroku/production-manifest.json` and `docs/POSTGRES_OPERATIONS.md` as the
+current application cutover contract.
+
 Date: 2026-07-27
 
 Current decision: **no-go for founder staging release**. Local application, PostgreSQL, policy,

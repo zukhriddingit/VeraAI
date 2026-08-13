@@ -1,5 +1,23 @@
 # Founder-release topology
 
+## Current production overlay
+
+```mermaid
+flowchart LR
+  U["Authenticated founder"] --> H["Heroku web\none process"]
+  H --> P[("Heroku Postgres\ncanonical state")]
+  D["Heroku deterministic worker\none process"] --> P
+  D -->|"bounded browser dispatch"| M["Maritime orchestration"]
+  M --> G["Existing signed DigitalOcean Gateway"]
+  E["Official Chrome extension\none explicitly shared tab"] -->|"outbound WSS"| G
+```
+
+The public web and deterministic worker are released together from one reviewed commit. Maritime
+orchestrates only approved browser work; it does not host the production database or local browser
+session. The Gateway remains an independently deployed immutable boundary. The historical
+`founder_core` profile below remains useful release evidence but is not the current application
+placement contract.
+
 ## Active `founder_core`
 
 ```mermaid

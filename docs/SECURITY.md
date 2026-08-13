@@ -21,7 +21,13 @@ The code defines strict source-job, browser-node, browser-execution, Maritime di
 
 ## Trust boundaries
 
-Maritime is Vera's primary execution and deployment environment. The production adapter may wake and observe the exact configured worker/gateway deployments; dashboard triggers wake the worker. PostgreSQL owns job metadata, leases, schedules, bounded retries, results, policy, and audit. Maritime must not own authenticated consumer-site browser sessions. `LocalMockMaritimeOrchestrator` remains the default no-network test double.
+Heroku is the production application/database failure domain: one web process, one deterministic
+worker process, and one same-region managed PostgreSQL database. Maritime remains Vera's approved
+browser-orchestration environment. The production adapter may dispatch to and observe the exact
+configured browser Gateway, while PostgreSQL owns job metadata, leases, schedules, bounded retries,
+results, policy, and audit. Maritime and Heroku must not own authenticated consumer-site browser
+sessions; those stay in the explicitly shared local profile. `LocalMockMaritimeOrchestrator` remains
+the default no-network test double.
 
 The runtime wake call carries only the exact Maritime worker agent ID. Before wake, Vera writes a tenant-owned, expiring dispatch with a fixed issuer, exact audience, globally unique nonce hash, source-job reference, and payload hash. A worker may claim the job only while that dispatch is accepted, unexpired, unconsumed, and audience-matched. Wake failures expose closed error codes; raw Maritime logs never enter Vera. Operator deploy keys are separate from the narrower server runtime key.
 

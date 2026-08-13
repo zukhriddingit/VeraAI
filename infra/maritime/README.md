@@ -2,7 +2,16 @@
 
 Status: operator-controlled; no automatic deployment
 
-Maritime is Vera's primary production execution and scheduling plane. PostgreSQL remains canonical for users, policy, jobs, dispatch attempts, schedules, results, notification deliveries, and audit events. Maritime receives only an agent identifier when Vera wakes the worker; the worker claims accepted work from PostgreSQL.
+Maritime is Vera's approved production browser-orchestration plane. The Heroku worker owns normal
+deterministic queue processing and may dispatch a bounded browser operation through Maritime;
+PostgreSQL remains canonical for users, policy, jobs, dispatch attempts, schedules, results,
+notification deliveries, and audit events. Maritime receives only bounded identifiers and never
+owns the authenticated local browser session.
+
+The founder-core and worker-deployment sections below preserve the prior Maritime staging profile
+and its recovery evidence. They do not replace the current Heroku web/worker/database production
+contract in `infra/heroku/production-manifest.json`. The existing signed DigitalOcean Gateway remains
+separate and unchanged.
 
 ## Active founder-core profile
 

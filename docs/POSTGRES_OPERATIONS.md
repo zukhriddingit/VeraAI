@@ -18,6 +18,87 @@ TEST_DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera_test pnpm 
 DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera pnpm postgres:reset
 ```
 
+## Heroku production cutover
+
+The production application contract is one Heroku web process, one Heroku deterministic worker,
+and one same-region Heroku Postgres Standard-0-or-higher database. Verify the non-secret topology
+before any provider mutation:
+
+```sh
+pnpm verify:heroku-production
+heroku app:info --app vera-housing-app
+heroku ps --app vera-housing-app
+heroku addons --app vera-housing-app
+heroku domains --app vera-housing-app
+```
+
+Inspect the current price and capabilities of `heroku-postgresql:standard-0` and obtain founder
+approval for the exact recurring charge before provisioning. Do not substitute an Essential/dev
+plan merely to avoid that gate.
+
+All live database URLs and artifacts use permission-restricted files. The variables below contain
+file paths, never connection strings:
+
+```sh
+umask 077
+VERA_CUTOVER_DIR=/private/tmp/vera-production-cutover
+VERA_SOURCE_DATABASE_URL_FILE=/private/tmp/vera-production-cutover/source-database-url.txt
+VERA_GREEN_DATABASE_URL_FILE=/private/tmp/vera-production-cutover/green-database-url.txt
+VERA_SOURCE_MANIFEST_FILE=/private/tmp/vera-production-cutover/source-manifest.json
+VERA_SOURCE_DUMP_FILE=/private/tmp/vera-production-cutover/source.dump
+VERA_RESTORE_VERIFICATION_FILE=/private/tmp/vera-production-cutover/restore-verification.json
+mkdir -p "$VERA_CUTOVER_DIR"
+chmod 0700 "$VERA_CUTOVER_DIR"
+```
+
+Populate the source URL file through the reviewed private SSH-tunnel flow and set mode `0600`.
+Never echo or paste its value. With every source writer stopped and `pg_stat_activity` proving a
+write-free source, capture the manifest and backup:
+
+```sh
+pnpm postgres:production-manifest capture --database-url-file "$VERA_SOURCE_DATABASE_URL_FILE" --output-file "$VERA_SOURCE_MANIFEST_FILE"
+pnpm postgres:production-transfer dump --database-url-file "$VERA_SOURCE_DATABASE_URL_FILE" --dump-file "$VERA_SOURCE_DUMP_FILE"
+pnpm postgres:production-transfer list --dump-file "$VERA_SOURCE_DUMP_FILE"
+```
+
+Provision the approved green database without promoting it:
+
+```sh
+heroku addons:create heroku-postgresql:standard-0 --app vera-housing-app --as VERA_GREEN_DATABASE --wait
+umask 077
+heroku config:get VERA_GREEN_DATABASE_URL --app vera-housing-app > "$VERA_GREEN_DATABASE_URL_FILE"
+chmod 0600 "$VERA_GREEN_DATABASE_URL_FILE"
+```
+
+Require the new target to be empty, restore without `--clean` or `--create`, then compare every
+public table count, migration hash, append-only control, tenant foreign key, and forbidden browser
+action count:
+
+```sh
+pnpm postgres:production-transfer restore --database-url-file "$VERA_GREEN_DATABASE_URL_FILE" --dump-file "$VERA_SOURCE_DUMP_FILE" --confirm-empty-target
+pnpm postgres:production-manifest compare --database-url-file "$VERA_GREEN_DATABASE_URL_FILE" --expected-file "$VERA_SOURCE_MANIFEST_FILE" --output-file "$VERA_RESTORE_VERIFICATION_FILE"
+```
+
+Any mismatch stops promotion. Run migrations and the hosted seed through a process-local
+`DATABASE_URL` loaded from the private file without printing it; run the seed twice and require the
+second result to report `inserted: 0`. Validate candidate web readiness, worker health/readiness, and
+one deterministic no-side-effect job against green, then capture a Heroku logical backup.
+
+Keep maintenance mode enabled and the worker scaled to zero during promotion. Promote the provider
+attachment rather than reconstructing its URL, then release both already-pushed images together:
+
+```sh
+heroku pg:promote VERA_GREEN_DATABASE --app vera-housing-app
+heroku container:release web worker --app vera-housing-app
+heroku ps:scale web=1 worker=1 --app vera-housing-app
+```
+
+Disable maintenance only after both dynos are up. `/api/ready` must return ready with the current
+migration ten times over at least five minutes. If the application fails while the database remains
+healthy, release only an image proven compatible with that schema. If the database is suspect,
+restore the recorded backup into a new database, validate it, and promote the replacement. Never
+overwrite the active database in place or run a production down migration.
+
 ## Release migrations
 
 The founder release applies four additive migrations after the baseline:
