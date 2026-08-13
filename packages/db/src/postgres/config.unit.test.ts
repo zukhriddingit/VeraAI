@@ -16,7 +16,30 @@ describe("parsePostgresConfig", () => {
     expect(
       parsePostgresConfig({ ...valid, DATABASE_URL: "postgres://vera:secret@db.example.test/vera" })
         .connectionString
-    ).toBe("postgres://vera:secret@db.example.test/vera");
+    ).toBe(
+      "postgres://vera:secret@db.example.test/vera?sslmode=require&uselibpqcompat=true"
+    );
+  });
+
+  it("preserves explicit remote TLS configuration", () => {
+    const databaseUrl =
+      "postgresql://vera:secret@db.example.test/vera?sslmode=verify-full&sslrootcert=%2Fsecure%2Froot.crt";
+    expect(parsePostgresConfig({ ...valid, DATABASE_URL: databaseUrl }).connectionString).toBe(
+      databaseUrl
+    );
+  });
+
+  it("rejects disabled TLS for remote PostgreSQL", () => {
+    expect(() =>
+      parsePostgresConfig({
+        ...valid,
+        DATABASE_URL: "postgresql://vera:secret@db.example.test/vera?sslmode=disable"
+      })
+    ).toThrow("Remote PostgreSQL connections cannot disable TLS");
+  });
+
+  it("preserves loopback PostgreSQL without forcing TLS", () => {
+    expect(parsePostgresConfig(valid).connectionString).toBe(valid.DATABASE_URL);
   });
 
   it("requires DATABASE_URL", () => {
