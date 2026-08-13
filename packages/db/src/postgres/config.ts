@@ -1,6 +1,24 @@
 import { z } from "zod";
 
 const BoundedMillisecondsSchema = z.coerce.number().int().min(250).max(120_000);
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
+
+function withRequiredRemoteTls(value: string): string {
+  const url = new URL(value);
+  if (LOOPBACK_HOSTS.has(url.hostname)) return value;
+
+  const sslMode = url.searchParams.get("sslmode");
+  if (sslMode === "disable") {
+    throw new Error("Remote PostgreSQL connections cannot disable TLS");
+  }
+  if (sslMode !== null) return value;
+
+  // Heroku emits a standard PostgreSQL URL without query parameters. Node-postgres
+  // otherwise attempts plaintext, so require encrypted libpq-compatible transport.
+  url.searchParams.set("sslmode", "require");
+  url.searchParams.set("uselibpqcompat", "true");
+  return url.toString();
+}
 
 export const PostgresConfigSchema = z
   .object({
@@ -33,7 +51,7 @@ export function parsePostgresConfig(
   const value = PostgresConfigSchema.parse(environment);
 
   return {
-    connectionString: value.DATABASE_URL,
+    connectionString: withRequiredRemoteTls(value.DATABASE_URL),
     poolMax: value.VERA_DB_POOL_MAX,
     connectionTimeoutMilliseconds: value.VERA_DB_CONNECTION_TIMEOUT_MS,
     statementTimeoutMilliseconds: value.VERA_DB_STATEMENT_TIMEOUT_MS,
