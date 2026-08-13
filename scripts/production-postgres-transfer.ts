@@ -101,7 +101,9 @@ export function restoreTargetIsEmpty(input: {
     ? input.schemaNames
     : input.schemaNames === "{public}"
       ? ["public"]
-      : [];
+      : input.schemaNames === "{_heroku,public}"
+        ? ["_heroku", "public"]
+        : [];
   const tableCount =
     typeof input.tableCount === "number"
       ? input.tableCount
