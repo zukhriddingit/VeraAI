@@ -118,9 +118,11 @@ verified a listing, detected fraud, sent a message, or scheduled a viewing.
 ## Hosted boundary
 
 This archived recording path is local and deterministic. It is not the hosted release topology.
-Railway or Vercel may host the single web process, but PostgreSQL is canonical and Maritime owns the
-production worker and pinned OpenClaw gateway. Use `infra/maritime/README.md` for current operator
-commands; no deployment occurs as part of the demo commands above.
+Heroku hosts the production web process, deterministic worker, and same-region managed PostgreSQL.
+Vercel hosts marketing only. Maritime remains the approved browser-orchestration boundary for the
+separately deployed pinned OpenClaw Gateway. Use `README.md`, `docs/POSTGRES_OPERATIONS.md`, and
+`infra/maritime/README.md` for current operator commands; no deployment occurs as part of the demo
+commands above.
 
 ## Known limitations and next steps
 

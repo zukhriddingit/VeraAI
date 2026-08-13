@@ -78,6 +78,9 @@ jobs:
       - name: Verify Railway web image boundaries
         run: pnpm verify:web-image-boundaries
 
+      - name: Verify Heroku production boundaries
+        run: pnpm verify:heroku-production
+
       - name: Verify Maritime boundaries and deployment assets
         run: pnpm verify:maritime-boundaries && pnpm maritime:validate
 
@@ -115,10 +118,10 @@ jobs:
       - name: Build
         run: pnpm build
 
-  web_image:
-    name: Build Railway web image
+  app_images:
+    name: Build Heroku application images
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     permissions:
       contents: read
 
@@ -129,7 +132,7 @@ jobs:
       - name: Configure Docker Buildx
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
-      - name: Build Railway web image
+      - name: Build Heroku web image
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
@@ -138,16 +141,39 @@ jobs:
           load: true
           push: false
           tags: vera-web:ci
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }}
 
-      - name: Verify web-only runtime metadata
+      - name: Build Heroku worker image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: .
+          file: Dockerfile
+          pull: true
+          load: true
+          push: false
+          tags: vera-worker:ci
+          labels: |
+            org.opencontainers.image.revision=${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Verify paired runtime metadata
         shell: bash
+        env:
+          EXPECTED_REVISION: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           set -euo pipefail
           test "$(docker image inspect vera-web:ci --format '{{.Config.User}}')" = "vera"
+          test "$(docker image inspect vera-worker:ci --format '{{.Config.User}}')" = "vera"
+          test "$(docker image inspect vera-web:ci --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$EXPECTED_REVISION"
+          test "$(docker image inspect vera-worker:ci --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$EXPECTED_REVISION"
           docker image inspect vera-web:ci --format '{{json .Config.Cmd}}' |
             grep -F 'node_modules/next/dist/bin/next'
+          docker image inspect vera-worker:ci --format '{{json .Config.Cmd}}' |
+            grep -F 'apps/worker/dist/index.js'
           docker image inspect vera-web:ci --format '{{json .Config.Healthcheck.Test}}' |
             grep -F '/api/ready'
+          docker image inspect vera-worker:ci --format '{{json .Config.Healthcheck.Test}}' |
+            grep -F '127.0.0.1:8080/health'
 
   gateway_image:
     name: Build and zero-scan Gateway image

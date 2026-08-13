@@ -163,16 +163,24 @@ Existing domain objects for canonical listings and duplicate clusters predate ex
 
 ## Deployment
 
-Railway or Vercel may host the single web instance. Maritime may host the immutable Vera worker image;
-the dedicated OpenClaw Gateway image remains blocked until remote-extension live acceptance. Both web and worker
-receive the same managed `DATABASE_URL` with conservative pool limits. Apply migrations as a controlled
-release step, take a managed snapshot before schema changes, and use `infra/maritime/README.md` plus
-the PostgreSQL runbook for deploy, backup, restore, and rollback.
+Production uses the non-secret contract in `infra/heroku/production-manifest.json`: one Heroku
+`Dockerfile.web` process, one Heroku repository-root `Dockerfile` worker process, and one same-region
+Heroku Postgres Standard-tier-or-higher database. Web and worker receive the provider-managed
+`DATABASE_URL`, use conservative pools, are built from one reviewed commit, and are released
+together. `/api/health` remains dependency-free liveness; `/api/ready` proves PostgreSQL reachability
+and the current migration hash.
 
-The image boundary is explicit: Railway uses `Dockerfile.web` for the public
-Next.js process, while Maritime uses the root `Dockerfile` for the private
-worker. Browser execution and the dedicated Gateway remain absent from the
-founder-core web image.
+Vercel serves only marketing at `verahousing.app`. Railway is outside the production request path;
+its configuration and retained volume are recovery history, not a live web/database target.
+Migrations run against an unpromoted database after a source backup and exact safe-count manifest.
+Promotion never reconstructs or pastes `DATABASE_URL`, and rollback restores into a new database
+rather than destructively overwriting the active one.
+
+Maritime remains the primary approved browser-orchestration lifecycle. The Heroku worker may create
+and claim durable deterministic jobs and use the existing Maritime dispatch contracts, but browser
+sessions, passwords, cookies, arbitrary navigation, and OpenClaw never enter Heroku. The accepted
+signed DigitalOcean Gateway is a separately deployed immutable component and is not part of a normal
+application release.
 
 ## Founder-only live official-API search
 

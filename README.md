@@ -115,31 +115,34 @@ appends dispositions and audit evidence before enqueueing normal deterministic r
 verify proves counts did not decrease and forbidden browser actions remain zero. The command never
 deletes source evidence, invokes a browser, fetches a URL or image, or edits canonical rows directly.
 
-## Deployment assumptions
+## Production topology
 
-The active `founder_core` release uses one region, one hosted web instance, one private Maritime
-worker, one managed PostgreSQL database, and no OpenClaw gateway or browser node. Railway or Vercel
-may host the authenticated web application only; the already deployed
-`https://vera-ai-housing.vercel.app` landing page is separate marketing, not application staging:
+The production application critical path is one Heroku app and one same-region managed Heroku
+Postgres database. The desired state is machine-checked by `pnpm verify:heroku-production` against
+`infra/heroku/production-manifest.json`:
 
-- web: `pnpm --filter @vera/web start:hosted`, readiness `/api/ready`;
-- worker: deploy the immutable root `Dockerfile` image to Maritime and run `serve`;
-- browser: keep `VERA_BROWSER_DISABLED=1` and gateway variables absent.
+- marketing: `https://verahousing.app` on the existing Vercel project, with `www` redirected to the
+  apex;
+- product: `https://app.verahousing.app` on Heroku, readiness `/api/ready`;
+- web: exactly one `Dockerfile.web` process;
+- deterministic worker: exactly one repository-root `Dockerfile` process, released with web from the
+  same reviewed commit;
+- persistence: Heroku Postgres Standard-0 or higher in the same region, with controlled migrations,
+  continuous protection, and portable logical backups;
+- approved browser work: Heroku worker → Maritime orchestration → unchanged signed DigitalOcean
+  OpenClaw Gateway → exactly one explicitly shared local tab.
 
-Railway is bound through `railway.toml` to `Dockerfile.web`, which builds and
-starts only `@vera/web`. The repository-root `Dockerfile` remains the Maritime
-worker image. Do not point the Railway web service at the root Dockerfile and do
-not run `pnpm worker:start`, demo bootstrap, or OpenClaw in the public web
-container.
+Maritime remains the browser-orchestration and dispatch boundary; consumer browser sessions and
+credentials never enter Heroku. A Maritime outage makes browser research visibly unavailable but
+does not take down the inbox or deterministic PostgreSQL work. A normal application release never
+builds, pushes, restarts, or reconfigures OpenClaw.
 
-Run `pnpm db:migrate` as a controlled release step and `pnpm db:seed` after the first migration.
-Configure the supported five-minute non-browser reconciliation trigger in the Maritime dashboard
-and validate it with `maritime triggers list vera-worker --json`. The separate
-`founder_browser_experimental` profile remains `no_go` under ADR 0012. Keep the sum of both bounded
-pools below the managed database connection limit. See
-[the founder-core staging runbook](docs/FOUNDER_CORE_STAGING_RUNBOOK.md) and
-[the Maritime runbook](infra/maritime/README.md). Horizontal scaling, Redis, Kubernetes, replicas,
-sharding, and PostgreSQL row-level security are outside the founder-release boundary.
+`railway.toml` is retained as historical/recovery configuration. Railway is not in the production
+request path, and its removed web/database deployments must not be described as live. Run
+`pnpm db:migrate` and `pnpm db:seed` as controlled steps against an unpromoted database, then release
+the verified Heroku web and worker images together. Keep the combined bounded pools below the
+managed database connection limit. See [PostgreSQL operations](docs/POSTGRES_OPERATIONS.md) and the
+[Maritime browser runbook](infra/maritime/README.md).
 
 ## Safety
 
