@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   connectionEnvironment,
+  filteredRestoreList,
   privateEvidencePath,
   redactedDatabaseLabel,
   restoreArguments,
@@ -34,9 +35,13 @@ describe("production PostgreSQL transfer safety", () => {
       PGSSLMODE: "require",
       PGUSER: "vera"
     });
-    expect(restoreArguments("vera", "/private/tmp/vera/production.dump").join(" ")).not.toContain(
-      "synthetic-secret"
-    );
+    expect(
+      restoreArguments(
+        "vera",
+        "/private/tmp/vera/production.dump",
+        "/private/tmp/vera/toc.list"
+      ).join(" ")
+    ).not.toContain("synthetic-secret");
     expect(redactedDatabaseLabel(url)).toBe("db.example.test:5432/vera");
   });
 
@@ -81,16 +86,49 @@ describe("production PostgreSQL transfer safety", () => {
   });
 
   it("restores without clean, create, owner, or ACL mutations", () => {
-    const arguments_ = restoreArguments("vera", "/private/tmp/vera/production.dump");
+    const arguments_ = restoreArguments(
+      "vera",
+      "/private/tmp/vera/production.dump",
+      "/private/tmp/vera/toc.list"
+    );
     expect(arguments_).toEqual([
       "--no-owner",
       "--no-acl",
       "--exit-on-error",
+      "--use-list",
+      "/private/tmp/vera/toc.list",
       "--dbname",
       "vera",
       "/private/tmp/vera/production.dump"
     ]);
     expect(arguments_.join(" ")).not.toMatch(/--clean|--create|--role/iu);
+  });
+
+  it("omits only the archive public-schema definition", () => {
+    const restoreList = [
+      "; archive header",
+      "6; 2615 16385 SCHEMA - drizzle vera",
+      "4; 2615 2200 SCHEMA - public pg_database_owner",
+      "4366; 0 0 COMMENT - SCHEMA public pg_database_owner",
+      "222; 1259 16397 TABLE public accounts vera"
+    ].join("\n");
+    const filtered = filteredRestoreList(restoreList);
+
+    expect(filtered).not.toContain("SCHEMA - public");
+    expect(filtered).toContain("SCHEMA - drizzle");
+    expect(filtered).toContain("COMMENT - SCHEMA public");
+    expect(filtered).toContain("TABLE public accounts");
+  });
+
+  it.each([
+    "6; 2615 16385 SCHEMA - drizzle vera",
+    [
+      "6; 2615 16385 SCHEMA - drizzle vera",
+      "4; 2615 2200 SCHEMA - public pg_database_owner",
+      "5; 2615 2201 SCHEMA - shadow vera"
+    ].join("\n")
+  ])("rejects an unexpected archive schema set", (restoreList) => {
+    expect(() => filteredRestoreList(restoreList)).toThrow("schema definitions are unexpected");
   });
 
   it("accepts only PostgreSQL's default and Heroku-managed empty schemas", () => {
@@ -106,8 +144,12 @@ describe("production PostgreSQL transfer safety", () => {
   it.each(["vera;drop database vera", "vera/name", ""])(
     "rejects an unsafe database name: %s",
     (databaseName) =>
-      expect(() => restoreArguments(databaseName, "/private/tmp/vera/production.dump")).toThrow(
-        "database name"
-      )
+      expect(() =>
+        restoreArguments(
+          databaseName,
+          "/private/tmp/vera/production.dump",
+          "/private/tmp/vera/toc.list"
+        )
+      ).toThrow("database name")
   );
 });
