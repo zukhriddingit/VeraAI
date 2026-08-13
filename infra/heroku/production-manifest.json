@@ -1,0 +1,33 @@
+{
+  "version": "vera-heroku-production.v1",
+  "app": "vera-housing-app",
+  "productDomain": "app.verahousing.app",
+  "marketingDomain": "verahousing.app",
+  "processes": {
+    "web": {
+      "dockerfile": "Dockerfile.web",
+      "quantity": 1,
+      "readinessPath": "/api/ready"
+    },
+    "worker": {
+      "dockerfile": "Dockerfile",
+      "quantity": 1,
+      "readinessPath": "/health"
+    }
+  },
+  "database": {
+    "provider": "heroku-postgresql",
+    "minimumPlan": "standard-0",
+    "attachment": "VERA_GREEN_DATABASE",
+    "sameRegion": true
+  },
+  "release": {
+    "processTypes": ["web", "worker"],
+    "sourceRevisionLabel": "org.opencontainers.image.revision",
+    "automaticDeploy": false
+  },
+  "openclaw": {
+    "deploymentAction": "none",
+    "gatewayImageChange": false
+  }
+}
