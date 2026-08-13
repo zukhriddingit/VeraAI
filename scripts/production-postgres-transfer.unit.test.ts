@@ -97,6 +97,7 @@ describe("production PostgreSQL transfer safety", () => {
     expect(restoreTargetIsEmpty({ schemaNames: ["public"], tableCount: 0 })).toBe(true);
     expect(restoreTargetIsEmpty({ schemaNames: "{public}", tableCount: "0" })).toBe(true);
     expect(restoreTargetIsEmpty({ schemaNames: ["_heroku", "public"], tableCount: 0 })).toBe(true);
+    expect(restoreTargetIsEmpty({ schemaNames: "{_heroku,public}", tableCount: "0" })).toBe(true);
     expect(restoreTargetIsEmpty({ schemaNames: ["drizzle", "public"], tableCount: 0 })).toBe(false);
     expect(restoreTargetIsEmpty({ schemaNames: ["public"], tableCount: 1 })).toBe(false);
     expect(restoreTargetIsEmpty({ schemaNames: ["_heroku", "public"], tableCount: 1 })).toBe(false);
