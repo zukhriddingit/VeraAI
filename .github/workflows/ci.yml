@@ -174,6 +174,8 @@ jobs:
             grep -F '/api/ready'
           docker image inspect vera-worker:ci --format '{{json .Config.Healthcheck.Test}}' |
             grep -F '127.0.0.1:8080/health'
+          docker run --rm --entrypoint /usr/bin/test vera-worker:ci \
+            -f /workspace/apps/drizzle/meta/_journal.json
 
   gateway_image:
     name: Build and zero-scan Gateway image

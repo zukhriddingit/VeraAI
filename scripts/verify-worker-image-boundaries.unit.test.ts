@@ -12,6 +12,8 @@ RUN find /opt/vera-worker/node_modules -type l -lname '*better-sqlite3*' -delete
 FROM ${image} AS runtime
 ENV VERA_OPENCLAW_EXECUTABLE=/workspace/apps/worker/node_modules/.bin/openclaw
 COPY --from=build /opt/vera-worker apps/worker
+COPY --from=build /workspace/packages/db/drizzle apps/drizzle
+RUN test -f /workspace/apps/drizzle/meta/_journal.json
 USER vera
 HEALTHCHECK CMD ["node", "-e", "fetch('http://127.0.0.1:8080/health')"]
 `;
@@ -60,6 +62,7 @@ USER root
         expect.stringContaining("lifecycle scripts"),
         expect.stringContaining("production-only worker deployment"),
         expect.stringContaining("remove demo-only SQLite"),
+        expect.stringContaining("readiness migration journal"),
         expect.stringContaining("CommonJS runtime packages external"),
         expect.stringContaining("Node createRequire")
       ])

@@ -39,6 +39,8 @@ RUN groupadd --system --gid 10001 vera \
   && useradd --system --uid 10001 --gid vera --home-dir /workspace vera
 
 COPY --from=build --chown=vera:vera /opt/vera-worker apps/worker
+COPY --from=build /workspace/packages/db/drizzle apps/drizzle
+RUN test -f /workspace/apps/drizzle/meta/_journal.json
 
 USER vera
 EXPOSE 8080

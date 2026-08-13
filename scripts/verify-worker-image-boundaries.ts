@@ -82,6 +82,12 @@ export function findWorkerImageViolations(input: {
   ) {
     violations.push("The hosted worker image must remove demo-only SQLite peer artifacts.");
   }
+  if (
+    !input.dockerfile.includes("COPY --from=build /workspace/packages/db/drizzle apps/drizzle") ||
+    !input.dockerfile.includes("test -f /workspace/apps/drizzle/meta/_journal.json")
+  ) {
+    violations.push("The hosted worker image must include its exact readiness migration journal.");
+  }
   if (/COPY --from=build[^\n]*\/workspace\/node_modules/u.test(input.dockerfile)) {
     violations.push("The runtime image must not copy the build workspace dependency tree.");
   }
