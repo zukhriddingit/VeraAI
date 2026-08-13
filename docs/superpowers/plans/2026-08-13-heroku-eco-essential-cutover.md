@@ -262,4 +262,3 @@ Confirm founder authentication, inbox, listing detail, photos/placeholders, orig
 - [ ] **Step 4: Report acceptance**
 
 Report the interactive URL, database verification, process topology, readiness window, marketing domains, forbidden-action count, PR and merge commit, monthly maximum, Eco cold-start caveat, and recording readiness. Retain the private dump and DigitalOcean source database until separately authorized for cleanup.
-
