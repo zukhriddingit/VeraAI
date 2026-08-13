@@ -93,6 +93,24 @@ export function restoreArguments(databaseName: string, dumpPath: string): string
   return ["--no-owner", "--no-acl", "--exit-on-error", "--dbname", databaseName, dumpPath];
 }
 
+export function restoreTargetIsEmpty(input: {
+  readonly schemaNames: unknown;
+  readonly tableCount: unknown;
+}): boolean {
+  const schemaNames = Array.isArray(input.schemaNames)
+    ? input.schemaNames
+    : input.schemaNames === "{public}"
+      ? ["public"]
+      : [];
+  const tableCount =
+    typeof input.tableCount === "number"
+      ? input.tableCount
+      : typeof input.tableCount === "string" && /^\d+$/u.test(input.tableCount)
+        ? Number(input.tableCount)
+        : -1;
+  return tableCount === 0 && JSON.stringify(schemaNames) === JSON.stringify(["public"]);
+}
+
 async function checkedSpawn(
   command: "pg_dump" | "pg_restore",
   arguments_: readonly string[],
@@ -140,7 +158,7 @@ async function assertMissing(path: string): Promise<void> {
   throw new Error("Production dump output already exists.");
 }
 
-async function assertEmptyTarget(databaseUrl: string): Promise<void> {
+async function prepareEmptyTarget(databaseUrl: string): Promise<void> {
   let connection: ReturnType<typeof openPostgresConnection> | null = null;
   try {
     connection = openPostgresConnection(
@@ -151,15 +169,32 @@ async function assertEmptyTarget(databaseUrl: string): Promise<void> {
         VERA_DB_STATEMENT_TIMEOUT_MS: "15000"
       })
     );
-    const result = await connection.pool.query<{ count: number }>(`
-      select count(*)::int as count
-        from information_schema.tables
-       where table_schema in ('public', 'drizzle')
-         and table_type = 'BASE TABLE'
+    const result = await connection.pool.query<{ schema_names: unknown; table_count: unknown }>(`
+      select
+        coalesce(
+          array_agg(namespace.nspname order by namespace.nspname)
+            filter (where namespace.nspname is not null),
+          array[]::text[]
+        ) as schema_names,
+        (select count(*)::int
+           from information_schema.tables
+          where table_schema not in ('information_schema', 'pg_catalog')
+            and table_schema not like 'pg_toast%'
+            and table_schema not like 'pg_temp_%'
+            and table_type = 'BASE TABLE') as table_count
+      from pg_namespace namespace
+      where namespace.nspname not in ('information_schema', 'pg_catalog')
+        and namespace.nspname not like 'pg_toast%'
+        and namespace.nspname not like 'pg_temp_%'
     `);
-    if ((result.rows[0]?.count ?? -1) !== 0) {
+    const state = result.rows[0];
+    if (
+      !state ||
+      !restoreTargetIsEmpty({ schemaNames: state.schema_names, tableCount: state.table_count })
+    ) {
       throw new Error("Production restore target is not empty.");
     }
+    await connection.pool.query("drop schema public");
   } catch (error) {
     if (error instanceof Error && error.message === "Production restore target is not empty.") {
       throw error;
@@ -215,7 +250,7 @@ async function main(): Promise<void> {
         throw new Error("Restore requires --confirm-empty-target.");
       }
       await assertPrivateFile(dumpPath, "Production dump");
-      await assertEmptyTarget(databaseUrl);
+      await prepareEmptyTarget(databaseUrl);
       const databaseName = environment.PGDATABASE;
       if (!databaseName) throw new Error("Restore target database name is missing.");
       await checkedSpawn("pg_restore", restoreArguments(databaseName, dumpPath), environment);

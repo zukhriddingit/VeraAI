@@ -4,7 +4,8 @@ import {
   connectionEnvironment,
   privateEvidencePath,
   redactedDatabaseLabel,
-  restoreArguments
+  restoreArguments,
+  restoreTargetIsEmpty
 } from "./production-postgres-transfer.ts";
 
 describe("production PostgreSQL transfer safety", () => {
@@ -79,6 +80,13 @@ describe("production PostgreSQL transfer safety", () => {
       "/private/tmp/vera/production.dump"
     ]);
     expect(arguments_.join(" ")).not.toMatch(/--clean|--create|--role/iu);
+  });
+
+  it("accepts only PostgreSQL's default empty public schema", () => {
+    expect(restoreTargetIsEmpty({ schemaNames: ["public"], tableCount: 0 })).toBe(true);
+    expect(restoreTargetIsEmpty({ schemaNames: "{public}", tableCount: "0" })).toBe(true);
+    expect(restoreTargetIsEmpty({ schemaNames: ["drizzle", "public"], tableCount: 0 })).toBe(false);
+    expect(restoreTargetIsEmpty({ schemaNames: ["public"], tableCount: 1 })).toBe(false);
   });
 
   it.each(["vera;drop database vera", "vera/name", ""])(
