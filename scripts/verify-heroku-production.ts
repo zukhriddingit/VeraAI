@@ -10,19 +10,28 @@ interface HerokuProductionManifest {
     readonly web?: {
       readonly dockerfile?: string;
       readonly quantity?: number;
+      readonly dynoSize?: string;
       readonly readinessPath?: string;
     };
     readonly worker?: {
       readonly dockerfile?: string;
       readonly quantity?: number;
+      readonly dynoSize?: string;
       readonly readinessPath?: string;
     };
   };
   readonly database?: {
     readonly provider?: string;
-    readonly minimumPlan?: string;
+    readonly plan?: string;
     readonly attachment?: string;
     readonly sameRegion?: boolean;
+    readonly storageBytes?: number;
+    readonly connectionLimit?: number;
+    readonly poolMaxPerProcess?: number;
+  };
+  readonly billing?: {
+    readonly maximumMonthlyUsd?: number;
+    readonly automaticUpgrade?: boolean;
   };
   readonly release?: {
     readonly processTypes?: readonly string[];
@@ -70,22 +79,30 @@ export function findHerokuProductionViolations(input: {
   if (
     manifest.processes?.web?.dockerfile !== "Dockerfile.web" ||
     manifest.processes.web.quantity !== 1 ||
+    manifest.processes.web.dynoSize !== "eco" ||
     manifest.processes.web.readinessPath !== "/api/ready" ||
     manifest.processes?.worker?.dockerfile !== "Dockerfile" ||
     manifest.processes.worker.quantity !== 1 ||
+    manifest.processes.worker.dynoSize !== "eco" ||
     manifest.processes.worker.readinessPath !== "/health"
   ) {
     violations.push(
-      "Heroku must run exactly one web and one worker with reviewed readiness paths."
+      "Heroku must run exactly one Eco web and one Eco worker with reviewed readiness paths."
     );
   }
   if (
     manifest.database?.provider !== "heroku-postgresql" ||
-    manifest.database.minimumPlan !== "standard-0" ||
+    manifest.database.plan !== "essential-0" ||
     manifest.database.attachment !== "VERA_GREEN_DATABASE" ||
-    manifest.database.sameRegion !== true
+    manifest.database.sameRegion !== true ||
+    manifest.database.storageBytes !== 1_000_000_000 ||
+    manifest.database.connectionLimit !== 20 ||
+    manifest.database.poolMaxPerProcess !== 3
   ) {
     violations.push("Heroku production database policy is invalid.");
+  }
+  if (manifest.billing?.maximumMonthlyUsd !== 10 || manifest.billing.automaticUpgrade !== false) {
+    violations.push("Heroku production billing must remain capped at $10 without auto-upgrade.");
   }
   if (
     JSON.stringify(manifest.release?.processTypes) !== JSON.stringify(["web", "worker"]) ||

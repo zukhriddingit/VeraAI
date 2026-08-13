@@ -21,8 +21,10 @@ DATABASE_URL=postgresql://vera:vera_dev_only@127.0.0.1:5432/vera pnpm postgres:r
 ## Heroku production cutover
 
 The production application contract is one Heroku web process, one Heroku deterministic worker,
-and one same-region Heroku Postgres Standard-0-or-higher database. Verify the non-secret topology
-before any provider mutation:
+and one same-region Heroku Postgres Essential-0 database. Both application processes use Eco and
+share the account's 1,000-hour pool. The approved recurring ceiling is $10 monthly: $5 for Eco and
+$5 for Essential-0, with no automatic upgrade. Verify the non-secret topology before any provider
+mutation:
 
 ```sh
 pnpm verify:heroku-production
@@ -32,9 +34,12 @@ heroku addons --app vera-housing-app
 heroku domains --app vera-housing-app
 ```
 
-Inspect the current price and capabilities of `heroku-postgresql:standard-0` and obtain founder
-approval for the exact recurring charge before provisioning. Do not substitute an Essential/dev
-plan merely to avoid that gate.
+Require the Heroku quote for `heroku-postgresql:essential-0` to remain at most $5 monthly and the Eco
+subscription to remain exactly $5 monthly. Stop rather than accepting another product, plan, or
+automatic upgrade. Essential-0 provides 1 GB and 20 connections; set `VERA_DB_POOL_MAX=3` and stop
+new growth at 850,000,000 bytes pending an explicit archive or plan decision. Eco and Basic share
+the same compute class, but Eco sleeps the web and worker together after 30 minutes without web
+traffic. Do not configure a synthetic uptime pinger.
 
 All live database URLs and artifacts use permission-restricted files. The variables below contain
 file paths, never connection strings:
@@ -64,7 +69,7 @@ pnpm postgres:production-transfer list --dump-file "$VERA_SOURCE_DUMP_FILE"
 Provision the approved green database without promoting it:
 
 ```sh
-heroku addons:create heroku-postgresql:standard-0 --app vera-housing-app --as VERA_GREEN_DATABASE --wait
+heroku addons:create heroku-postgresql:essential-0 --app vera-housing-app --as VERA_GREEN_DATABASE --wait
 umask 077
 heroku config:get VERA_GREEN_DATABASE_URL --app vera-housing-app > "$VERA_GREEN_DATABASE_URL_FILE"
 chmod 0600 "$VERA_GREEN_DATABASE_URL_FILE"
@@ -92,6 +97,7 @@ attachment rather than reconstructing its URL, then release both already-pushed 
 ```sh
 heroku pg:promote VERA_GREEN_DATABASE --app vera-housing-app
 heroku container:release web worker --app vera-housing-app
+heroku ps:type web=eco worker=eco --app vera-housing-app
 heroku ps:scale web=1 worker=1 --app vera-housing-app
 ```
 
@@ -100,6 +106,12 @@ migration ten times over at least five minutes. If the application fails while t
 healthy, release only an image proven compatible with that schema. If the database is suspect,
 restore the recorded backup into a new database, validate it, and promote the replacement. Never
 overwrite the active database in place or run a production down migration.
+
+Essential-0 is a shared Essential-tier service with 99.5% expected uptime. It does not provide
+managed credentials, fork/follow, Postgres logs, or an announced maintenance guarantee. These are
+accepted founder-MVP limits, not an HA or 24/7 production claim. Verify billing monthly and before
+the GitHub Student credit expires because unused credit does not roll over and the benefit is not
+permanent.
 
 ## Release migrations
 

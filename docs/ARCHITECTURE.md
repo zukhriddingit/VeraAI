@@ -164,11 +164,17 @@ Existing domain objects for canonical listings and duplicate clusters predate ex
 ## Deployment
 
 Production uses the non-secret contract in `infra/heroku/production-manifest.json`: one Heroku
-`Dockerfile.web` process, one Heroku repository-root `Dockerfile` worker process, and one same-region
-Heroku Postgres Standard-tier-or-higher database. Web and worker receive the provider-managed
-`DATABASE_URL`, use conservative pools, are built from one reviewed commit, and are released
-together. `/api/health` remains dependency-free liveness; `/api/ready` proves PostgreSQL reachability
-and the current migration hash.
+Eco `Dockerfile.web` process, one Eco repository-root `Dockerfile` worker process, and one
+same-region Heroku Postgres Essential-0 database. The two processes share the account's 1,000 Eco
+hours and sleep together after 30 minutes without web traffic; Vera does not use a synthetic pinger.
+Web and worker receive the provider-managed `DATABASE_URL`, each uses a pool maximum of three, are
+built from one reviewed commit, and are released together. `/api/health` remains dependency-free
+liveness; `/api/ready` proves PostgreSQL reachability and the current migration hash.
+
+The approved application ceiling is $10 monthly: $5 for Eco and $5 for Essential-0, with no
+automatic upgrade. Essential-0 provides 1 GB and 20 connections; 850,000,000 bytes is the
+operational storage stop threshold. This founder-MVP topology accepts Eco cold starts and the
+Essential tier's shared-service and 99.5%-expected-uptime limits. It is not a 24/7 or HA claim.
 
 Vercel serves only marketing at `verahousing.app`. Railway is outside the production request path;
 its configuration and retained volume are recovery history, not a live web/database target.
