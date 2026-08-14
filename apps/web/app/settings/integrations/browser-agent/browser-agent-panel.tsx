@@ -2,8 +2,11 @@
 
 import {
   BrowserAgentStatusResponseSchema,
+  BrowserGatewayOnboardingStatusSchema,
   CreateCurrentTabCaptureResponseSchema,
-  type BrowserAgentStatusResponse
+  type BrowserAgentStatusResponse,
+  type BrowserGatewayOnboardingStatus,
+  type BrowserResearchSource
 } from "@vera/domain";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
@@ -20,6 +23,22 @@ const readinessLabels: Record<BrowserAgentStatusResponse["readiness"], string> =
   disabled_by_policy: "Disabled by policy"
 };
 
+const onboardingLabels: Record<BrowserGatewayOnboardingStatus["status"], string> = {
+  waiting_for_onboarding: "Waiting for concierge onboarding",
+  pending: "Setup pending",
+  active: "Private beta active",
+  revoked: "Access revoked"
+};
+
+const sourceLabels: Record<BrowserResearchSource, string> = {
+  zillow: "Zillow",
+  apartments_com: "Apartments.com",
+  facebook_marketplace: "Facebook Marketplace",
+  bu_off_campus: "BU Off-Campus Housing",
+  custom_website: "Custom housing website",
+  craigslist: "Craigslist"
+};
+
 async function requestHash(): Promise<string> {
   const input = new TextEncoder().encode(crypto.randomUUID());
   const digest = await crypto.subtle.digest("SHA-256", input);
@@ -27,18 +46,26 @@ async function requestHash(): Promise<string> {
 }
 
 export function BrowserAgentPanel({
-  initialStatus
+  initialStatus,
+  initialAssignmentStatus
 }: {
   readonly initialStatus: BrowserAgentStatusResponse;
+  readonly initialAssignmentStatus: BrowserGatewayOnboardingStatus | null;
 }) {
   const [status, setStatus] = useState(initialStatus);
+  const [assignmentStatus, setAssignmentStatus] = useState(initialAssignmentStatus);
   const [url, setUrl] = useState("");
   const [confirmations, setConfirmations] = useState([false, false, false, false]);
   const [pending, setPending] = useState(false);
+  const [revocationConfirmed, setRevocationConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const node = status.node;
   const allConfirmed = confirmations.every(Boolean);
-  const canCapture = status.readiness === "online_ready" && node?.selectedProfileId && allConfirmed;
+  const canCapture =
+    assignmentStatus?.browserReady === true &&
+    status.readiness === "online_ready" &&
+    node?.selectedProfileId &&
+    allConfirmed;
   const currentJobId = status.currentJob?.id ?? null;
 
   useEffect(() => {
@@ -130,14 +157,87 @@ export function BrowserAgentPanel({
     }
   }
 
+  async function revokeBrowserAccess(): Promise<void> {
+    if (!revocationConfirmed) return;
+    setPending(true);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/settings/integrations/browser-agent/assignment/revoke", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmation: "revoke_browser_connector" })
+      });
+      const parsed = BrowserGatewayOnboardingStatusSchema.safeParse(await response.json());
+      if (!response.ok || !parsed.success) throw new Error("Browser access was not revoked.");
+      setAssignmentStatus(parsed.data);
+      setRevocationConfirmed(false);
+      setMessage(
+        "Vera server access is revoked. Now open the extension and choose Unpair and revoke browser access."
+      );
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "Browser access was not revoked.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <section
       className="settings-section browser-agent-section"
       aria-labelledby="browser-agent-heading"
     >
+      <article className="integration-card browser-assignment-card">
+        <p className="eyebrow">Isolated Browser Connector assignment</p>
+        <h3>
+          {assignmentStatus
+            ? onboardingLabels[assignmentStatus.status]
+            : "Assignment service unavailable"}
+        </h3>
+        <p>
+          Browser: {assignmentStatus?.browserReady ? "ready" : "not ready"} · Node:{" "}
+          {assignmentStatus?.nodeState.replaceAll("_", " ") ?? "unknown"}
+        </p>
+        <p>
+          Sources:{" "}
+          {assignmentStatus && assignmentStatus.enabledSources.length > 0
+            ? assignmentStatus.enabledSources.map((source) => sourceLabels[source]).join(", ")
+            : "none enabled"}
+        </p>
+        {assignmentStatus?.recoveryCode ? (
+          <p>Recovery: {assignmentStatus.recoveryCode.replaceAll("_", " ")}</p>
+        ) : null}
+        {assignmentStatus &&
+        assignmentStatus.status !== "waiting_for_onboarding" &&
+        assignmentStatus.status !== "revoked" ? (
+          <div>
+            <label className="browser-confirmation">
+              <input
+                type="checkbox"
+                checked={revocationConfirmed}
+                disabled={pending}
+                onChange={(event) => setRevocationConfirmed(event.target.checked)}
+              />
+              I understand this immediately stops future Vera browser work.
+            </label>
+            <button
+              className="secondary-button"
+              type="button"
+              disabled={pending || !revocationConfirmed}
+              onClick={() => void revokeBrowserAccess()}
+            >
+              Revoke Browser Connector access
+            </button>
+            <p>
+              After revoking here, open the extension and choose{" "}
+              <strong>Unpair and revoke browser access</strong> to close the local connection too.
+            </p>
+          </div>
+        ) : null}
+      </article>
+
       <div className="settings-account-card">
         <div>
-          <p className="eyebrow">Unsupported · experimental personal</p>
+          <p className="eyebrow">Private beta · experimental personal</p>
           <h2 id="browser-agent-heading">OpenClaw local browser</h2>
           <p>{status.privacyNotice}</p>
         </div>
@@ -162,7 +262,7 @@ export function BrowserAgentPanel({
               disabled={pending || status.controls.systemBrowserDisabled}
               onClick={() => void enable()}
             >
-              Enable founder experiment
+              Enable private beta browser access
             </button>
           ) : null}
         </article>

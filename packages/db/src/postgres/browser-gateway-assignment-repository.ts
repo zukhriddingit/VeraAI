@@ -8,7 +8,7 @@ import {
   type BrowserResearchSource,
   type VeraUserId
 } from "@vera/domain";
-import { and, eq, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import type { PostgresConnection } from "./connection.ts";
@@ -77,6 +77,7 @@ export interface BrowserGatewayAssignmentRepository {
     readonly activatedAt: string;
   }): Promise<BrowserGatewayAssignment>;
   getActiveForUser(userId: VeraUserId): Promise<BrowserGatewayAssignment | null>;
+  getLatestForUser(userId: VeraUserId): Promise<BrowserGatewayAssignment | null>;
   getActiveByCheckpointDigest(digest: string): Promise<BrowserGatewayAssignment | null>;
   listEnabledConnectorIdsForUser(userId: VeraUserId): Promise<readonly string[]>;
   revokeForUser(input: {
@@ -180,10 +181,20 @@ export function createPostgresBrowserGatewayAssignmentRepository(
       return rows[0] ? mapAssignment(rows[0]) : null;
     },
 
+    async getLatestForUser(userIdInput) {
+      const userId = VeraUserIdSchema.parse(userIdInput);
+      const rows = await connection.db
+        .select()
+        .from(browserGatewayAssignments)
+        .where(eq(browserGatewayAssignments.userId, userId))
+        .orderBy(desc(browserGatewayAssignments.createdAt))
+        .limit(1);
+      return rows[0] ? mapAssignment(rows[0]) : null;
+    },
+
     async getActiveByCheckpointDigest(digestInput) {
-      const digest = BrowserGatewayAssignmentSchema.shape.checkpointCredentialDigest.parse(
-        digestInput
-      );
+      const digest =
+        BrowserGatewayAssignmentSchema.shape.checkpointCredentialDigest.parse(digestInput);
       const rows = await connection.db
         .select()
         .from(browserGatewayAssignments)
@@ -203,10 +214,7 @@ export function createPostgresBrowserGatewayAssignmentRepository(
         .select({ connectorId: browserSourceControls.connectorId })
         .from(browserSourceControls)
         .where(
-          and(
-            eq(browserSourceControls.userId, userId),
-            eq(browserSourceControls.enabled, true)
-          )
+          and(eq(browserSourceControls.userId, userId), eq(browserSourceControls.enabled, true))
         )
         .orderBy(browserSourceControls.connectorId);
       return rows.map((row) => EntityIdSchema.parse(row.connectorId));
@@ -223,7 +231,7 @@ export function createPostgresBrowserGatewayAssignmentRepository(
             .where(
               and(
                 eq(browserGatewayAssignments.userId, userId),
-                eq(browserGatewayAssignments.status, "active")
+                inArray(browserGatewayAssignments.status, ["pending", "active"])
               )
             )
             .for("update")
@@ -268,7 +276,7 @@ export function createPostgresBrowserGatewayAssignmentRepository(
               and(
                 eq(browserGatewayAssignments.id, assignment.id),
                 eq(browserGatewayAssignments.userId, userId),
-                eq(browserGatewayAssignments.status, "active")
+                inArray(browserGatewayAssignments.status, ["pending", "active"])
               )
             )
             .returning();

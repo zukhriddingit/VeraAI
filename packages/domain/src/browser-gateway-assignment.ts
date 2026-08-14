@@ -6,9 +6,7 @@ import { IsoDateTimeSchema, Sha256Schema } from "./primitives.ts";
 
 export const BrowserAssignmentStatusSchema = z.enum(["pending", "active", "revoked"]);
 
-export const BrowserGatewaySecretReferenceSchema = z
-  .string()
-  .regex(/^[A-Z][A-Z0-9_]{7,31}$/u);
+export const BrowserGatewaySecretReferenceSchema = z.string().regex(/^[A-Z][A-Z0-9_]{7,31}$/u);
 
 export const BrowserCredentialDigestSchema = Sha256Schema;
 
@@ -73,8 +71,44 @@ export interface BrowserGatewayRuntime {
   readonly enabledSources: ReadonlySet<z.infer<typeof BrowserResearchSourceSchema>>;
 }
 
+export const BrowserGatewayOnboardingStateSchema = z.enum([
+  "waiting_for_onboarding",
+  "pending",
+  "active",
+  "revoked"
+]);
+
+export const BrowserGatewaySafeNodeStateSchema = z.enum([
+  "not_registered",
+  "setup_required",
+  "online",
+  "offline",
+  "revoked"
+]);
+
+export const BrowserGatewayRecoveryCodeSchema = z.enum([
+  "awaiting_concierge",
+  "awaiting_activation",
+  "complete_browser_setup",
+  "restore_browser_node",
+  "revoked_by_user"
+]);
+
+export const BrowserGatewayOnboardingStatusSchema = z
+  .object({
+    status: BrowserGatewayOnboardingStateSchema,
+    browserReady: z.boolean(),
+    nodeState: BrowserGatewaySafeNodeStateSchema,
+    enabledSources: z.array(BrowserResearchSourceSchema).max(6),
+    recoveryCode: BrowserGatewayRecoveryCodeSchema.nullable()
+  })
+  .strict();
+
+export const RevokeBrowserGatewayAssignmentRequestSchema = z
+  .object({ confirmation: z.literal("revoke_browser_connector") })
+  .strict();
+
 export type BrowserAssignmentStatus = z.infer<typeof BrowserAssignmentStatusSchema>;
 export type BrowserGatewayAssignment = z.infer<typeof BrowserGatewayAssignmentSchema>;
-export type BrowserGatewaySecretReference = z.infer<
-  typeof BrowserGatewaySecretReferenceSchema
->;
+export type BrowserGatewayOnboardingStatus = z.infer<typeof BrowserGatewayOnboardingStatusSchema>;
+export type BrowserGatewaySecretReference = z.infer<typeof BrowserGatewaySecretReferenceSchema>;

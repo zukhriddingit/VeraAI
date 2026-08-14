@@ -101,6 +101,10 @@ describe("browser Gateway assignment repository", () => {
       await seedUserAndNode(context, userA, "a");
       const repository = createPostgresBrowserGatewayAssignmentRepository(context.connection);
       await repository.createPending(inputFor(userA, assignmentA, "a"));
+      await expect(repository.getLatestForUser(userA)).resolves.toMatchObject({
+        id: assignmentA,
+        status: "pending"
+      });
       await expect(repository.getActiveByCheckpointDigest("b".repeat(64))).resolves.toBeNull();
       await repository.activate({ assignmentId: assignmentA, activatedAt });
       await expect(repository.getActiveByCheckpointDigest("b".repeat(64))).resolves.toMatchObject({
@@ -130,6 +134,10 @@ describe("browser Gateway assignment repository", () => {
         revokedAt
       });
       await expect(repository.getActiveForUser(userA)).resolves.toBeNull();
+      await expect(repository.getLatestForUser(userA)).resolves.toMatchObject({
+        id: assignmentA,
+        status: "revoked"
+      });
       await expect(repository.revokeForUser({ userId: userA, revokedAt })).resolves.toBeNull();
       await expect(repository.listEnabledConnectorIdsForUser(userA)).resolves.toEqual([]);
       await expect(repositories.browserIntegrationControls.get()).resolves.toMatchObject({
@@ -204,10 +212,7 @@ describe("browser Gateway assignment repository", () => {
         .select()
         .from(browserSourceControls)
         .where(
-          and(
-            eq(browserSourceControls.userId, userB),
-            eq(browserSourceControls.enabled, true)
-          )
+          and(eq(browserSourceControls.userId, userB), eq(browserSourceControls.enabled, true))
         );
       expect(crossUser.length).toBeGreaterThan(0);
     });
