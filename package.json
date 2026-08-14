@@ -18,6 +18,8 @@
     "verify:calendar-boundaries": "tsx scripts/verify-calendar-boundaries.ts",
     "verify:db-boundaries": "tsx scripts/verify-database-boundaries.ts",
     "verify:browser-boundaries": "tsx scripts/verify-browser-boundaries.ts",
+    "verify:browser-assignments": "tsx scripts/verify-browser-assignment-boundaries.ts",
+    "browser-beta:evidence": "tsx scripts/browser-beta-evidence.ts",
     "verify:digitalocean-browser-gateway": "tsx scripts/verify-digitalocean-browser-gateway.ts",
     "verify:remote-extension-config": "tsx scripts/verify-remote-extension-config.ts",
     "verify:vera-openclaw-extension": "tsx scripts/verify-vera-openclaw-extension.ts",

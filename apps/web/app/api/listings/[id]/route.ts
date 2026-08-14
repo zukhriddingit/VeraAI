@@ -32,13 +32,12 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
       );
     }
     if (!session.demoMode) {
+      const browserRuntime =
+        (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
       await requestCanonicalListingEnrichment(
         listingId,
         "listing_opened",
-        createListingEnrichmentDependencies(
-          session,
-          (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null
-        )
+        createListingEnrichmentDependencies(session, browserRuntime)
       ).catch(() => null);
     }
     const detail = await getListingDetail(session.repositories, listingId);

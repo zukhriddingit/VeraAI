@@ -26,11 +26,10 @@ export async function POST(request: Request): Promise<Response> {
         headers
       });
     }
+    const browserRuntime =
+      (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
     const queuedCount = await queueTopListingsPerSource(
-      createListingEnrichmentDependencies(
-        session,
-        (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null
-      ),
+      createListingEnrichmentDependencies(session, browserRuntime),
       3
     );
     return Response.json(EnrichmentBatchResponseSchema.parse({ queuedCount }), {

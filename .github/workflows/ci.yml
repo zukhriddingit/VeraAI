@@ -63,6 +63,9 @@ jobs:
       - name: Verify browser boundaries
         run: pnpm verify:browser-boundaries
 
+      - name: Verify isolated browser assignments
+        run: pnpm verify:browser-assignments
+
       - name: Verify Vera OpenClaw extension
         run: pnpm verify:vera-openclaw-extension
 

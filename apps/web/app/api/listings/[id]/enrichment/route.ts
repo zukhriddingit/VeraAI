@@ -49,13 +49,12 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
         { status: 404, headers }
       );
     }
+    const browserRuntime =
+      (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
     const result = await requestCanonicalListingEnrichment(
       listingId,
       "user_refresh",
-      createListingEnrichmentDependencies(
-        session,
-        (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null
-      ),
+      createListingEnrichmentDependencies(session, browserRuntime),
       input.data.force
     );
     return Response.json(result, { status: 202, headers });

@@ -62,13 +62,12 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       createId: randomUUID
     });
     if (parsed.data.shortlisted && !session.demoMode) {
+      const browserRuntime =
+        (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
       await requestCanonicalListingEnrichment(
         listingId,
         "listing_shortlisted",
-        createListingEnrichmentDependencies(
-          session,
-          (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null
-        )
+        createListingEnrichmentDependencies(session, browserRuntime)
       ).catch(() => null);
     }
     return Response.json(result, { status: 200, headers });

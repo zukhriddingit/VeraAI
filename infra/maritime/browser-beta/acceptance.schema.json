@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://verahousing.app/schemas/browser-beta-acceptance-v1.json",
+  "title": "Vera Browser Beta Acceptance Evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "founderFourSourceRegression", "incidentFreeDays", "sessions"],
+  "properties": {
+    "version": { "const": "1" },
+    "founderFourSourceRegression": { "type": "boolean" },
+    "incidentFreeDays": { "type": "integer", "minimum": 0, "maximum": 3650 },
+    "sessions": {
+      "type": "array",
+      "maxItems": 1000,
+      "items": { "$ref": "#/$defs/session" }
+    }
+  },
+  "$defs": {
+    "uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+    },
+    "session": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "assignmentId",
+        "userId",
+        "testerRole",
+        "userTriggered",
+        "sourceJobId",
+        "source",
+        "startedAt",
+        "completedAt",
+        "importedCount",
+        "checkpointActionTypes",
+        "forbiddenActionCount",
+        "unshareFollowUpState",
+        "unpairState",
+        "crossUserOwnerCheck",
+        "credentialIncidentCount",
+        "backgroundExecutionIncidentCount",
+        "incidentSeverity"
+      ],
+      "properties": {
+        "assignmentId": { "$ref": "#/$defs/uuid" },
+        "userId": { "$ref": "#/$defs/uuid" },
+        "testerRole": { "enum": ["founder", "nonfounder"] },
+        "userTriggered": { "const": true },
+        "sourceJobId": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "source": {
+          "enum": [
+            "zillow",
+            "apartments_com",
+            "facebook_marketplace",
+            "bu_off_campus",
+            "custom_website",
+            "craigslist"
+          ]
+        },
+        "startedAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" },
+        "importedCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "checkpointActionTypes": {
+          "type": "array",
+          "uniqueItems": true,
+          "maxItems": 20,
+          "items": {
+            "enum": [
+              "inspect_shared_tabs",
+              "create_source_tab",
+              "navigate_same_source",
+              "snapshot",
+              "scroll_bounded",
+              "select_reviewed_filter",
+              "fill_approved_search_field",
+              "open_observed_listing",
+              "return_to_results",
+              "extract_observed_facts",
+              "verify_shared_tab",
+              "set_reviewed_filter",
+              "navigate_observed"
+            ]
+          }
+        },
+        "forbiddenActionCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "unshareFollowUpState": { "enum": ["passed", "failed"] },
+        "unpairState": { "enum": ["passed", "failed"] },
+        "crossUserOwnerCheck": { "enum": ["passed", "failed"] },
+        "credentialIncidentCount": { "type": "integer", "minimum": 0, "maximum": 1000 },
+        "backgroundExecutionIncidentCount": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 1000
+        },
+        "incidentSeverity": { "type": "integer", "minimum": 0, "maximum": 3 }
+      }
+    }
+  }
+}
