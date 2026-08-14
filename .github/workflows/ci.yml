@@ -193,11 +193,37 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+
+      - name: Detect Gateway runtime changes
+        id: gateway_changes
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$BASE_SHA" || "$BASE_SHA" =~ ^0+$ ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            infra/maritime/openclaw \
+            scripts/verify-gateway-image-layout.mjs \
+            scripts/verify-gateway-runtime-supply-chain.ts \
+            scripts/verify-remote-extension-config.ts \
+            .github/workflows/release-openclaw-gateway.yml \
+            .github/workflows/attest-openclaw-gateway.yml; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Configure Docker Buildx
+        if: steps.gateway_changes.outputs.changed == 'true'
         uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
 
       - name: Build local Gateway candidate
+        if: steps.gateway_changes.outputs.changed == 'true'
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: infra/maritime/openclaw
@@ -211,6 +237,7 @@ jobs:
             VERA_SOURCE_COMMIT=${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Verify minimal runtime identity
+        if: steps.gateway_changes.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -219,12 +246,14 @@ jobs:
             --simulate-bootstrap
 
       - name: Install pinned Trivy
+        if: steps.gateway_changes.outputs.changed == 'true'
         uses: aquasecurity/setup-trivy@81e514348e19b6112ce2a7e3ecbafe19c1e1f567 # v0.3.1
         with:
           version: v0.72.0
           cache: false
 
       - name: Enforce zero critical or high findings
+        if: steps.gateway_changes.outputs.changed == 'true'
         shell: bash
         run: |
           set -euo pipefail

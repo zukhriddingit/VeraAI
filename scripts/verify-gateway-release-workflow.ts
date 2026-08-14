@@ -236,6 +236,11 @@ export function findGatewayReleaseWorkflowViolations(
     "runs-on: ubuntu-24.04",
     "timeout-minutes: 35",
     "contents: read",
+    "name: Detect Gateway runtime changes",
+    "id: gateway_changes",
+    "fetch-depth: 0",
+    "if: steps.gateway_changes.outputs.changed == 'true'",
+    "infra/maritime/openclaw",
     "actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd",
     "docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd",
     "docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf",
@@ -253,6 +258,12 @@ export function findGatewayReleaseWorkflowViolations(
     "vera-openclaw-gateway:ci"
   ]) {
     requireText(ciWorkflow, required, ciBoundaryMessage, violations);
+  }
+  if (
+    (ciWorkflow.match(/if: steps\.gateway_changes\.outputs\.changed == 'true'/gu)?.length ?? 0) !==
+    5
+  ) {
+    violations.push(ciBoundaryMessage);
   }
   if (
     ciWorkflow.includes("secrets.") ||

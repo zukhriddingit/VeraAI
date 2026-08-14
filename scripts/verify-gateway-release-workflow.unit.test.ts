@@ -162,6 +162,16 @@ describe("Gateway release workflow verifier", () => {
     ).toEqual(expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")]));
   });
 
+  it("rejects rebuilding the Gateway for unrelated application changes", () => {
+    const mutatedCi = ciWorkflow.replaceAll(
+      "if: steps.gateway_changes.outputs.changed == 'true'",
+      "if: always()"
+    );
+    expect(
+      findGatewayReleaseWorkflowViolations(releaseWorkflow, mutatedCi, resumeWorkflow)
+    ).toEqual(expect.arrayContaining([expect.stringMatching("CI must build and zero-scan")]));
+  });
+
   it("rejects published-image inspection before an exact-digest pull", () => {
     const mutatedRelease = releaseWorkflow.replace(
       '          docker pull "$GATEWAY_IMAGE_REF"\n',
