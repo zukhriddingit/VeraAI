@@ -23,12 +23,16 @@ export default async function BetaReviewPage() {
     <main>
       <nav className="page-nav" aria-label="Private beta navigation">
         <Link href="/">Listings</Link>
-        <Link href="/settings/beta" aria-current="page">Beta review</Link>
+        <Link href="/settings/beta" aria-current="page">
+          Beta review
+        </Link>
       </nav>
       <header className="subpage-hero settings-hero">
         <p className="eyebrow">Founder only</p>
         <h1>Review every invitation explicitly.</h1>
-        <p className="lede">A request is only contact consent. Invite is a separate, audited action.</p>
+        <p className="lede">
+          A request is only contact consent. Invite is a separate, audited action.
+        </p>
       </header>
       <BetaReviewQueue initialRequests={requests} />
     </main>

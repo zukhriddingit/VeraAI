@@ -282,7 +282,9 @@ export default function LandingPage() {
                 Install browser connector — approved testers
               </a>
             ) : (
-              <a className={styles.primaryAction} href={VERA_BETA_URL}>Join private beta</a>
+              <a className={styles.primaryAction} href={VERA_BETA_URL}>
+                Join private beta
+              </a>
             )}
           </div>
         </SectionReveal>

@@ -71,9 +71,9 @@ export default function PrivacyPage() {
             You may ask to access, correct, export, or delete your Vera data, or withdraw a beta
             request, by emailing{" "}
             <a href="mailto:support@verahousing.app">support@verahousing.app</a>. Self-service
-            export and deletion remain unavailable until their production lifecycle and backup
-            aging are verified. You can revoke Google access in your Google Account and unshare or
-            unpair the browser connector at any time.
+            export and deletion remain unavailable until their production lifecycle and backup aging
+            are verified. You can revoke Google access in your Google Account and unshare or unpair
+            the browser connector at any time.
           </p>
         </section>
       </article>

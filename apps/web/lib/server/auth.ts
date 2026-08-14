@@ -1,11 +1,7 @@
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { betterAuth } from "better-auth";
 
-import {
-  postgresSchema,
-  type BetaAccessRepository,
-  type PostgresConnection
-} from "@vera/db";
+import { postgresSchema, type BetaAccessRepository, type PostgresConnection } from "@vera/db";
 import { VeraUserIdSchema } from "@vera/domain";
 
 import {

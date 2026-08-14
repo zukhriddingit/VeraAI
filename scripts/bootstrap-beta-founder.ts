@@ -1,6 +1,10 @@
 import { fileURLToPath } from "node:url";
 
-import { createPostgresBetaAccessRepository, openPostgresConnection, parsePostgresConfig } from "@vera/db";
+import {
+  createPostgresBetaAccessRepository,
+  openPostgresConnection,
+  parsePostgresConfig
+} from "@vera/db";
 import { VeraUserIdSchema, type VeraUserId } from "@vera/domain";
 
 export function parseFounderBootstrap(input: {
@@ -16,7 +20,8 @@ export function parseFounderBootstrap(input: {
     .map((value) => value.trim())
     .filter(Boolean)
     .map((value) => VeraUserIdSchema.parse(value));
-  if (!admins?.includes(userId)) throw new Error("The confirmed founder is not an exact beta admin.");
+  if (!admins?.includes(userId))
+    throw new Error("The confirmed founder is not an exact beta admin.");
   return userId;
 }
 
@@ -33,7 +38,8 @@ export async function bootstrapBetaFounder(input: {
       approvedByUserId: userId,
       now: new Date()
     });
-    if (!(await repository.isActiveUser(userId))) throw new Error("Founder bootstrap verification failed.");
+    if (!(await repository.isActiveUser(userId)))
+      throw new Error("Founder bootstrap verification failed.");
     return `${userId} active`;
   } finally {
     await connection.close();
@@ -41,7 +47,9 @@ export async function bootstrapBetaFounder(input: {
 }
 
 async function main(): Promise<void> {
-  process.stdout.write(`${await bootstrapBetaFounder({ arguments_: process.argv.slice(2), environment: process.env })}\n`);
+  process.stdout.write(
+    `${await bootstrapBetaFounder({ arguments_: process.argv.slice(2), environment: process.env })}\n`
+  );
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {

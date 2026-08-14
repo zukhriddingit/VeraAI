@@ -24,13 +24,19 @@ export const CONNECTOR_PACKAGE_ENTRIES = [
 export async function packageVeraBrowserConnector(input: {
   readonly sourceDirectory: string;
   readonly outputDirectory: string;
-}): Promise<{ readonly zipPath: string; readonly sha256: string; readonly bytes: number; readonly entries: readonly string[] }> {
+}): Promise<{
+  readonly zipPath: string;
+  readonly sha256: string;
+  readonly bytes: number;
+  readonly entries: readonly string[];
+}> {
   const staging = await mkdtemp(join(tmpdir(), "vera-browser-connector-"));
   const fixed = new Date("2000-01-01T00:00:00.000Z");
   for (const entry of CONNECTOR_PACKAGE_ENTRIES) {
     const source = resolve(input.sourceDirectory, entry);
     const sourceStat = await stat(source);
-    if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) throw new Error(`Package entry is not a regular file: ${entry}`);
+    if (!sourceStat.isFile() || sourceStat.isSymbolicLink())
+      throw new Error(`Package entry is not a regular file: ${entry}`);
     const target = resolve(staging, entry);
     await mkdir(dirname(target), { recursive: true });
     await copyFile(source, target);
@@ -46,20 +52,31 @@ export async function packageVeraBrowserConnector(input: {
   if (zipped.status !== 0) throw new Error(`zip failed: ${zipped.stderr.trim()}`);
   const archive = await readFile(zipPath);
   const sha256 = createHash("sha256").update(archive).digest("hex");
-  await writeFile(`${zipPath}.sha256`, `${sha256}  ${relative(input.outputDirectory, zipPath)}\n`, { mode: 0o600 });
+  await writeFile(`${zipPath}.sha256`, `${sha256}  ${relative(input.outputDirectory, zipPath)}\n`, {
+    mode: 0o600
+  });
   return { zipPath, sha256, bytes: archive.byteLength, entries: CONNECTOR_PACKAGE_ENTRIES };
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   const outputIndex = process.argv.indexOf("--output");
   const output = outputIndex >= 0 ? process.argv[outputIndex + 1] : undefined;
-  if (!output) throw new Error("Usage: package-vera-browser-connector --output <private-output-directory>");
+  if (!output)
+    throw new Error("Usage: package-vera-browser-connector --output <private-output-directory>");
   const resolved = resolve(output);
   if (!resolved.startsWith("/private/tmp/") && !resolved.includes("/release-evidence/private/")) {
-    throw new Error("Connector packages must be written below /private/tmp or release-evidence/private.");
+    throw new Error(
+      "Connector packages must be written below /private/tmp or release-evidence/private."
+    );
   }
-  process.stdout.write(`${JSON.stringify(await packageVeraBrowserConnector({
-    sourceDirectory: resolve("infra/chrome/vera-openclaw-extension"),
-    outputDirectory: resolved
-  }), null, 2)}\n`);
+  process.stdout.write(
+    `${JSON.stringify(
+      await packageVeraBrowserConnector({
+        sourceDirectory: resolve("infra/chrome/vera-openclaw-extension"),
+        outputDirectory: resolved
+      }),
+      null,
+      2
+    )}\n`
+  );
 }

@@ -23,7 +23,11 @@ describe("founder beta bootstrap confirmation", () => {
   it("rejects missing, extra, and malformed confirmation input", () => {
     const environment = { VERA_BETA_ADMIN_USER_IDS: founderId };
     expect(() => parseFounderBootstrap({ arguments_: [], environment })).toThrow();
-    expect(() => parseFounderBootstrap({ arguments_: ["--confirm", "not-a-uuid"], environment })).toThrow();
-    expect(() => parseFounderBootstrap({ arguments_: ["--confirm", founderId, "extra"], environment })).toThrow();
+    expect(() =>
+      parseFounderBootstrap({ arguments_: ["--confirm", "not-a-uuid"], environment })
+    ).toThrow();
+    expect(() =>
+      parseFounderBootstrap({ arguments_: ["--confirm", founderId, "extra"], environment })
+    ).toThrow();
   });
 });

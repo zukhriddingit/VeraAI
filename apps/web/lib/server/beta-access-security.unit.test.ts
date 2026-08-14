@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { betaRateLimitDigest, requirePublicBetaSubmissionBoundary } from "./beta-access-security.ts";
+import {
+  betaRateLimitDigest,
+  requirePublicBetaSubmissionBoundary
+} from "./beta-access-security.ts";
 
 describe("beta access security", () => {
   it("derives an opaque key without retaining the network value", () => {
@@ -23,15 +26,11 @@ describe("beta access security", () => {
     const previousBaseUrl = process.env.VERA_PUBLIC_BASE_URL;
     process.env.VERA_PUBLIC_BASE_URL = "https://app.verahousing.app";
     try {
-      await requirePublicBetaSubmissionBoundary(
-        request,
-        { consumeRateLimit } as never,
-        {
-          NODE_ENV: "production",
-          VERA_TRUST_HEROKU_ROUTER: "1",
-          VERA_BETA_RATE_LIMIT_KEY: "k".repeat(32)
-        }
-      );
+      await requirePublicBetaSubmissionBoundary(request, { consumeRateLimit } as never, {
+        NODE_ENV: "production",
+        VERA_TRUST_HEROKU_ROUTER: "1",
+        VERA_BETA_RATE_LIMIT_KEY: "k".repeat(32)
+      });
       expect(consumeRateLimit).toHaveBeenCalledWith(
         expect.objectContaining({
           keyDigest: betaRateLimitDigest("203.0.113.8", {

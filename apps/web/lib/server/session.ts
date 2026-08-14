@@ -48,7 +48,10 @@ export async function requireVeraSession(
   const parsedUserId = VeraUserIdSchema.safeParse(untrustedSession?.user?.id);
   if (!parsedUserId.success) throw new AuthenticationRequiredError();
   if (environment.VERA_BETA_ACCESS_GATE_ENABLED === "1") {
-    if (!application.betaAccess || !(await application.betaAccess.isActiveUser(parsedUserId.data))) {
+    if (
+      !application.betaAccess ||
+      !(await application.betaAccess.isActiveUser(parsedUserId.data))
+    ) {
       throw new BetaAccessRequiredError();
     }
   }

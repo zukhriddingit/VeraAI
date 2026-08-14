@@ -22,13 +22,17 @@ export function BetaReviewQueue(props: { readonly initialRequests: readonly Beta
       setPending(null);
       return;
     }
-    setRequests((current) => current.map((item) => item.id === requestId ? body.request! : item));
+    setRequests((current) => current.map((item) => (item.id === requestId ? body.request! : item)));
     setPending(null);
   }
 
   return (
     <section className="settings-section" aria-label="Private beta requests">
-      {requests.length === 0 ? <article className="integration-card"><h2>No requests yet</h2></article> : null}
+      {requests.length === 0 ? (
+        <article className="integration-card">
+          <h2>No requests yet</h2>
+        </article>
+      ) : null}
       {requests.map((request) => (
         <article className="integration-card" key={request.id}>
           <p className="eyebrow">{request.status}</p>
@@ -36,13 +40,31 @@ export function BetaReviewQueue(props: { readonly initialRequests: readonly Beta
           <p>Requested {new Date(request.requestedAt).toLocaleString()}</p>
           {request.status === "requested" ? (
             <div className="detail-actions">
-              <button className="primary-button" type="button" disabled={pending === request.id} onClick={() => void review(request.id, "invite")}>Invite</button>
-              <button className="secondary-button" type="button" disabled={pending === request.id} onClick={() => void review(request.id, "decline")}>Decline</button>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={pending === request.id}
+                onClick={() => void review(request.id, "invite")}
+              >
+                Invite
+              </button>
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={pending === request.id}
+                onClick={() => void review(request.id, "decline")}
+              >
+                Decline
+              </button>
             </div>
           ) : null}
         </article>
       ))}
-      {message ? <p className="settings-error" role="alert">{message}</p> : null}
+      {message ? (
+        <p className="settings-error" role="alert">
+          {message}
+        </p>
+      ) : null}
     </section>
   );
 }

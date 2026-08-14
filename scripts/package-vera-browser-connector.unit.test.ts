@@ -4,7 +4,10 @@ import { join, resolve } from "node:path";
 
 import { expect, it } from "vitest";
 
-import { CONNECTOR_PACKAGE_ENTRIES, packageVeraBrowserConnector } from "./package-vera-browser-connector.ts";
+import {
+  CONNECTOR_PACKAGE_ENTRIES,
+  packageVeraBrowserConnector
+} from "./package-vera-browser-connector.ts";
 
 it("creates identical allowlisted package bytes", async () => {
   const first = await mkdtemp(join(tmpdir(), "vera-package-a-"));

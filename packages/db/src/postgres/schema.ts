@@ -125,10 +125,7 @@ export const betaMemberships = pgTable(
       "beta_memberships_normalized_email_check",
       sql`${table.normalizedEmail} = lower(btrim(${table.normalizedEmail}))`
     ),
-    check(
-      "beta_memberships_status_check",
-      sql`${table.status} IN ('invited', 'active', 'revoked')`
-    )
+    check("beta_memberships_status_check", sql`${table.status} IN ('invited', 'active', 'revoked')`)
   ]
 );
 
@@ -142,10 +139,7 @@ export const betaAccessRateLimits = pgTable(
   },
   (table) => [
     index("beta_access_rate_limits_expiry_idx").on(table.expiresAt),
-    check(
-      "beta_access_rate_limits_digest_check",
-      sql`${table.keyDigest} ~ '^[a-f0-9]{64}$'`
-    ),
+    check("beta_access_rate_limits_digest_check", sql`${table.keyDigest} ~ '^[a-f0-9]{64}$'`),
     check("beta_access_rate_limits_attempts_check", sql`${table.attempts} > 0`)
   ]
 );
@@ -1247,9 +1241,7 @@ export const browserGatewayAssignments = pgTable(
     uniqueIndex("browser_gateway_assignments_agent_unique").on(table.maritimeAgentId),
     uniqueIndex("browser_gateway_assignments_gateway_origin_unique").on(table.gatewayOrigin),
     uniqueIndex("browser_gateway_assignments_secret_reference_unique").on(table.secretReference),
-    uniqueIndex("browser_gateway_assignments_relay_digest_unique").on(
-      table.relayCredentialDigest
-    ),
+    uniqueIndex("browser_gateway_assignments_relay_digest_unique").on(table.relayCredentialDigest),
     uniqueIndex("browser_gateway_assignments_checkpoint_digest_unique").on(
       table.checkpointCredentialDigest
     ),
@@ -1291,10 +1283,7 @@ export const browserGatewayAcceptanceRuns = pgTable(
     completedAt: instant("completed_at").notNull()
   },
   (table) => [
-    uniqueIndex("browser_gateway_acceptance_user_job_unique").on(
-      table.userId,
-      table.sourceJobId
-    ),
+    uniqueIndex("browser_gateway_acceptance_user_job_unique").on(table.userId, table.sourceJobId),
     foreignKey({
       name: "browser_gateway_acceptance_assignment_owner_fk",
       columns: [table.assignmentId, table.userId],
@@ -1302,10 +1291,7 @@ export const browserGatewayAcceptanceRuns = pgTable(
     })
       .onDelete("restrict")
       .onUpdate("restrict"),
-    check(
-      "browser_gateway_acceptance_nonnegative",
-      sql`${table.forbiddenActionCount} >= 0`
-    ),
+    check("browser_gateway_acceptance_nonnegative", sql`${table.forbiddenActionCount} >= 0`),
     check(
       "browser_gateway_acceptance_source_check",
       sql`${table.source} IN ('zillow', 'apartments_com', 'facebook_marketplace', 'bu_off_campus', 'custom_website', 'craigslist')`

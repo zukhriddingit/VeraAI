@@ -168,7 +168,10 @@ export function createPostgresBetaAccessRepository(
             }
           })
           .returning({ attempts: betaAccessRateLimits.attempts });
-        return Number(required(rows[0], "Beta rate-limit operation returned no row.").attempts) <= input.maximum;
+        return (
+          Number(required(rows[0], "Beta rate-limit operation returned no row.").attempts) <=
+          input.maximum
+        );
       });
     },
 
@@ -287,7 +290,9 @@ export function createPostgresBetaAccessRepository(
           })
           .where(eq(betaMemberships.id, current.id))
           .returning();
-        return membershipFromRow(required(updated[0], "Beta membership activation returned no row."));
+        return membershipFromRow(
+          required(updated[0], "Beta membership activation returned no row.")
+        );
       });
     },
 
@@ -336,7 +341,9 @@ export function createPostgresBetaAccessRepository(
         if (current.userId) {
           await transaction.delete(sessions).where(eq(sessions.userId, current.userId));
         }
-        return membershipFromRow(required(updated[0], "Beta membership revocation returned no row."));
+        return membershipFromRow(
+          required(updated[0], "Beta membership revocation returned no row.")
+        );
       });
     },
 

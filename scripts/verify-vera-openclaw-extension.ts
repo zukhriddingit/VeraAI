@@ -42,11 +42,16 @@ export function findVeraExtensionViolations(
     manifest.version !== "2.1.0" ||
     typeof manifest.description !== "string" ||
     !manifest.description.startsWith("THIS EXTENSION IS FOR BETA TESTING.")
-  ) violations.push("Store identity is not exact.");
-  if (!Array.isArray(manifest.permissions) || !sameSorted(manifest.permissions, EXPECTED_PERMISSIONS)) {
+  )
+    violations.push("Store identity is not exact.");
+  if (
+    !Array.isArray(manifest.permissions) ||
+    !sameSorted(manifest.permissions, EXPECTED_PERMISSIONS)
+  ) {
     violations.push("Permissions are not exact.");
   }
-  if (PROHIBITED_KEYS.some((key) => key in manifest)) violations.push("Prohibited manifest authority is present.");
+  if (PROHIBITED_KEYS.some((key) => key in manifest))
+    violations.push("Prohibited manifest authority is present.");
   const scripts = manifest.content_scripts;
   if (!Array.isArray(scripts) || scripts.length !== 1) {
     violations.push("Exactly one readiness bridge is required.");
@@ -55,7 +60,10 @@ export function findVeraExtensionViolations(
     if (!Array.isArray(script.matches) || !sameSorted(script.matches, EXPECTED_MATCHES)) {
       violations.push("Readiness bridge origins are not exact.");
     }
-    if (JSON.stringify(script.js) !== JSON.stringify(["readiness-bridge.js"]) || script.run_at !== "document_idle") {
+    if (
+      JSON.stringify(script.js) !== JSON.stringify(["readiness-bridge.js"]) ||
+      script.run_at !== "document_idle"
+    ) {
       violations.push("Readiness bridge runtime is not exact.");
     }
   }
@@ -66,13 +74,15 @@ export function findVeraExtensionViolations(
   if (
     JSON.stringify(manifest.icons) !== JSON.stringify(expectedIcons) ||
     JSON.stringify(action?.default_icon) !== JSON.stringify(expectedIcons)
-  ) violations.push("Extension icon declarations are not exact.");
+  )
+    violations.push("Extension icon declarations are not exact.");
   if (
     ICON_SIZES.some((size) => {
       const value = input.iconDimensions.get(`icon-${size}.png`);
       return !value || value[0] !== size || value[1] !== size;
     })
-  ) violations.push("Extension icons are missing or incorrectly sized.");
+  )
+    violations.push("Extension icons are missing or incorrectly sized.");
   const forbidden = [
     /\beval\s*\(/u,
     /\bnew\s+Function\b/u,
@@ -86,7 +96,8 @@ export function findVeraExtensionViolations(
     /\bfetch\s*\(/u,
     /console\.(?:debug|info|log|warn|error)/u
   ];
-  if (forbidden.some((pattern) => pattern.test(input.runtime))) violations.push("Runtime contains prohibited authority.");
+  if (forbidden.some((pattern) => pattern.test(input.runtime)))
+    violations.push("Runtime contains prohibited authority.");
   if (input.runtime.split("https://www.zillow.com/homes/for_rent/").length !== 2) {
     violations.push("Prepared start URL is not exact.");
   }
@@ -96,7 +107,8 @@ export function findVeraExtensionViolations(
     "browser_extension_conflict",
     "Prepare Vera Search tab",
     "about:blank"
-  ]) if (!input.runtime.includes(required)) violations.push(`Runtime is missing ${required}.`);
+  ])
+    if (!input.runtime.includes(required)) violations.push(`Runtime is missing ${required}.`);
   return violations;
 }
 
@@ -130,13 +142,20 @@ export async function verifyVeraExtension(root = resolve(".")): Promise<Record<s
     iconParts.push(Buffer.from(`${name}\n`), bytes);
   }
   const violations = findVeraExtensionViolations({ manifest, runtime, iconDimensions });
-  if (violations.length) throw new Error(`Vera extension verification failed: ${violations.join(" ")}`);
+  if (violations.length)
+    throw new Error(`Vera extension verification failed: ${violations.join(" ")}`);
   const releaseLock = JSON.parse(
     readFileSync(resolve(extensionDirectory, "release-lock.json"), "utf8")
   ) as {
     schemaVersion?: unknown;
     upstream?: { version?: unknown; manifestSha256?: unknown };
-    vera?: { name?: unknown; version?: unknown; manifestSha256?: unknown; runtimeSha256?: unknown; iconsSha256?: unknown };
+    vera?: {
+      name?: unknown;
+      version?: unknown;
+      manifestSha256?: unknown;
+      runtimeSha256?: unknown;
+      iconsSha256?: unknown;
+    };
   };
   const manifestSha256 = sha256(manifestText);
   const runtimeSha256 = sha256(runtime);
@@ -144,13 +163,15 @@ export async function verifyVeraExtension(root = resolve(".")): Promise<Record<s
   if (
     releaseLock.schemaVersion !== "1" ||
     releaseLock.upstream?.version !== "2.0.0" ||
-    releaseLock.upstream.manifestSha256 !== "90dc60974ff7b68b4b487cc7040268d4ce458224beeb8bb715e56f59d23bec23" ||
+    releaseLock.upstream.manifestSha256 !==
+      "90dc60974ff7b68b4b487cc7040268d4ce458224beeb8bb715e56f59d23bec23" ||
     releaseLock.vera?.name !== manifest.name ||
     releaseLock.vera.version !== manifest.version ||
     releaseLock.vera.manifestSha256 !== manifestSha256 ||
     releaseLock.vera.runtimeSha256 !== runtimeSha256 ||
     releaseLock.vera.iconsSha256 !== iconsSha256
-  ) throw new Error("Vera extension release lock does not match the reviewed runtime.");
+  )
+    throw new Error("Vera extension release lock does not match the reviewed runtime.");
   return {
     status: "passed",
     extension: manifest.name,

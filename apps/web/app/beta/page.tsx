@@ -44,7 +44,9 @@ export default function BetaAccessPage() {
           </p>
           <BetaAccessForm />
           <p>
-            Browser testing has a separate <a href="https://verahousing.app/privacy/browser-connector">connector privacy notice</a>.
+            Browser testing has a separate{" "}
+            <a href="https://verahousing.app/privacy/browser-connector">connector privacy notice</a>
+            .
           </p>
         </div>
       </section>

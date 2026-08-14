@@ -96,8 +96,7 @@ export function createPostgresApplication(
   try {
     const repositoryProvider = createPostgresRepositoryProvider(connection);
     const betaAccess = createPostgresBetaAccessRepository(connection);
-    const browserGatewayAssignments =
-      createPostgresBrowserGatewayAssignmentRepository(connection);
+    const browserGatewayAssignments = createPostgresBrowserGatewayAssignmentRepository(connection);
     const browserGatewayRuntime = new BrowserGatewayRuntimeResolver({
       assignments: browserGatewayAssignments,
       betaAccess,

@@ -14,10 +14,7 @@ import {
   MutationRequestError,
   readBoundedJson
 } from "../../../../lib/server/request-security.ts";
-import {
-  AuthenticationRequiredError,
-  requireVeraSession
-} from "../../../../lib/server/session.ts";
+import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session.ts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -85,8 +82,14 @@ export async function PATCH(request: Request): Promise<Response> {
       return Response.json({ code: "not_found" }, { status: 404, headers });
     if (error instanceof CrossOriginMutationError)
       return Response.json({ code: "cross_origin_request" }, { status: 403, headers });
-    if (error instanceof MutationRequestError || (error instanceof Error && error.name === "ZodError"))
-      return Response.json({ code: "invalid_request" }, { status: error instanceof MutationRequestError ? error.status : 400, headers });
+    if (
+      error instanceof MutationRequestError ||
+      (error instanceof Error && error.name === "ZodError")
+    )
+      return Response.json(
+        { code: "invalid_request" },
+        { status: error instanceof MutationRequestError ? error.status : 400, headers }
+      );
     return Response.json({ code: "conflict" }, { status: 409, headers });
   }
 }

@@ -1,7 +1,4 @@
-import {
-  BetaAccessAcceptedResponseSchema,
-  BetaAccessSubmissionSchema
-} from "@vera/domain";
+import { BetaAccessAcceptedResponseSchema, BetaAccessSubmissionSchema } from "@vera/domain";
 
 import { getHostedApplication } from "../../../lib/server/application.ts";
 import {
@@ -56,11 +53,17 @@ export async function POST(request: Request): Promise<Response> {
   } catch (error: unknown) {
     if (error instanceof BetaRateLimitError) {
       outcomeCode = "rate_limited";
-      return Response.json({ accepted: false, code: "try_again" }, { status: 429, headers: responseHeaders });
+      return Response.json(
+        { accepted: false, code: "try_again" },
+        { status: 429, headers: responseHeaders }
+      );
     }
     if (error instanceof CrossOriginMutationError) {
       outcomeCode = "cross_origin_request";
-      return Response.json({ accepted: false, code: "try_again" }, { status: 403, headers: responseHeaders });
+      return Response.json(
+        { accepted: false, code: "try_again" },
+        { status: 403, headers: responseHeaders }
+      );
     }
     if (
       error instanceof MutationRequestError ||
@@ -69,11 +72,17 @@ export async function POST(request: Request): Promise<Response> {
       outcomeCode = "malformed_request";
       return Response.json(
         { accepted: false, code: "invalid_request" },
-        { status: error instanceof MutationRequestError ? error.status : 400, headers: responseHeaders }
+        {
+          status: error instanceof MutationRequestError ? error.status : 400,
+          headers: responseHeaders
+        }
       );
     }
     outcomeCode = "try_again";
-    return Response.json({ accepted: false, code: "try_again" }, { status: 503, headers: responseHeaders });
+    return Response.json(
+      { accepted: false, code: "try_again" },
+      { status: 503, headers: responseHeaders }
+    );
   } finally {
     console.info("beta_access_submission", {
       requestId,

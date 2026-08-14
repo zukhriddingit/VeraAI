@@ -38,6 +38,8 @@ describe("private beta identity hooks", () => {
     expect(repository.bindInvitedMembership).toHaveBeenCalledWith(
       expect.objectContaining({ email: "tester@example.com", userId })
     );
-    await expect(hooks.session.create.before({ userId })).resolves.toMatchObject({ data: { userId } });
+    await expect(hooks.session.create.before({ userId })).resolves.toMatchObject({
+      data: { userId }
+    });
   });
 });

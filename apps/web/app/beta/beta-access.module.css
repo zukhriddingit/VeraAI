@@ -6,8 +6,7 @@
   padding: 0 0 4rem;
   color: #eef2f6;
   background:
-    radial-gradient(circle at 78% 3%, rgba(71, 101, 142, 0.26), transparent 34rem),
-    #050914;
+    radial-gradient(circle at 78% 3%, rgba(71, 101, 142, 0.26), transparent 34rem), #050914;
   font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
 }
 

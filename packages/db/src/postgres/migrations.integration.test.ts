@@ -150,7 +150,7 @@ describe("PostgreSQL migration readiness", () => {
     expect(migration).toContain('CREATE TABLE "beta_access_requests"');
     expect(migration).toContain('CREATE TABLE "beta_memberships"');
     expect(migration).toContain('CREATE TABLE "beta_access_rate_limits"');
-    expect(migration).toContain('"status" text DEFAULT \'requested\' NOT NULL');
+    expect(migration).toContain("\"status\" text DEFAULT 'requested' NOT NULL");
   });
 
   it("keeps browser Gateway assignments additive, portable, and credential-safe", () => {
@@ -164,7 +164,9 @@ describe("PostgreSQL migration readiness", () => {
     expect(migration).toContain('CREATE TABLE "browser_gateway_acceptance_runs"');
     expect(migration).toContain("browser_gateway_assignments_user_live_unique");
     expect(migration).toContain("browser_gateway_acceptance_assignment_owner_fk");
-    expect(migration).not.toMatch(/"(?:relay|checkpoint|maritime|plan)_(?:token|secret|api_key|signing_key)"/u);
+    expect(migration).not.toMatch(
+      /"(?:relay|checkpoint|maritime|plan)_(?:token|secret|api_key|signing_key)"/u
+    );
   });
 
   it("reports ready only when the expected migration hash is present", async () => {
