@@ -161,7 +161,7 @@ export async function requestRemoteExtensionSnapshot(
     dependencies.environment.founderUserId === null ||
     dependencies.environment.founderUserId !== dependencies.userId
   ) {
-    throw new RemoteExtensionSnapshotServiceError("founder_denied", 403, false);
+    throw new RemoteExtensionSnapshotServiceError("assignment_denied", 403, false);
   }
   if (!dependencies.environment.gatewayConfigured) {
     throw new RemoteExtensionSnapshotServiceError("browser_gateway_not_configured", 409, false);

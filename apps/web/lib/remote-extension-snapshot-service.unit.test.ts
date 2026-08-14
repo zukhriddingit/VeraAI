@@ -112,7 +112,7 @@ describe("remote extension snapshot service", () => {
     [
       "wrong founder",
       { founderUserId: "33333333-3333-4333-8333-333333333333" as VeraUserId },
-      new RemoteExtensionSnapshotServiceError("founder_denied", 403, false)
+      new RemoteExtensionSnapshotServiceError("assignment_denied", 403, false)
     ],
     [
       "missing gateway",

@@ -126,7 +126,7 @@ export async function checkBrowserResearchAction(
   const response = evaluateBrowserResearchAction({
     checkpoint: request,
     runtime: {
-      founderAuthorized:
+      assignmentAuthorized:
         dependencies.environment.founderUserId !== null &&
         dependencies.environment.founderUserId === dependencies.userId,
       sourceEnabled: dependencies.environment.enabledSources.has(request.plan.source),

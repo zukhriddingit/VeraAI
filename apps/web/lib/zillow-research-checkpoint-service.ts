@@ -113,7 +113,7 @@ export async function checkZillowResearchAction(
   const response = evaluateZillowResearchAction({
     checkpoint: evaluatedRequest,
     runtime: {
-      founderAuthorized:
+      assignmentAuthorized:
         dependencies.environment.founderUserId !== null &&
         dependencies.environment.founderUserId === dependencies.userId,
       sourceEnabled: dependencies.environment.sourceEnabled,

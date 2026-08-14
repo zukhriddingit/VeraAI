@@ -103,7 +103,7 @@ function customCheckpoint(hostname = "housing.example.edu") {
 }
 
 const authorizedRuntime = {
-  founderAuthorized: true,
+  assignmentAuthorized: true,
   sourceEnabled: true,
   userTriggered: true,
   browserKillSwitchActive: false,
@@ -115,7 +115,7 @@ const authorizedRuntime = {
 } as const;
 
 describe("generic browser-research action policy", () => {
-  it("allows only an active signed founder plan on its exact source host", () => {
+  it("allows only an active signed assigned plan on its exact source host", () => {
     expect(
       evaluateBrowserResearchAction({
         checkpoint: checkpoint(),
@@ -126,7 +126,7 @@ describe("generic browser-research action policy", () => {
   });
 
   it.each([
-    [{ founderAuthorized: false }, "founder_denied"],
+    [{ assignmentAuthorized: false }, "assignment_denied"],
     [{ sourceEnabled: false }, "source_disabled"],
     [{ browserKillSwitchActive: true }, "browser_kill_switch_active"],
     [{ cancelled: true }, "cancelled"],
