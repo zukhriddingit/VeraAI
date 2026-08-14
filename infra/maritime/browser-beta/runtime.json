@@ -1,0 +1,7 @@
+{
+  "schemaVersion": "1",
+  "state": "approved_not_provisioned",
+  "gatewayImage": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:4bbdb2886d912766a17de7e53b7c3809ed1172822024f22c4adb984c9c170bde",
+  "rollbackImage": "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:983f5fd5dd0d8c944f92d2988cf00cefb55750f58c5567a1ec8491c185b664fd",
+  "rebuildRequired": false
+}

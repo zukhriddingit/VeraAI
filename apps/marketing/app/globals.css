@@ -1,0 +1,68 @@
+:root {
+  color-scheme: dark;
+  background: #050914;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-width: 320px;
+  scroll-behavior: smooth;
+  background: #050914;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  background: #050914;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+[data-marketing-section] {
+  scroll-margin-top: 6.5rem;
+}
+
+[data-reveal] {
+  opacity: 0;
+  transform: translateY(1rem);
+  transition:
+    opacity 420ms ease,
+    transform 420ms ease;
+}
+
+[data-reveal][data-visible="true"] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+:focus-visible {
+  outline: 3px solid #ff735f;
+  outline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  [data-atlas-motion] * {
+    animation: none !important;
+    transform: none !important;
+    transition: none !important;
+  }
+}

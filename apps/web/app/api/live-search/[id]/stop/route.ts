@@ -2,10 +2,8 @@ import { EntityIdSchema } from "@vera/domain";
 
 import { createPersistedPolicyRegistry } from "../../../../../lib/connector-registry";
 import {
-  assertLiveSearchFounder,
   createLiveSearchDependencies,
-  LiveSearchServiceError,
-  parseLiveSearchEnvironment
+  LiveSearchServiceError
 } from "../../../../../lib/live-search-service";
 import {
   createRentalResearchDependencies,
@@ -17,6 +15,7 @@ import {
   CrossOriginMutationError
 } from "../../../../../lib/server/request-security";
 import { AuthenticationRequiredError, requireVeraSession } from "../../../../../lib/server/session";
+import { getHostedApplication } from "../../../../../lib/server/application";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -30,9 +29,9 @@ export async function POST(
   context: { params: Promise<{ id: string }> }
 ): Promise<Response> {
   try {
-    const session = await requireVeraSession(request.headers);
+    const application = getHostedApplication();
+    const session = await requireVeraSession(request.headers, application);
     assertSameOriginMutation(request);
-    assertLiveSearchFounder(session.userId, parseLiveSearchEnvironment(process.env));
     const { id } = await context.params;
     const runId = EntityIdSchema.parse(id);
     const policyRegistry = await createPersistedPolicyRegistry(session.repositories);
@@ -43,6 +42,8 @@ export async function POST(
       process.env,
       policyRegistry
     );
+    const browserRuntime =
+      (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
     return Response.json(
       await stopRentalResearch(
         runId,
@@ -51,6 +52,7 @@ export async function POST(
           session.repositories,
           session.repositoryProvider,
           live,
+          browserRuntime,
           process.env
         )
       ),

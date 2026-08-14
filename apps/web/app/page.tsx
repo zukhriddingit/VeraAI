@@ -1,6 +1,10 @@
 import Link from "next/link";
 
+import type { RentalResearchSource } from "@vera/domain";
+
 import { loadCockpitInitialState } from "../lib/cockpit-read-model";
+import { parseLiveSearchEnvironment } from "../lib/live-search-service";
+import { getHostedApplication } from "../lib/server/application";
 import { requireVeraPageSession } from "../lib/server/page-session";
 import { DemoSearch } from "./demo-search";
 import { SignOutButton } from "./sign-out-button";
@@ -10,6 +14,28 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   const context = await requireVeraPageSession();
   const initialState = await loadCockpitInitialState(context.repositories, context.demoMode);
+  const liveSearchPreview = process.env.VERA_E2E_LIVE_SEARCH_UI === "1";
+  const availableLiveSources: RentalResearchSource[] = [];
+  if (liveSearchPreview) {
+    availableLiveSources.push(
+      "rentcast",
+      "zillow",
+      "apartments_com",
+      "facebook_marketplace",
+      "bu_off_campus",
+      "craigslist",
+      "custom_website"
+    );
+  } else if (!context.demoMode) {
+    const liveEnvironment = parseLiveSearchEnvironment(process.env);
+    if (liveEnvironment.enabled && liveEnvironment.founderUserIds.has(context.userId)) {
+      availableLiveSources.push("rentcast");
+    }
+    const application = getHostedApplication();
+    const browserRuntime =
+      (await application.browserGatewayRuntime?.resolveForUser(context.userId)) ?? null;
+    if (browserRuntime) availableLiveSources.push(...browserRuntime.enabledSources);
+  }
 
   return (
     <main className="cockpit-main">
@@ -47,7 +73,8 @@ export default async function HomePage() {
 
       <DemoSearch
         initialState={initialState}
-        liveSearchPreview={process.env.VERA_E2E_LIVE_SEARCH_UI === "1"}
+        liveSearchPreview={liveSearchPreview}
+        availableLiveSources={availableLiveSources}
       />
 
       <section className="next-step cockpit-safety" aria-labelledby="next-step-heading">

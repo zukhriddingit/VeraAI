@@ -4,6 +4,7 @@ import {
   createListingEnrichmentDependencies,
   queueTopListingsPerSource
 } from "../../../../../lib/listing-enrichment-service";
+import { getHostedApplication } from "../../../../../lib/server/application";
 import {
   assertSameOriginMutation,
   CrossOriginMutationError
@@ -16,7 +17,8 @@ const headers = { "Cache-Control": "no-store, max-age=0", "Content-Type": "appli
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const session = await requireVeraSession(request.headers);
+    const application = getHostedApplication();
+    const session = await requireVeraSession(request.headers, application);
     assertSameOriginMutation(request);
     if (session.demoMode) {
       return Response.json(EnrichmentBatchResponseSchema.parse({ queuedCount: 0 }), {
@@ -24,8 +26,10 @@ export async function POST(request: Request): Promise<Response> {
         headers
       });
     }
+    const browserRuntime =
+      (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
     const queuedCount = await queueTopListingsPerSource(
-      createListingEnrichmentDependencies(session),
+      createListingEnrichmentDependencies(session, browserRuntime),
       3
     );
     return Response.json(EnrichmentBatchResponseSchema.parse({ queuedCount }), {

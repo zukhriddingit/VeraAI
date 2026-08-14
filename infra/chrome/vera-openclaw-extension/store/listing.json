@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "vera-chrome-store-listing.v1",
+  "language": "en",
+  "name": "Vera Browser Connector BETA",
+  "summary": "Share one dedicated housing-search tab with your approved Vera Browser Gateway.",
+  "detailedDescription": "THIS EXTENSION IS FOR BETA TESTING. Vera Browser Connector lets an approved Vera tester explicitly share one dedicated housing-search tab with their paired Vera Browser Gateway. Vera may process the shared tab URL and observed housing-listing content only after the tester chooses Share this tab with Vera. The connector does not sign in, type credentials, solve CAPTCHA, contact anyone, submit applications, make payments, upload, download, or run background searches. Unsharing stops future tab access and unpairing removes the local relay credential.",
+  "category": "Productivity",
+  "homepageUrl": "https://verahousing.app",
+  "privacyUrl": "https://verahousing.app/privacy/browser-connector",
+  "supportUrl": "https://verahousing.app/support/browser-connector",
+  "distribution": {
+    "visibility": "private",
+    "trustedTesters": true,
+    "deferredPublishing": true,
+    "regions": "all"
+  }
+}

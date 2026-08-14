@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Sanitized Somerville rental illustration</title>
+  <desc id="desc">Abstract light-colored triple decker houses along a leafy street.</desc>
+  <defs><linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#84a8b7"/><stop offset="1" stop-color="#d9c8a8"/></linearGradient></defs>
+  <rect width="1200" height="760" fill="url(#sky)"/>
+  <path d="M0 615h1200v145H0z" fill="#2a3e39"/>
+  <path d="M115 250h390v400H115z" fill="#dad7c6"/><path d="M80 250l230-150 230 150z" fill="#6c5147"/>
+  <path d="M570 290h435v360H570z" fill="#b9b69d"/><path d="M535 290l250-160 255 160z" fill="#554c48"/>
+  <g fill="#365369"><path d="M165 300h100v92H165zm185 0h100v92H350zm-185 145h100v92H165zm185 0h100v92H350z"/><path d="M625 335h110v85H625zm165 0h110v85H790zm-165 135h110v85H625zm165 0h110v85H790z"/></g>
+  <g fill="#315843"><circle cx="60" cy="510" r="175"/><circle cx="1110" cy="515" r="190"/><circle cx="520" cy="610" r="105"/></g>
+  <path d="M430 760l180-180 240 180z" fill="#626668" opacity=".65"/>
+</svg>

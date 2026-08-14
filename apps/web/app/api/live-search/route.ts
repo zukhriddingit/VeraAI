@@ -11,6 +11,7 @@ import {
   runRentalResearch
 } from "../../../lib/rental-research-service";
 import { createPersistedPolicyRegistry } from "../../../lib/connector-registry";
+import { getHostedApplication } from "../../../lib/server/application";
 import {
   assertSameOriginMutation,
   CrossOriginMutationError,
@@ -29,10 +30,10 @@ const headers = {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const context = await requireVeraSession(request.headers);
+    const application = getHostedApplication();
+    const context = await requireVeraSession(request.headers, application);
     assertSameOriginMutation(request);
     if (context.demoMode) throw new LiveSearchServiceError("disabled", 503, null, false);
-    assertLiveSearchFounder(context.userId, parseLiveSearchEnvironment(process.env));
     const input = await readBoundedJson(request, { maxBytes: 12_000 });
     const policyRegistry = await createPersistedPolicyRegistry(context.repositories);
     const liveDependencies = createLiveSearchDependencies(
@@ -43,6 +44,12 @@ export async function POST(request: Request): Promise<Response> {
       policyRegistry
     );
     const isMultiSource = typeof input === "object" && input !== null && "selectedSources" in input;
+    if (!isMultiSource) {
+      assertLiveSearchFounder(context.userId, parseLiveSearchEnvironment(process.env));
+    }
+    const browserRuntime = isMultiSource
+      ? ((await application.browserGatewayRuntime?.resolveForUser(context.userId)) ?? null)
+      : null;
     const result = isMultiSource
       ? await runRentalResearch(
           input,
@@ -51,6 +58,7 @@ export async function POST(request: Request): Promise<Response> {
             context.repositories,
             context.repositoryProvider,
             liveDependencies,
+            browserRuntime,
             process.env
           )
         )

@@ -12,7 +12,12 @@ export function SignInButton() {
   async function signIn(): Promise<void> {
     setPending(true);
     setMessage(null);
-    const result = await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+    const result = await authClient.signIn.social({
+      provider: "google",
+      callbackURL: "/",
+      newUserCallbackURL: "/",
+      errorCallbackURL: "/access-pending"
+    });
     if (result.error) {
       setMessage("Google sign-in could not start. Please try again.");
       setPending(false);

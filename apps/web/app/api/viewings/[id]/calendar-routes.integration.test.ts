@@ -47,11 +47,14 @@ function registerFixture(
     repositoryProvider: fixture.repositoryProvider,
     auth: null,
     calendar: fixture.calendar,
+    betaAccess: null,
     demoUserId: "018f9f64-7b5a-7c91-a12e-000000000001",
     readiness: vi.fn(),
     close: vi.fn(),
     ...overrides,
-    gmailOAuth: overrides.gmailOAuth ?? null
+    gmailOAuth: overrides.gmailOAuth ?? null,
+    browserGatewayAssignments: overrides.browserGatewayAssignments ?? null,
+    browserGatewayRuntime: overrides.browserGatewayRuntime ?? null
   });
 }
 

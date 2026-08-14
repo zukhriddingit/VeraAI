@@ -3,9 +3,8 @@ import { randomUUID } from "node:crypto";
 import {
   BROWSER_SOURCE_CONNECTOR_IDS,
   BROWSER_SOURCE_OPERATIONS,
-  createLoopbackBrowserResearchClient,
-  createMaritimeBrowserResearchClient,
   getBrowserSourceAdapter,
+  MaritimeBrowserResearchClient,
   MaritimeBrowserResearchError
 } from "@vera/connectors";
 import {
@@ -26,6 +25,7 @@ import {
   ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE,
   computeListingDetailCompleteness,
   isExpectedSourceUrl,
+  type BrowserGatewayRuntime,
   type BrowserResearchOutput,
   type BrowserResearchPlan,
   type BrowserResearchSource,
@@ -40,7 +40,7 @@ import {
   type VeraUserId
 } from "@vera/domain";
 
-import { parseBrowserResearchCheckpointEnvironment } from "./browser-research-checkpoint-service.ts";
+import { parseHostedRuntimePolicy } from "./server/hosted-runtime-policy.ts";
 
 const MAX_CONCURRENT_ENRICHMENTS = 2;
 const ENRICHMENT_MAX_ATTEMPTS = 3;
@@ -56,7 +56,7 @@ export interface ListingEnrichmentDependencies {
       options: { readonly signal: AbortSignal }
     ): Promise<BrowserResearchOutput>;
   };
-  readonly founderUserId: VeraUserId | null;
+  readonly assignmentAuthorized: boolean;
   readonly browserDisabled: boolean;
   readonly enabledSources: ReadonlySet<BrowserResearchSource>;
   readonly planSigningKey: string;
@@ -359,7 +359,7 @@ async function queueSourceRecord(
     record.sourceUrl === null ||
     !isExpectedSourceUrl(source, record.sourceUrl) ||
     dependencies.browserDisabled ||
-    dependencies.founderUserId !== dependencies.userId ||
+    !dependencies.assignmentAuthorized ||
     !dependencies.enabledSources.has(source)
   ) {
     return null;
@@ -833,30 +833,32 @@ export function createListingEnrichmentDependencies(
     readonly repositories: UserRepositories;
     readonly repositoryProvider: UserRepositoryProvider;
   },
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: NodeJS.ProcessEnv = process.env
 ): ListingEnrichmentDependencies {
-  const policy = parseBrowserResearchCheckpointEnvironment(environment);
-  const localBridgeConfigured =
-    (environment.VERA_BROWSER_RESEARCH_LOCAL_BRIDGE_URL?.trim().length ?? 0) > 0 &&
-    (environment.VERA_BROWSER_RESEARCH_LOCAL_BRIDGE_TOKEN?.trim().length ?? 0) >= 32;
-  const maritimeConfigured =
-    (environment.MARITIME_BROWSER_GATEWAY_API_KEY?.trim().length ?? 0) >= 8 &&
-    (environment.MARITIME_BROWSER_GATEWAY_AGENT_ID?.trim().length ?? 0) > 0;
+  const authorizedRuntime =
+    browserRuntime?.assignment.userId === input.userId ? browserRuntime : null;
   return {
     ...input,
-    browserResearch: localBridgeConfigured
-      ? createLoopbackBrowserResearchClient(environment)
-      : maritimeConfigured
-        ? createMaritimeBrowserResearchClient(environment)
-        : {
+    browserResearch:
+      authorizedRuntime === null
+        ? {
             async run() {
               throw new MaritimeBrowserResearchError("gateway_unavailable", true);
             }
-          },
-    founderUserId: policy.founderUserId,
-    browserDisabled: policy.browserDisabled,
-    enabledSources: policy.enabledSources,
-    planSigningKey: policy.planSigningKey,
+          }
+        : new MaritimeBrowserResearchClient({
+            apiKey: authorizedRuntime.maritimeApiKey,
+            agentId: authorizedRuntime.assignment.maritimeAgentId,
+            timeoutMilliseconds: Number(environment.VERA_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000),
+            maxResponseBytes: Number(
+              environment.VERA_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 750_000
+            )
+          }),
+    assignmentAuthorized: authorizedRuntime !== null,
+    browserDisabled: parseHostedRuntimePolicy(environment).browserDisabled,
+    enabledSources: authorizedRuntime?.enabledSources ?? new Set<BrowserResearchSource>(),
+    planSigningKey: authorizedRuntime?.planSigningKey ?? "",
     now: () => new Date(),
     createId: randomUUID
   };

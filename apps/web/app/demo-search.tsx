@@ -4,7 +4,8 @@ import {
   DEMO_SEARCH_COMPLETION_SUMMARY,
   DemoRunResponseSchema,
   DemoStatusResponseSchema,
-  type DemoStatusResponse
+  type DemoStatusResponse,
+  type RentalResearchSource
 } from "@vera/domain";
 import { useState } from "react";
 
@@ -62,10 +63,12 @@ async function requestDemoStatus(signal?: AbortSignal): Promise<DemoStatusRespon
 
 export function DemoSearch({
   initialState,
-  liveSearchPreview = false
+  liveSearchPreview = false,
+  availableLiveSources
 }: {
   initialState: CockpitInitialState;
   liveSearchPreview?: boolean;
+  availableLiveSources?: readonly RentalResearchSource[];
 }) {
   const [state, setState] = useState<DemoState>(() =>
     initialState.kind === "unavailable"
@@ -119,6 +122,7 @@ export function DemoSearch({
       <LiveSearchPanel
         profiles={initialState.searchProfiles}
         initialListings={initialState.listingCollection.listings}
+        {...(availableLiveSources ? { availableSources: availableLiveSources } : {})}
       />
     );
   }

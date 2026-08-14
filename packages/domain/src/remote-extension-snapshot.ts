@@ -94,7 +94,7 @@ export const RemoteExtensionSnapshotFailureCodeSchema = z.enum([
   "unauthorized",
   "cross_origin_request",
   "malformed_request",
-  "founder_denied",
+  "assignment_denied",
   "browser_disabled",
   "spike_disabled",
   "browser_gateway_not_configured",

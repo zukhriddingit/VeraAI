@@ -23,7 +23,7 @@ const checkpoint = ZillowResearchCheckpointRequestSchema.parse({
   requestedAt: now
 });
 const runtime = {
-  founderAuthorized: true,
+  assignmentAuthorized: true,
   sourceEnabled: true,
   userTriggered: true,
   browserKillSwitchActive: false,
@@ -45,12 +45,12 @@ function evaluate(
 }
 
 describe("evaluateZillowResearchAction", () => {
-  it("allows one reviewed user-triggered founder action", () => {
+  it("allows one reviewed user-triggered assigned action", () => {
     expect(evaluate()).toEqual({ allowed: true, reason: "allowed", checkedAt: now });
   });
 
   it.each([
-    ["founderAuthorized", false, "founder_denied"],
+    ["assignmentAuthorized", false, "assignment_denied"],
     ["sourceEnabled", false, "source_disabled"],
     ["userTriggered", false, "user_trigger_required"],
     ["browserKillSwitchActive", true, "browser_kill_switch_active"],

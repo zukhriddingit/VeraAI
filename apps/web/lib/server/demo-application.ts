@@ -18,6 +18,9 @@ export function createDemoApplication(connection: VeraDatabaseConnection): VeraA
       new MockCalendarClient({ deterministicHoldOperations: true })
     ),
     gmailOAuth: null,
+    betaAccess: null,
+    browserGatewayAssignments: null,
+    browserGatewayRuntime: null,
     demoUserId: DEMO_USER_ID,
     readiness: async () =>
       ReadinessReportSchema.parse({

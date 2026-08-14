@@ -1,7 +1,7 @@
 import {
   ActivityEventSchema,
-  VeraUserIdSchema,
   ZillowResearchCheckpointRequestSchema,
+  type BrowserGatewayRuntime,
   type SourceJob,
   type VeraUserId,
   type ZillowResearchCheckpointRequest,
@@ -16,7 +16,7 @@ const ZILLOW_RESEARCH_CONNECTOR_ID = "zillow.browser-research.v1";
 const ZILLOW_RESEARCH_OPERATION = "zillow.rental_research.v1";
 
 export interface ZillowResearchCheckpointEnvironment {
-  readonly founderUserId: VeraUserId | null;
+  readonly assignmentAuthorized: boolean;
   readonly sourceEnabled: boolean;
   readonly browserDisabled: boolean;
 }
@@ -33,16 +33,14 @@ export interface ZillowResearchCheckpointDependencies {
 }
 
 export function parseZillowResearchCheckpointEnvironment(
+  userId: VeraUserId,
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: Readonly<Record<string, string | undefined>>
 ): ZillowResearchCheckpointEnvironment {
-  const founder = environment.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim();
-  const parsedFounder = founder ? VeraUserIdSchema.safeParse(founder) : null;
-  if (parsedFounder && !parsedFounder.success) {
-    throw new Error("VERA_BROWSER_GATEWAY_FOUNDER_USER_ID must be one exact Vera user UUID.");
-  }
+  const authorizedRuntime = browserRuntime?.assignment.userId === userId ? browserRuntime : null;
   return {
-    founderUserId: parsedFounder?.success ? parsedFounder.data : null,
-    sourceEnabled: environment.VERA_ZILLOW_BROWSER_RESEARCH_ENABLED === "1",
+    assignmentAuthorized: authorizedRuntime !== null,
+    sourceEnabled: authorizedRuntime?.enabledSources.has("zillow") ?? false,
     browserDisabled: parseHostedRuntimePolicy(environment).browserDisabled
   };
 }
@@ -50,12 +48,13 @@ export function parseZillowResearchCheckpointEnvironment(
 export function createZillowResearchCheckpointDependencies(
   userId: VeraUserId,
   repositories: ZillowResearchCheckpointDependencies["repositories"],
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: Readonly<Record<string, string | undefined>> = process.env
 ): ZillowResearchCheckpointDependencies {
   return {
     userId,
     repositories,
-    environment: parseZillowResearchCheckpointEnvironment(environment),
+    environment: parseZillowResearchCheckpointEnvironment(userId, browserRuntime, environment),
     createId: () => crypto.randomUUID(),
     now: () => new Date().toISOString()
   };
@@ -113,9 +112,7 @@ export async function checkZillowResearchAction(
   const response = evaluateZillowResearchAction({
     checkpoint: evaluatedRequest,
     runtime: {
-      founderAuthorized:
-        dependencies.environment.founderUserId !== null &&
-        dependencies.environment.founderUserId === dependencies.userId,
+      assignmentAuthorized: dependencies.environment.assignmentAuthorized,
       sourceEnabled: dependencies.environment.sourceEnabled,
       userTriggered: researchJob?.trigger === "manual",
       browserKillSwitchActive: dependencies.environment.browserDisabled,

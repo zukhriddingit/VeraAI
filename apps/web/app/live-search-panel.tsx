@@ -57,8 +57,8 @@ const sourceLabels: Record<RentalResearchSource, string> = {
 
 const sourceDescriptions: Record<RentalResearchSource, string> = {
   rentcast: "Official API",
-  zillow: "Founder browser experiment",
-  apartments_com: "Founder browser experiment",
+  zillow: "Private beta browser experiment",
+  apartments_com: "Private beta browser experiment",
   facebook_marketplace: "Manual account may be required",
   bu_off_campus: "Configurable Off Campus Partners adapter",
   custom_website: "Generic read-only browser mode",
@@ -71,6 +71,7 @@ const sourceStateLabels: Record<RentalResearchSourceState, string> = {
   account_recommended: "Account recommended",
   browser_offline: "Browser offline",
   tab_required: "Tab required",
+  source_not_approved: "Not approved",
   excluded_by_user: "Excluded by user",
   searching: "Searching",
   completed: "Completed",
@@ -125,20 +126,22 @@ function browserReadinessCopy(message: BrowserExtensionReadinessMessage | null):
 export function LiveSearchPanel({
   profiles: initialProfiles,
   initialListings,
+  availableSources = selectableSources,
   staticAcceptanceSnapshot = false
 }: {
   profiles: readonly SearchProfile[];
   initialListings: readonly CanonicalListingSummary[];
+  availableSources?: readonly RentalResearchSource[];
   staticAcceptanceSnapshot?: boolean;
 }) {
+  const availableSourceSet = useMemo(() => new Set(availableSources), [availableSources]);
   const [profiles, setProfiles] = useState<readonly SearchProfile[]>(initialProfiles);
   const [profileId, setProfileId] = useState(initialProfiles[0]?.id ?? "");
-  const [selectedSources, setSelectedSources] = useState<readonly RentalResearchSource[]>([
-    "rentcast",
-    "zillow",
-    "apartments_com",
-    "facebook_marketplace"
-  ]);
+  const [selectedSources, setSelectedSources] = useState<readonly RentalResearchSource[]>(() =>
+    (["rentcast", "zillow", "apartments_com", "facebook_marketplace"] as const).filter((source) =>
+      availableSourceSet.has(source)
+    )
+  );
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState<RentalResearchRunStatus | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
@@ -189,7 +192,7 @@ export function LiveSearchPanel({
         setCustomAllowedDomain(parsed.allowedDomain);
         setCustomLoginRequired(parsed.loginRequired);
         setCustomDefaultInclude(parsed.defaultInclude);
-        if (parsed.defaultInclude) {
+        if (parsed.defaultInclude && availableSourceSet.has("custom_website")) {
           setSelectedSources((current) =>
             current.includes("custom_website") ? current : [...current, "custom_website"]
           );
@@ -199,7 +202,7 @@ export function LiveSearchPanel({
       }
     }, 0);
     return () => window.clearTimeout(hydration);
-  }, []);
+  }, [availableSourceSet]);
 
   useEffect(() => {
     if (runId === null || phase === "completed") return;
@@ -258,6 +261,7 @@ export function LiveSearchPanel({
   }, []);
 
   function toggleSource(source: RentalResearchSource) {
+    if (!availableSourceSet.has(source)) return;
     setSelectedSources((current) =>
       current.includes(source)
         ? current.filter((candidate) => candidate !== source)
@@ -286,7 +290,9 @@ export function LiveSearchPanel({
       setCustomConfiguration(configuration);
       setSelectedSources((current) => {
         const withoutCustom = current.filter((source) => source !== "custom_website");
-        return configuration.defaultInclude ? [...withoutCustom, "custom_website"] : withoutCustom;
+        return configuration.defaultInclude && availableSourceSet.has("custom_website")
+          ? [...withoutCustom, "custom_website"]
+          : withoutCustom;
       });
       setConfirmed(false);
     } catch {
@@ -327,6 +333,11 @@ export function LiveSearchPanel({
     captureCurrentPage = false
   ) {
     if (sources.length === 0) return;
+    const unavailableSource = sources.find((source) => !availableSourceSet.has(source));
+    if (unavailableSource) {
+      setError(`${sourceLabels[unavailableSource]} is not approved for this Vera account.`);
+      return;
+    }
     if (sources.includes("custom_website") && customConfiguration === null) {
       setError("Save a valid custom housing website before selecting it.");
       return;
@@ -416,14 +427,18 @@ export function LiveSearchPanel({
           <p className="eyebrow">Read-only rental research</p>
           <h2 id="live-search-heading">Choose sources</h2>
           <p>
-            RentCast is Vera’s official API source. Browser sources are opt-in founder experiments
-            that use one explicitly shared Vera Search tab through bounded OpenClaw research.
+            RentCast is Vera’s official API source. Browser sources are opt-in private beta
+            experiments that use one explicitly shared Vera Search tab through bounded OpenClaw
+            research.
           </p>
           <div className="source-selector" role="group" aria-label="Rental sources">
             {selectableSources.map((source) => {
               const selected = selectedSources.includes(source);
               const current = status?.sources.find((candidate) => candidate.source === source);
-              const unavailable = source === "custom_website" && customConfiguration === null;
+              const notApproved = !availableSourceSet.has(source);
+              const needsConfiguration =
+                source === "custom_website" && customConfiguration === null;
+              const unavailable = notApproved || needsConfiguration;
               return (
                 <label className="source-selector-option" key={source}>
                   <input
@@ -441,9 +456,11 @@ export function LiveSearchPanel({
                     <small>
                       {current
                         ? sourceStateLabels[current.state]
-                        : unavailable
-                          ? "Configure below"
-                          : sourceDescriptions[source]}
+                        : notApproved
+                          ? "Not approved for this account"
+                          : needsConfiguration
+                            ? "Configure below"
+                            : sourceDescriptions[source]}
                     </small>
                   </span>
                 </label>

@@ -1,0 +1,495 @@
+.shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding: 0 0 6rem;
+  color: #e9edf3;
+  background:
+    radial-gradient(circle at 76% 1%, rgba(62, 90, 126, 0.28), transparent 36rem), #050914;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.shell * {
+  box-sizing: border-box;
+}
+
+.notice {
+  padding: 0.65rem 1rem;
+  color: #cad2de;
+  background: #121c2d;
+  border-bottom: 1px solid rgba(207, 219, 235, 0.18);
+  font-size: 0.76rem;
+  font-weight: 680;
+  letter-spacing: 0.02em;
+  text-align: center;
+}
+
+.header,
+.profile,
+.workspace {
+  width: min(1440px, calc(100% - 3rem));
+  margin-inline: auto;
+}
+
+.header {
+  display: flex;
+  min-height: 5rem;
+  align-items: center;
+  gap: 2rem;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-decoration: none;
+}
+
+.brand span {
+  display: grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #1a0905;
+  background: #ff7658;
+  letter-spacing: 0;
+}
+
+.header nav {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-left: auto;
+}
+
+.header nav a,
+.header nav span {
+  padding: 0.62rem 0.9rem;
+  border: 1px solid rgba(207, 219, 235, 0.18);
+  border-radius: 99rem;
+  color: #d1d7e0;
+  background: rgba(10, 17, 30, 0.7);
+  font-size: 0.75rem;
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.header nav a:last-child {
+  color: #1a0905;
+  background: #ff7658;
+  border-color: #ff7658;
+}
+
+.profile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 2rem;
+  padding: clamp(3rem, 7vw, 6.5rem) 0 2.5rem;
+  border-bottom: 1px solid rgba(207, 219, 235, 0.16);
+}
+
+.eyebrow {
+  margin: 0 0 0.65rem;
+  color: #ff7658;
+  font-size: 0.63rem;
+  font-weight: 850;
+  letter-spacing: 0.15em;
+}
+
+.profile h1 {
+  max-width: none;
+  margin: 0;
+  color: #f6f8fa;
+  font-family: inherit;
+  font-size: clamp(2.2rem, 5vw, 4.7rem);
+  font-weight: 690;
+  letter-spacing: -0.065em;
+  line-height: 0.96;
+}
+
+.profile > div > p:last-child {
+  margin: 1.1rem 0 0;
+  color: #9ba8ba;
+}
+
+.pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.4rem;
+}
+
+.pipeline span {
+  padding: 0.45rem 0.65rem;
+  border: 1px solid rgba(207, 219, 235, 0.14);
+  border-radius: 99rem;
+  color: #aeb8c7;
+  font-size: 0.68rem;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(19rem, 0.72fr) minmax(0, 1.48fr);
+  gap: 1.25rem;
+  align-items: start;
+  padding-top: 1.25rem;
+}
+
+.inbox,
+.detail {
+  overflow: hidden;
+  border: 1px solid rgba(207, 219, 235, 0.16);
+  border-radius: 1rem;
+  background: #09111e;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.24);
+}
+
+.toolbar {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.25rem;
+  border-bottom: 1px solid rgba(207, 219, 235, 0.14);
+}
+
+.toolbar h2,
+.detail h2,
+.detail h3 {
+  margin: 0;
+  color: #f5f7fa;
+  font-family: inherit;
+}
+
+.toolbar h2 {
+  font-size: 1.5rem;
+  letter-spacing: -0.04em;
+}
+
+.toolbar label {
+  display: grid;
+  gap: 0.35rem;
+  color: #8896aa;
+  font-size: 0.65rem;
+  font-weight: 700;
+}
+
+.toolbar select {
+  padding: 0.55rem 1.8rem 0.55rem 0.65rem;
+  border: 1px solid rgba(207, 219, 235, 0.2);
+  border-radius: 0.45rem;
+  color: #eff2f6;
+  background: #101a2a;
+}
+
+.cards {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.75rem;
+}
+
+.card {
+  display: grid;
+  grid-template-columns: 7.25rem minmax(0, 1fr);
+  gap: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 0.75rem;
+  color: inherit;
+  background: #0d1726;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  transition:
+    border-color 150ms ease,
+    transform 150ms ease,
+    background 150ms ease;
+}
+
+.card:hover {
+  transform: translateY(-1px);
+  background: #111d2e;
+}
+
+.card[aria-pressed="true"] {
+  border-color: #ff7658;
+  background: #142033;
+}
+
+.photo {
+  position: relative;
+  display: grid;
+  min-height: 8rem;
+  place-items: center;
+  overflow: hidden;
+  color: #8996a9;
+  background: #162134;
+}
+
+.photo img,
+.detailHero img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fitBadge {
+  position: absolute;
+  left: 0.55rem;
+  bottom: 0.55rem;
+  padding: 0.3rem 0.45rem;
+  border-radius: 99rem;
+  color: #190805;
+  background: #ff7658;
+  font-size: 0.61rem;
+  font-weight: 850;
+}
+
+.placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-height: inherit;
+  place-items: center;
+  padding: 1rem;
+  background: linear-gradient(135deg, rgba(255, 118, 88, 0.11), transparent 52%), #152033;
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.cardBody {
+  display: grid;
+  align-content: center;
+  gap: 0.35rem;
+  padding: 0.8rem 0.9rem;
+  min-width: 0;
+}
+
+.cardBody strong {
+  overflow: hidden;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.cardBody > span:not(.badges) {
+  color: #b7c0cd;
+  font-size: 0.72rem;
+}
+
+.cardBody small,
+.badges {
+  color: #7f8ca0;
+  font-size: 0.62rem;
+}
+
+.badges {
+  color: #ff8c74;
+  font-weight: 760;
+  text-transform: uppercase;
+}
+
+.detailHero {
+  position: relative;
+  min-height: 22rem;
+  background: #152033;
+}
+
+.detailHero::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(0deg, rgba(5, 9, 20, 0.95), transparent 64%);
+}
+
+.detailOverlay {
+  position: absolute;
+  z-index: 1;
+  left: 1.5rem;
+  right: 1.5rem;
+  bottom: 1.5rem;
+}
+
+.detailOverlay p {
+  margin: 0 0 0.4rem;
+  color: #ff8c74;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.detailOverlay h2 {
+  font-size: clamp(1.7rem, 3.2vw, 3rem);
+  letter-spacing: -0.055em;
+}
+
+.detailOverlay strong {
+  display: block;
+  margin-top: 0.5rem;
+}
+
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.detailGrid section,
+.fullSection {
+  padding: 1.35rem 1.5rem;
+  border-bottom: 1px solid rgba(207, 219, 235, 0.12);
+}
+
+.detailGrid section:nth-child(odd) {
+  border-right: 1px solid rgba(207, 219, 235, 0.12);
+}
+
+.detail h3 {
+  font-size: 0.95rem;
+}
+
+.detail section p:not(.eyebrow),
+.detail li {
+  color: #aab5c3;
+  font-size: 0.78rem;
+  line-height: 1.55;
+}
+
+.detail ul {
+  margin: 0.75rem 0 0;
+  padding-left: 1.1rem;
+}
+
+.factorList {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.9rem;
+}
+
+.factorList > div {
+  overflow: hidden;
+  padding: 1rem;
+  border: 1px solid rgba(207, 219, 235, 0.13);
+  border-radius: 0.6rem;
+  background: #0d1726;
+}
+
+.factorList span {
+  display: block;
+  width: var(--factor);
+  height: 0.18rem;
+  margin: -1rem -1rem 0.85rem;
+  background: #ff7658;
+}
+
+.factorList strong {
+  font-size: 0.75rem;
+}
+
+.factorList p {
+  margin: 0.45rem 0 0;
+}
+
+.fullSection a {
+  color: #ff8b72;
+  font-weight: 740;
+}
+
+.timeline {
+  display: grid;
+  gap: 0;
+  margin-top: 0.8rem;
+  border-left: 1px solid #ff7658;
+}
+
+.timeline p {
+  display: grid;
+  gap: 0.2rem;
+  margin: 0;
+  padding: 0.35rem 0 0.9rem 1rem;
+}
+
+.timeline strong {
+  color: #edf1f6;
+}
+
+.demoOnly {
+  margin: 1.5rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid rgba(255, 118, 88, 0.25);
+  border-radius: 0.6rem;
+  color: #d3dae4;
+  background: rgba(255, 118, 88, 0.08);
+  font-size: 0.72rem;
+}
+
+.shell :focus-visible {
+  outline: 3px solid #ff7658;
+  outline-offset: 3px;
+}
+
+@media (max-width: 980px) {
+  .profile {
+    grid-template-columns: 1fr;
+  }
+
+  .pipeline {
+    justify-content: flex-start;
+  }
+
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .header,
+  .profile,
+  .workspace {
+    width: min(100% - 1.5rem, 1440px);
+  }
+
+  .header nav span {
+    display: none;
+  }
+
+  .header nav a {
+    padding-inline: 0.65rem;
+  }
+
+  .cards,
+  .detailGrid,
+  .factorList {
+    grid-template-columns: 1fr;
+  }
+
+  .detailGrid section:nth-child(odd) {
+    border-right: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card {
+    transition: none;
+  }
+
+  .card:hover {
+    transform: none;
+  }
+}

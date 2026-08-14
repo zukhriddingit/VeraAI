@@ -3,9 +3,12 @@ export type { HealthReport, HealthReportInput, ServiceName } from "./health.ts";
 
 export * from "./activity.ts";
 export * from "./api.ts";
+export * from "./beta-access.ts";
 export * from "./browser-agent-api.ts";
+export * from "./browser-beta-evidence.ts";
 export * from "./browser-acquisition.ts";
 export * from "./browser-extension-readiness.ts";
+export * from "./browser-gateway-assignment.ts";
 export * from "./browser-research.ts";
 export * from "./capture-api.ts";
 export * from "./calendar-api.ts";

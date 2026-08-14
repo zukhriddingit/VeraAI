@@ -1,6 +1,7 @@
 import {
   SourceJobSchema,
   type ActivityEvent,
+  type BrowserGatewayRuntime,
   type SearchProfile,
   type SourceJob
 } from "@vera/domain";
@@ -16,6 +17,30 @@ import {
 const founderUserId = "00000000-0000-4000-8000-000000000013";
 const now = "2026-08-04T15:00:00.000Z";
 const signingKey = "generic-browser-checkpoint-test-key-00000000000000000";
+const otherUserId = "00000000-0000-4000-8000-000000000014";
+
+function runtime(userId = founderUserId): BrowserGatewayRuntime {
+  return {
+    assignment: {
+      id: "10000000-0000-4000-8000-000000000013",
+      userId,
+      nodeId: "browser-node-13",
+      maritimeAgentId: "maritime-agent-13",
+      gatewayOrigin: "https://gateway-13.verahousing.app",
+      checkpointOrigin: "https://app.verahousing.app",
+      secretReference: "BETA_USER_13",
+      relayCredentialDigest: "a".repeat(64),
+      checkpointCredentialDigest: "b".repeat(64),
+      status: "active",
+      createdAt: now,
+      activatedAt: now,
+      revokedAt: null
+    },
+    maritimeApiKey: "m".repeat(32),
+    planSigningKey: signingKey,
+    enabledSources: new Set(["apartments_com"])
+  };
+}
 const profile: SearchProfile = {
   id: "profile-1",
   name: "Boston",
@@ -106,7 +131,7 @@ function fixture(currentJob: SourceJob | null = job) {
   const dependencies: BrowserResearchCheckpointDependencies = {
     userId: founderUserId,
     environment: {
-      founderUserId,
+      assignmentAuthorized: true,
       enabledSources: new Set(["apartments_com"]),
       browserDisabled: false,
       planSigningKey: signingKey
@@ -178,28 +203,33 @@ describe("checkBrowserResearchAction", () => {
 });
 
 describe("parseBrowserResearchCheckpointEnvironment", () => {
-  it("is founder-bound and every source is disabled by default", () => {
-    const environment = parseBrowserResearchCheckpointEnvironment({
-      VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderUserId,
+  it("uses only the exact user's resolved assignment runtime", () => {
+    const environment = parseBrowserResearchCheckpointEnvironment(founderUserId, runtime(), {
       VERA_BROWSER_DISABLED: "0",
-      VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY: signingKey
+      VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: otherUserId,
+      VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY: "legacy-global-key-must-be-ignored"
     });
-    expect(environment.founderUserId).toBe(founderUserId);
-    expect(environment.enabledSources.size).toBe(0);
+    expect(environment.assignmentAuthorized).toBe(true);
+    expect(environment.enabledSources).toEqual(new Set(["apartments_com"]));
+    expect(environment.planSigningKey).toBe(signingKey);
     expect(environment.browserDisabled).toBe(false);
   });
 
-  it("requires a separate explicit flag for every configurable browser source", () => {
-    const environment = parseBrowserResearchCheckpointEnvironment({
-      VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderUserId,
-      VERA_BROWSER_DISABLED: "0",
-      VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY: signingKey,
-      VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED: "1",
-      VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED: "1",
-      VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED: "1"
-    });
-    expect(environment.enabledSources).toEqual(
-      new Set(["bu_off_campus", "custom_website", "craigslist"])
+  it("rejects another user's runtime without reading legacy source flags", () => {
+    const environment = parseBrowserResearchCheckpointEnvironment(
+      founderUserId,
+      runtime(otherUserId),
+      {
+        VERA_BROWSER_DISABLED: "0",
+        VERA_APARTMENTS_BROWSER_RESEARCH_ENABLED: "1",
+        VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY: signingKey
+      }
     );
+    expect(environment).toMatchObject({
+      assignmentAuthorized: false,
+      browserDisabled: false,
+      planSigningKey: ""
+    });
+    expect(environment.enabledSources.size).toBe(0);
   });
 });

@@ -1,4 +1,9 @@
-import { SourceJobSchema, type ActivityEvent, type SourceJob } from "@vera/domain";
+import {
+  SourceJobSchema,
+  type ActivityEvent,
+  type BrowserGatewayRuntime,
+  type SourceJob
+} from "@vera/domain";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,7 +14,31 @@ import {
 } from "./zillow-research-checkpoint-service.ts";
 
 const founderUserId = "00000000-0000-4000-8000-000000000013";
+const otherUserId = "00000000-0000-4000-8000-000000000014";
 const now = "2026-07-30T12:00:00.000Z";
+
+function runtime(userId = founderUserId): BrowserGatewayRuntime {
+  return {
+    assignment: {
+      id: "10000000-0000-4000-8000-000000000013",
+      userId,
+      nodeId: "browser-node-13",
+      maritimeAgentId: "maritime-agent-13",
+      gatewayOrigin: "https://gateway-13.verahousing.app",
+      checkpointOrigin: "https://app.verahousing.app",
+      secretReference: "BETA_USER_13",
+      relayCredentialDigest: "a".repeat(64),
+      checkpointCredentialDigest: "b".repeat(64),
+      status: "active",
+      createdAt: now,
+      activatedAt: now,
+      revokedAt: null
+    },
+    maritimeApiKey: "m".repeat(32),
+    planSigningKey: "p".repeat(32),
+    enabledSources: new Set(["zillow"])
+  };
+}
 const payload = {
   acquisitionMode: "local_browser",
   captureKind: "research_tab",
@@ -71,7 +100,7 @@ function fixture(currentJob: SourceJob | null = job) {
   const dependencies: ZillowResearchCheckpointDependencies = {
     userId: founderUserId,
     environment: {
-      founderUserId,
+      assignmentAuthorized: true,
       sourceEnabled: true,
       browserDisabled: false
     },
@@ -181,9 +210,8 @@ describe("parseZillowResearchCheckpointEnvironment", () => {
     const dependencies = createZillowResearchCheckpointDependencies(
       founderUserId,
       fixture().dependencies.repositories,
+      runtime(),
       {
-        VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderUserId,
-        VERA_ZILLOW_BROWSER_RESEARCH_ENABLED: "1",
         VERA_BROWSER_DISABLED: "0"
       }
     );
@@ -193,15 +221,26 @@ describe("parseZillowResearchCheckpointEnvironment", () => {
     );
   });
 
-  it("is founder-bound, source-disabled by default, and browser-disabled by default", () => {
+  it("uses the exact assignment and rejects a runtime owned by another user", () => {
     expect(
-      parseZillowResearchCheckpointEnvironment({
-        VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderUserId
+      parseZillowResearchCheckpointEnvironment(founderUserId, runtime(), {
+        VERA_BROWSER_DISABLED: "0",
+        VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: otherUserId
       })
     ).toEqual({
-      founderUserId,
+      assignmentAuthorized: true,
+      sourceEnabled: true,
+      browserDisabled: false
+    });
+    expect(
+      parseZillowResearchCheckpointEnvironment(founderUserId, runtime(otherUserId), {
+        VERA_BROWSER_DISABLED: "0",
+        VERA_ZILLOW_BROWSER_RESEARCH_ENABLED: "1"
+      })
+    ).toEqual({
+      assignmentAuthorized: false,
       sourceEnabled: false,
-      browserDisabled: true
+      browserDisabled: false
     });
   });
 });

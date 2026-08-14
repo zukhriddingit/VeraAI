@@ -6,6 +6,10 @@ function files(source: string): ReadonlyMap<string, string> {
   return new Map([["apps/web/app/api/example/route.ts", source]]);
 }
 
+function betaFiles(source: string): ReadonlyMap<string, string> {
+  return new Map([["apps/web/app/api/beta-access/route.ts", source]]);
+}
+
 describe("web mutation boundary verifier", () => {
   it("accepts authenticated same-origin bounded and bodyless mutations", () => {
     const violations = findMutationBoundaryViolations(
@@ -46,8 +50,7 @@ describe("web mutation boundary verifier", () => {
       findMutationBoundaryViolations(
         files(`
           export async function POST(request: Request) {
-            requireCheckpointBearer(request.headers.get("authorization"), checkpointToken);
-            assertCheckpointRequestOrigin(request);
+            await requireAssignedCheckpoint(request, browserGatewayRuntime);
             const input = await readBoundedJson(request, { maxBytes: 4_000 });
             return checkpoint(input);
           }
@@ -96,5 +99,37 @@ describe("web mutation boundary verifier", () => {
     );
     expect(violations.filter((entry) => entry.handler === "GET")).toEqual([]);
     expect(new Set(violations.map((entry) => entry.handler))).toEqual(new Set(["POST", "DELETE"]));
+  });
+
+  it("accepts the named public beta guard only on the exact intake route", () => {
+    expect(
+      findMutationBoundaryViolations(
+        betaFiles(`
+          export async function POST(request: Request) {
+            await requirePublicBetaSubmissionBoundary(request, repository);
+            const input = await readBoundedJson(request, { maxBytes: 2_048 });
+            return submit(input);
+          }
+        `)
+      )
+    ).toEqual([]);
+
+    expect(
+      findMutationBoundaryViolations(
+        files(`
+          export async function POST(request: Request) {
+            await requirePublicBetaSubmissionBoundary(request, repository);
+            const input = await readBoundedJson(request, { maxBytes: 2_048 });
+            return submit(input);
+          }
+        `)
+      )
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          message: "public beta mutation guard is restricted to the beta intake route"
+        })
+      ])
+    );
   });
 });

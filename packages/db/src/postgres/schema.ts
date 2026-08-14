@@ -70,6 +70,80 @@ export const users = pgTable(
   (table) => [uniqueIndex("users_email_unique").on(sql`lower(${table.email})`)]
 );
 
+export const betaAccessRequests = pgTable(
+  "beta_access_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    normalizedEmail: text("normalized_email").notNull(),
+    status: text("status").notNull().default("requested"),
+    consentVersion: text("consent_version").notNull(),
+    consentedAt: instant("consented_at").notNull(),
+    requestedAt: instant("requested_at").notNull(),
+    reviewedAt: instant("reviewed_at"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "restrict"
+    })
+  },
+  (table) => [
+    uniqueIndex("beta_access_requests_email_unique").on(table.normalizedEmail),
+    index("beta_access_requests_status_requested_idx").on(table.status, table.requestedAt),
+    check(
+      "beta_access_requests_normalized_email_check",
+      sql`${table.normalizedEmail} = lower(btrim(${table.normalizedEmail}))`
+    ),
+    check(
+      "beta_access_requests_status_check",
+      sql`${table.status} IN ('requested', 'invited', 'declined', 'withdrawn')`
+    )
+  ]
+);
+
+export const betaMemberships = pgTable(
+  "beta_memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    normalizedEmail: text("normalized_email").notNull(),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "restrict"
+    }),
+    status: text("status").notNull().default("invited"),
+    invitedAt: instant("invited_at").notNull(),
+    activatedAt: instant("activated_at"),
+    revokedAt: instant("revoked_at"),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "restrict"
+    })
+  },
+  (table) => [
+    uniqueIndex("beta_memberships_email_unique").on(table.normalizedEmail),
+    uniqueIndex("beta_memberships_user_unique").on(table.userId),
+    index("beta_memberships_status_idx").on(table.status),
+    check(
+      "beta_memberships_normalized_email_check",
+      sql`${table.normalizedEmail} = lower(btrim(${table.normalizedEmail}))`
+    ),
+    check("beta_memberships_status_check", sql`${table.status} IN ('invited', 'active', 'revoked')`)
+  ]
+);
+
+export const betaAccessRateLimits = pgTable(
+  "beta_access_rate_limits",
+  {
+    keyDigest: text("key_digest").primaryKey(),
+    windowStartedAt: instant("window_started_at").notNull(),
+    attempts: integer("attempts").notNull().default(1),
+    expiresAt: instant("expires_at").notNull()
+  },
+  (table) => [
+    index("beta_access_rate_limits_expiry_idx").on(table.expiresAt),
+    check("beta_access_rate_limits_digest_check", sql`${table.keyDigest} ~ '^[a-f0-9]{64}$'`),
+    check("beta_access_rate_limits_attempts_check", sql`${table.attempts} > 0`)
+  ]
+);
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -1137,6 +1211,91 @@ export const browserNodes = pgTable(
       sql`${table.selectedProfileId} IS NULL OR ${table.allowedProfileIds} @> jsonb_build_array(${table.selectedProfileId})`
     ),
     check("browser_nodes_contract_version_positive", sql`${table.contractVersion} > 0`)
+  ]
+);
+
+export const browserGatewayAssignments = pgTable(
+  "browser_gateway_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    nodeId: text("node_id").notNull(),
+    maritimeAgentId: text("maritime_agent_id").notNull(),
+    gatewayOrigin: text("gateway_origin").notNull(),
+    checkpointOrigin: text("checkpoint_origin").notNull(),
+    secretReference: text("secret_reference").notNull(),
+    relayCredentialDigest: text("relay_credential_digest").notNull(),
+    checkpointCredentialDigest: text("checkpoint_credential_digest").notNull(),
+    status: text("status").notNull().default("pending"),
+    createdAt: instant("created_at").notNull(),
+    activatedAt: instant("activated_at"),
+    revokedAt: instant("revoked_at")
+  },
+  (table) => [
+    uniqueIndex("browser_gateway_assignments_user_live_unique")
+      .on(table.userId)
+      .where(sql`${table.status} IN ('pending', 'active')`),
+    uniqueIndex("browser_gateway_assignments_id_user_unique").on(table.id, table.userId),
+    uniqueIndex("browser_gateway_assignments_agent_unique").on(table.maritimeAgentId),
+    uniqueIndex("browser_gateway_assignments_gateway_origin_unique").on(table.gatewayOrigin),
+    uniqueIndex("browser_gateway_assignments_secret_reference_unique").on(table.secretReference),
+    uniqueIndex("browser_gateway_assignments_relay_digest_unique").on(table.relayCredentialDigest),
+    uniqueIndex("browser_gateway_assignments_checkpoint_digest_unique").on(
+      table.checkpointCredentialDigest
+    ),
+    foreignKey({
+      name: "browser_gateway_assignments_node_tenant_fk",
+      columns: [table.userId, table.nodeId],
+      foreignColumns: [browserNodes.userId, browserNodes.nodeId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check(
+      "browser_gateway_assignments_status_check",
+      sql`${table.status} IN ('pending', 'active', 'revoked')`
+    ),
+    check(
+      "browser_gateway_assignments_digest_check",
+      sql`${table.relayCredentialDigest} ~ '^[a-f0-9]{64}$' AND ${table.checkpointCredentialDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_gateway_assignments_checkpoint_origin_check",
+      sql`${table.checkpointOrigin} = 'https://app.verahousing.app'`
+    )
+  ]
+);
+
+export const browserGatewayAcceptanceRuns = pgTable(
+  "browser_gateway_acceptance_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    assignmentId: uuid("assignment_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    sourceJobId: text("source_job_id").notNull(),
+    source: text("source").notNull(),
+    forbiddenActionCount: integer("forbidden_action_count").notNull(),
+    unshareStoppedFutureWork: boolean("unshare_stopped_future_work").notNull(),
+    unpairVerified: boolean("unpair_verified").notNull(),
+    completedAt: instant("completed_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("browser_gateway_acceptance_user_job_unique").on(table.userId, table.sourceJobId),
+    foreignKey({
+      name: "browser_gateway_acceptance_assignment_owner_fk",
+      columns: [table.assignmentId, table.userId],
+      foreignColumns: [browserGatewayAssignments.id, browserGatewayAssignments.userId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check("browser_gateway_acceptance_nonnegative", sql`${table.forbiddenActionCount} >= 0`),
+    check(
+      "browser_gateway_acceptance_source_check",
+      sql`${table.source} IN ('zillow', 'apartments_com', 'facebook_marketplace', 'bu_off_campus', 'custom_website', 'craigslist')`
+    )
   ]
 );
 
@@ -2901,6 +3060,11 @@ export const schema = {
   approvals,
   availabilityChecks,
   availabilityRuleSets,
+  betaAccessRateLimits,
+  betaAccessRequests,
+  betaMemberships,
+  browserGatewayAcceptanceRuns,
+  browserGatewayAssignments,
   browserCaptureAcceptances,
   browserProfileControls,
   browserSourceControls,

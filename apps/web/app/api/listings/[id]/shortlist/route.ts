@@ -12,6 +12,7 @@ import {
   requestCanonicalListingEnrichment
 } from "../../../../../lib/listing-enrichment-service";
 import { parseRouteEntityId } from "../../../../../lib/route-entity-id";
+import { getHostedApplication } from "../../../../../lib/server/application";
 import {
   assertSameOriginMutation,
   CrossOriginMutationError,
@@ -30,7 +31,8 @@ interface RouteContext {
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   try {
-    const session = await requireVeraSession(request.headers);
+    const application = getHostedApplication();
+    const session = await requireVeraSession(request.headers, application);
     assertSameOriginMutation(request);
     const input = await readBoundedJson(request, { maxBytes: 16_384 });
     const parsed = ShortlistRequestSchema.safeParse(input);
@@ -60,10 +62,12 @@ export async function POST(request: Request, context: RouteContext): Promise<Res
       createId: randomUUID
     });
     if (parsed.data.shortlisted && !session.demoMode) {
+      const browserRuntime =
+        (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null;
       await requestCanonicalListingEnrichment(
         listingId,
         "listing_shortlisted",
-        createListingEnrichmentDependencies(session)
+        createListingEnrichmentDependencies(session, browserRuntime)
       ).catch(() => null);
     }
     return Response.json(result, { status: 200, headers });

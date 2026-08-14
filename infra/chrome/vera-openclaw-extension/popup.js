@@ -1,5 +1,7 @@
 /* global chrome */
 
+import { CONSENT_DISCLOSURE, shareButtonLabel } from "./modules/popup-copy.js";
+
 const statusDot = document.getElementById("statusDot");
 const pairSection = document.getElementById("pairSection");
 const connectedSection = document.getElementById("connectedSection");
@@ -12,6 +14,9 @@ const connectionLine = document.getElementById("connectionLine");
 const readinessLine = document.getElementById("readinessLine");
 const pairError = document.getElementById("pairError");
 const errorLine = document.getElementById("error");
+const consentDisclosure = document.getElementById("consentDisclosure");
+
+consentDisclosure.textContent = CONSENT_DISCLOSURE;
 
 const CONNECTION_LABEL = {
   on: "Connected to the Vera Browser Gateway",
@@ -62,9 +67,7 @@ async function refresh() {
   }
   const result = await chrome.runtime.sendMessage({ type: "isTabShared", tabId: tab.id });
   shareButton.classList.remove("hidden");
-  shareButton.textContent = result.shared
-    ? "Stop sharing this tab"
-    : "Share this HTTPS tab instead";
+  shareButton.textContent = shareButtonLabel(result.shared);
   shareButton.dataset.tabId = String(tab.id);
 }
 

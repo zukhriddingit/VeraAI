@@ -13,7 +13,7 @@ import { ZILLOW_RENTAL_RESEARCH_MANIFEST } from "./manifests.ts";
 import { SourcePolicyRegistry } from "./registry.ts";
 
 export interface ZillowResearchRuntimeAuthorization {
-  readonly founderAuthorized: boolean;
+  readonly assignmentAuthorized: boolean;
   readonly sourceEnabled: boolean;
   readonly userTriggered: boolean;
   readonly browserKillSwitchActive: boolean;
@@ -44,7 +44,7 @@ export function evaluateZillowResearchAction(
   const denied = (reason: Exclude<ZillowResearchCheckpointResponse["reason"], "allowed">) =>
     decision(false, reason, input.checkedAt);
 
-  if (!input.runtime.founderAuthorized) return denied("founder_denied");
+  if (!input.runtime.assignmentAuthorized) return denied("assignment_denied");
   if (!input.runtime.sourceEnabled) return denied("source_disabled");
   if (input.runtime.browserKillSwitchActive) return denied("browser_kill_switch_active");
   if (input.runtime.cancelled) return denied("cancelled");

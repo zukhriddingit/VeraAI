@@ -592,7 +592,7 @@ export const BrowserResearchCheckpointRequestSchema = z
   .strict();
 
 export const BrowserResearchCheckpointDenialReasonSchema = z.enum([
-  "founder_denied",
+  "assignment_denied",
   "source_disabled",
   "user_trigger_required",
   "browser_kill_switch_active",

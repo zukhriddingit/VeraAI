@@ -20,18 +20,21 @@ interface ListingDetailPageProps {
 
 export default async function ListingDetailPage({ params }: ListingDetailPageProps) {
   const context = await requireVeraPageSession();
+  const application = getHostedApplication();
   const listingId = parseRouteEntityId((await params).id);
   if (listingId === null) notFound();
   if (!context.demoMode) {
     await requestCanonicalListingEnrichment(
       listingId,
       "listing_opened",
-      createListingEnrichmentDependencies(context)
+      createListingEnrichmentDependencies(
+        context,
+        (await application.browserGatewayRuntime?.resolveForUser(context.userId)) ?? null
+      )
     ).catch(() => null);
   }
   const initialDetail = await getListingDetail(context.repositories, listingId);
   if (initialDetail === null) notFound();
-  const application = getHostedApplication();
   const calendarStatus = await getCalendarIntegrationStatus(
     context.repositories,
     application.calendar.configurationState,

@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 760" role="img" aria-labelledby="title desc">
+  <title id="title">Sanitized Boston apartment illustration</title>
+  <desc id="desc">Abstract brick apartment buildings behind trees at dusk.</desc>
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop stop-color="#273c58"/><stop offset="1" stop-color="#9b776b"/></linearGradient>
+    <linearGradient id="brick" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#8e493c"/><stop offset="1" stop-color="#4b2526"/></linearGradient>
+  </defs>
+  <rect width="1200" height="760" fill="url(#sky)"/>
+  <circle cx="940" cy="132" r="75" fill="#f3d6ae" opacity=".72"/>
+  <path d="M0 620h1200v140H0z" fill="#18251f"/>
+  <path d="M130 175h640v500H130z" fill="url(#brick)"/>
+  <path d="M165 115h570l35 60H130z" fill="#372329"/>
+  <path d="M790 270h305v405H790z" fill="#6b584f"/>
+  <g fill="#dbe5dd" opacity=".88">
+    <path d="M195 230h105v92H195zm160 0h105v92H355zm160 0h105v92H515zm160 0h58v92h-58z"/>
+    <path d="M195 375h105v92H195zm160 0h105v92H355zm160 0h105v92H515zm160 0h58v92h-58z"/>
+    <path d="M195 520h105v92H195zm160 0h105v92H355zm160 0h105v92H515z"/>
+  </g>
+  <g fill="#1d3c32"><circle cx="95" cy="560" r="145"/><circle cx="1100" cy="590" r="170"/><circle cx="960" cy="635" r="120"/></g>
+</svg>

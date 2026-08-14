@@ -61,6 +61,9 @@ importers:
       prettier:
         specifier: 3.9.5
         version: 3.9.5
+      sharp:
+        specifier: 0.35.3
+        version: 0.35.3(@types/node@24.13.3)
       tsx:
         specifier: 4.23.1
         version: 4.23.1
@@ -73,6 +76,18 @@ importers:
       ws:
         specifier: 8.21.1
         version: 8.21.1
+
+  apps/marketing:
+    dependencies:
+      next:
+        specifier: 16.2.10
+        version: 16.2.10(@babel/core@7.29.7)(@playwright/test@1.61.1)(@types/node@24.13.3)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)
+      react:
+        specifier: 19.2.7
+        version: 19.2.7
+      react-dom:
+        specifier: 19.2.7
+        version: 19.2.7(react@19.2.7)
 
   apps/web:
     dependencies:

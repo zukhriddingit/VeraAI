@@ -21,6 +21,9 @@ function application(session: unknown): VeraApplication {
     } as unknown as VeraApplication["auth"],
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
+    betaAccess: null,
+    browserGatewayAssignments: null,
+    browserGatewayRuntime: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()
@@ -53,5 +56,22 @@ describe("hosted session boundary", () => {
       userId,
       demoMode: true
     });
+  });
+
+  it("checks active beta membership before binding tenant repositories", async () => {
+    const app = application({ user: { id: userId }, session: {} });
+    const forUser = vi.mocked(app.repositoryProvider.forUser);
+    const isActiveUser = vi.fn().mockResolvedValue(false);
+    const gated = { ...app, betaAccess: { isActiveUser } as never };
+    await expect(
+      requireVeraSession(new Headers(), gated, { VERA_BETA_ACCESS_GATE_ENABLED: "1" })
+    ).rejects.toThrow("An authenticated Vera session is required.");
+    expect(forUser).not.toHaveBeenCalled();
+
+    isActiveUser.mockResolvedValue(true);
+    await expect(
+      requireVeraSession(new Headers(), gated, { VERA_BETA_ACCESS_GATE_ENABLED: "1" })
+    ).resolves.toMatchObject({ userId });
+    expect(forUser).toHaveBeenCalledWith(userId);
   });
 });
