@@ -3,7 +3,7 @@ import { timingSafeEqual } from "node:crypto";
 import {
   ActivityEventSchema,
   BrowserResearchCheckpointRequestSchema,
-  VeraUserIdSchema,
+  type BrowserGatewayRuntime,
   type BrowserResearchCheckpointRequest,
   type BrowserResearchCheckpointResponse,
   type BrowserResearchSource,
@@ -21,7 +21,7 @@ import { evaluateBrowserResearchAction } from "@vera/policy";
 import { parseHostedRuntimePolicy } from "./server/hosted-runtime-policy.ts";
 
 export interface BrowserResearchCheckpointEnvironment {
-  readonly founderUserId: VeraUserId | null;
+  readonly assignmentAuthorized: boolean;
   readonly enabledSources: ReadonlySet<BrowserResearchSource>;
   readonly browserDisabled: boolean;
   readonly planSigningKey: string;
@@ -39,47 +39,29 @@ export interface BrowserResearchCheckpointDependencies {
 }
 
 export function parseBrowserResearchCheckpointEnvironment(
+  userId: VeraUserId,
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: Readonly<Record<string, string | undefined>>
 ): BrowserResearchCheckpointEnvironment {
-  const founder = environment.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim();
-  const parsedFounder = founder ? VeraUserIdSchema.safeParse(founder) : null;
-  if (parsedFounder && !parsedFounder.success) {
-    throw new Error("VERA_BROWSER_GATEWAY_FOUNDER_USER_ID must be one exact Vera user UUID.");
-  }
-  const enabledSources = new Set<BrowserResearchSource>();
-  if (environment.VERA_ZILLOW_BROWSER_RESEARCH_ENABLED === "1") enabledSources.add("zillow");
-  if (environment.VERA_APARTMENTS_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("apartments_com");
-  }
-  if (environment.VERA_FACEBOOK_MARKETPLACE_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("facebook_marketplace");
-  }
-  if (environment.VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("bu_off_campus");
-  }
-  if (environment.VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("custom_website");
-  }
-  if (environment.VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("craigslist");
-  }
+  const authorizedRuntime = browserRuntime?.assignment.userId === userId ? browserRuntime : null;
   return {
-    founderUserId: parsedFounder?.success ? parsedFounder.data : null,
-    enabledSources,
+    assignmentAuthorized: authorizedRuntime !== null,
+    enabledSources: authorizedRuntime?.enabledSources ?? new Set<BrowserResearchSource>(),
     browserDisabled: parseHostedRuntimePolicy(environment).browserDisabled,
-    planSigningKey: environment.VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY?.trim() ?? ""
+    planSigningKey: authorizedRuntime?.planSigningKey ?? ""
   };
 }
 
 export function createBrowserResearchCheckpointDependencies(
   userId: VeraUserId,
   repositories: BrowserResearchCheckpointDependencies["repositories"],
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: Readonly<Record<string, string | undefined>> = process.env
 ): BrowserResearchCheckpointDependencies {
   return {
     userId,
     repositories,
-    environment: parseBrowserResearchCheckpointEnvironment(environment),
+    environment: parseBrowserResearchCheckpointEnvironment(userId, browserRuntime, environment),
     createId: () => crypto.randomUUID(),
     now: () => new Date().toISOString()
   };
@@ -126,9 +108,7 @@ export async function checkBrowserResearchAction(
   const response = evaluateBrowserResearchAction({
     checkpoint: request,
     runtime: {
-      assignmentAuthorized:
-        dependencies.environment.founderUserId !== null &&
-        dependencies.environment.founderUserId === dependencies.userId,
+      assignmentAuthorized: dependencies.environment.assignmentAuthorized,
       sourceEnabled: dependencies.environment.enabledSources.has(request.plan.source),
       userTriggered: researchJob?.trigger === "manual",
       browserKillSwitchActive: dependencies.environment.browserDisabled,

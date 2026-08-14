@@ -1,8 +1,5 @@
-import { timingSafeEqual } from "node:crypto";
-
 import {
   BrowserResearchCheckpointRequestSchema,
-  VeraUserIdSchema,
   ZillowResearchCheckpointRequestSchema
 } from "@vera/domain";
 
@@ -17,6 +14,11 @@ import {
 } from "../../../../../lib/zillow-research-checkpoint-service.ts";
 import { getHostedApplication } from "../../../../../lib/server/application.ts";
 import {
+  BrowserGatewayAuthorizationError,
+  type AuthenticatedBrowserCheckpoint,
+  type BrowserGatewayRuntimeResolver
+} from "../../../../../lib/server/browser-gateway-runtime-resolver.ts";
+import {
   CrossOriginMutationError,
   MutationRequestError,
   readBoundedJson
@@ -30,78 +32,54 @@ const headers = {
   "Content-Type": "application/json"
 };
 
-export function validCheckpointBearer(
-  authorization: string | null,
-  expectedToken: string
-): boolean {
-  if (!authorization?.startsWith("Bearer ")) return false;
-  const suppliedToken = authorization.slice("Bearer ".length);
-  const supplied = Buffer.from(suppliedToken, "utf8");
-  const expected = Buffer.from(expectedToken, "utf8");
-  return supplied.length === expected.length && timingSafeEqual(supplied, expected);
-}
-
-export class CheckpointAuthorizationError extends Error {
+export class CheckpointConfigurationError extends Error {
   constructor() {
-    super("The browser research checkpoint credential is invalid.");
-    this.name = "CheckpointAuthorizationError";
+    super("The browser research checkpoint resolver is unavailable.");
+    this.name = "CheckpointConfigurationError";
   }
 }
 
-export function requireCheckpointBearer(authorization: string | null, expectedToken: string): void {
-  if (!validCheckpointBearer(authorization, expectedToken)) {
-    throw new CheckpointAuthorizationError();
+export function parseCheckpointBearer(authorization: string | null): string {
+  if (!authorization?.startsWith("Bearer ")) {
+    throw new BrowserGatewayAuthorizationError();
   }
+  const token = authorization.slice("Bearer ".length);
+  if (!token || token.trim() !== token) throw new BrowserGatewayAuthorizationError();
+  return token;
 }
 
-function configuredCheckpointOrigin(
-  request: Request,
-  environment: Readonly<Record<string, string | undefined>>
-): string {
-  const configured = environment.VERA_BROWSER_RESEARCH_CHECKPOINT_ORIGIN?.trim();
-  if (!configured) {
-    if (environment.NODE_ENV === "production") throw new CrossOriginMutationError();
-    return new URL(request.url).origin;
-  }
-  const parsed = new URL(configured);
-  if (
-    parsed.origin !== configured ||
-    parsed.protocol !== "https:" ||
-    parsed.pathname !== "/" ||
-    parsed.search ||
-    parsed.hash ||
-    parsed.username ||
-    parsed.password
-  ) {
-    throw new CrossOriginMutationError();
-  }
-  return parsed.origin;
-}
-
-export function assertCheckpointRequestOrigin(
-  request: Request,
-  environment: Readonly<Record<string, string | undefined>> = process.env
-): void {
+export function checkpointRequestOrigin(request: Request): string {
   const supplied = request.headers.get("origin");
   if (supplied === null) throw new CrossOriginMutationError();
   try {
-    const expectedOrigin = configuredCheckpointOrigin(request, environment);
     const suppliedUrl = new URL(supplied);
     if (
       suppliedUrl.origin !== supplied ||
+      suppliedUrl.protocol !== "https:" ||
       suppliedUrl.pathname !== "/" ||
       suppliedUrl.search ||
       suppliedUrl.hash ||
       suppliedUrl.username ||
-      suppliedUrl.password ||
-      suppliedUrl.origin !== expectedOrigin
+      suppliedUrl.password
     ) {
       throw new CrossOriginMutationError();
     }
+    return suppliedUrl.origin;
   } catch (error) {
     if (error instanceof CrossOriginMutationError) throw error;
     throw new CrossOriginMutationError();
   }
+}
+
+export async function requireAssignedCheckpoint(
+  request: Request,
+  resolver: BrowserGatewayRuntimeResolver | null
+): Promise<AuthenticatedBrowserCheckpoint> {
+  if (resolver === null) throw new CheckpointConfigurationError();
+  return resolver.authenticateCheckpoint({
+    bearerToken: parseCheckpointBearer(request.headers.get("authorization")),
+    origin: checkpointRequestOrigin(request)
+  });
 }
 
 function failure(code: string, status: number): Response {
@@ -113,25 +91,28 @@ function failure(code: string, status: number): Response {
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const token = process.env.VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN?.trim() ?? "";
-    if (token.length < 32) return failure("checkpoint_not_configured", 503);
-    requireCheckpointBearer(request.headers.get("authorization"), token);
-    assertCheckpointRequestOrigin(request, process.env);
-    const founder = VeraUserIdSchema.safeParse(
-      process.env.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim()
-    );
-    if (!founder.success) return failure("founder_not_configured", 503);
-
+    const application = getHostedApplication();
+    const resolved = await requireAssignedCheckpoint(request, application.browserGatewayRuntime);
     const rawInput = await readBoundedJson(request, { maxBytes: 16_000 });
-    const repositories = getHostedApplication().repositoryProvider.forUser(founder.data);
+    const repositories = application.repositoryProvider.forUser(resolved.userId);
     const genericInput = BrowserResearchCheckpointRequestSchema.safeParse(rawInput);
     const result = genericInput.success
       ? await checkBrowserResearchAction(
-          createBrowserResearchCheckpointDependencies(founder.data, repositories, process.env),
+          createBrowserResearchCheckpointDependencies(
+            resolved.userId,
+            repositories,
+            resolved.runtime,
+            process.env
+          ),
           genericInput.data
         )
       : await checkZillowResearchAction(
-          createZillowResearchCheckpointDependencies(founder.data, repositories, process.env),
+          createZillowResearchCheckpointDependencies(
+            resolved.userId,
+            repositories,
+            resolved.runtime,
+            process.env
+          ),
           ZillowResearchCheckpointRequestSchema.parse(rawInput)
         );
     return Response.json(result, { status: 200, headers });
@@ -145,12 +126,17 @@ export async function POST(request: Request): Promise<Response> {
         error instanceof MutationRequestError ? error.status : 400
       );
     }
-    if (error instanceof CheckpointAuthorizationError) {
+    if (error instanceof BrowserGatewayAuthorizationError) {
       return failure("checkpoint_unauthorized", 401);
     }
     if (error instanceof CrossOriginMutationError) {
       return failure("cross_origin_request", 403);
     }
-    return failure("checkpoint_unavailable", 503);
+    return failure(
+      error instanceof CheckpointConfigurationError
+        ? "checkpoint_not_configured"
+        : "checkpoint_unavailable",
+      503
+    );
   }
 }

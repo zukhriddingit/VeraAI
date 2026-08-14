@@ -27,6 +27,8 @@ const remoteImage = read("infra/maritime/openclaw/remote-extension-image.json");
 const remoteRouteFilter = read("infra/maritime/openclaw/remote-extension-route-filter.mjs");
 const remoteClient = read("packages/connectors/src/maritime-remote-extension-client.ts");
 const remoteService = read("apps/web/lib/remote-extension-snapshot-service.ts");
+const rentalResearchService = read("apps/web/lib/rental-research-service.ts");
+const listingEnrichmentService = read("apps/web/lib/listing-enrichment-service.ts");
 const remoteRoute = read("apps/web/app/api/integrations/remote-browser/snapshot/route.ts");
 const zillowCheckpointRoute = read(
   "apps/web/app/api/internal/browser-research/checkpoint/route.ts"
@@ -260,10 +262,22 @@ rejectText(
   /environment\.MARITIME_API_KEY|environment\.MARITIME_OPENCLAW_AGENT_ID/u,
   "The remote browser client must not reuse live-search credentials."
 );
+rejectText(
+  [
+    rentalResearchService,
+    listingEnrichmentService,
+    remoteService,
+    zillowCheckpointRoute,
+    zillowCheckpointService,
+    browserResearchCheckpointService
+  ].join("\n"),
+  /VERA_BROWSER_GATEWAY_FOUNDER_USER_ID|MARITIME_BROWSER_GATEWAY_(?:AGENT_ID|API_KEY)|VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN|VERA_BROWSER_RESEARCH_LOCAL_BRIDGE_(?:URL|TOKEN)/u,
+  "Active browser services must not reference a global founder, Gateway, checkpoint, or local-bridge fallback."
+);
 requireText(
   remoteService,
-  /VERA_BROWSER_GATEWAY_FOUNDER_USER_ID/u,
-  "The remote browser service must bind one exact founder to the dedicated Gateway."
+  /browserRuntime\?\.assignment\.userId === userId[\s\S]*MaritimeRemoteExtensionClient/u,
+  "The remote browser service must construct its client from the exact user's assignment."
 );
 requireText(
   environmentExample,
@@ -292,13 +306,13 @@ requireText(
 );
 requireText(
   zillowCheckpointRoute,
-  /timingSafeEqual[\s\S]*VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN[\s\S]*readBoundedJson/u,
-  "The Gateway checkpoint route must use exact bearer authentication and bounded JSON."
+  /authenticateCheckpoint[\s\S]*readBoundedJson[\s\S]*repositoryProvider\.forUser\(resolved\.userId\)/u,
+  "The Gateway checkpoint route must resolve a credential owner before bounded input and tenant repository selection."
 );
 requireText(
   zillowCheckpointService,
-  /founderAuthorized[\s\S]*sourceEnabled[\s\S]*browserKillSwitchActive[\s\S]*runActive[\s\S]*cancelled/u,
-  "The checkpoint service must re-evaluate founder, source, kill-switch, run, and cancellation state."
+  /assignmentAuthorized[\s\S]*sourceEnabled[\s\S]*browserKillSwitchActive[\s\S]*runActive[\s\S]*cancelled/u,
+  "The checkpoint service must re-evaluate assignment, source, kill-switch, run, and cancellation state."
 );
 rejectText(
   zillowCheckpointService,
@@ -307,8 +321,8 @@ rejectText(
 );
 requireText(
   browserResearchCheckpointService,
-  /founderAuthorized[\s\S]*sourceEnabled[\s\S]*browserKillSwitchActive[\s\S]*runActive[\s\S]*cancelled[\s\S]*planSignatureValid/u,
-  "The generic checkpoint must re-evaluate founder, source, kill switch, run, cancellation, and plan signature."
+  /assignmentAuthorized[\s\S]*sourceEnabled[\s\S]*browserKillSwitchActive[\s\S]*runActive[\s\S]*cancelled[\s\S]*planSignatureValid/u,
+  "The generic checkpoint must re-evaluate assignment, source, kill switch, run, cancellation, and plan signature."
 );
 rejectText(
   browserResearchCheckpointService,

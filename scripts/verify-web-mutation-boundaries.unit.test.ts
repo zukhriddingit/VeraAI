@@ -50,8 +50,7 @@ describe("web mutation boundary verifier", () => {
       findMutationBoundaryViolations(
         files(`
           export async function POST(request: Request) {
-            requireCheckpointBearer(request.headers.get("authorization"), checkpointToken);
-            assertCheckpointRequestOrigin(request);
+            await requireAssignedCheckpoint(request, browserGatewayRuntime);
             const input = await readBoundedJson(request, { maxBytes: 4_000 });
             return checkpoint(input);
           }
