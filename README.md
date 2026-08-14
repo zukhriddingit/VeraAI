@@ -1,5 +1,11 @@
 # Vera
 
+Public surfaces are intentionally split: `apps/marketing` serves `verahousing.app`, while
+`apps/web` serves the PostgreSQL-backed product at `app.verahousing.app`. The public product demo at
+`/demo` is a statically rendered, sanitized fixture walkthrough with no authentication, API,
+connector, email, calendar, or browser side effects. See `docs/MARKETING_RELEASE.md` for build,
+smoke, and rollback steps.
+
 Vera is a renter-controlled housing-search copilot: it preserves listing evidence, normalizes and deduplicates records, ranks homes against explicit preferences, surfaces evidence-backed risk indicators, and keeps every external action under user control.
 
 Hosted Vera uses PostgreSQL as its only persistence engine. Better Auth provides hosted identity with Google `openid`, `email`, and `profile` scopes only. Calendar uses a separate Google Web Application OAuth client and requests free/busy and owned-event access incrementally; access to either capability is optional. The sanitized offline demo remains available through an explicit SQLite-only launch path and is never a hosted fallback.

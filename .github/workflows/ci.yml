@@ -81,6 +81,9 @@ jobs:
       - name: Verify Heroku production boundaries
         run: pnpm verify:heroku-production
 
+      - name: Verify public launch surfaces
+        run: pnpm verify:launch-surfaces
+
       - name: Verify Maritime boundaries and deployment assets
         run: pnpm verify:maritime-boundaries && pnpm maritime:validate
 
