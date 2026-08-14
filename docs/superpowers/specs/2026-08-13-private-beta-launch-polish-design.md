@@ -1,6 +1,6 @@
 # Private Beta Launch Polish Design
 
-Status: Approved for written review  
+Status: Approved for written review
 Date: 2026-08-13
 
 ## Purpose
