@@ -1,6 +1,10 @@
 import type { VeraUserId } from "@vera/domain";
 import type { ReadinessReport } from "@vera/domain";
-import type { MaritimeOperationsRepository, UserRepositoryProvider } from "@vera/db";
+import type {
+  BetaAccessRepository,
+  MaritimeOperationsRepository,
+  UserRepositoryProvider
+} from "@vera/db";
 
 import type { VeraAuth } from "./auth.ts";
 import type { CalendarApplicationDependencies } from "./calendar-application.ts";
@@ -12,6 +16,7 @@ export interface VeraApplication {
   readonly auth: VeraAuth | null;
   readonly calendar: CalendarApplicationDependencies;
   readonly gmailOAuth: GmailIntegrationOAuth | null;
+  readonly betaAccess: BetaAccessRepository | null;
   readonly maritimeOperations?: MaritimeOperationsRepository;
   readonly demoUserId: VeraUserId | null;
   readiness(): Promise<ReadinessReport>;

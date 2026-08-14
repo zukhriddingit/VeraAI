@@ -8,6 +8,8 @@ const MUTATION_HANDLERS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const AUTHENTICATION_CALL =
   /\b(?:requireVeraSession|calendarRouteService|requireCheckpointBearer)\s*\(/u;
 const ORIGIN_CALL = /\b(?:assertSameOriginMutation|assertCheckpointRequestOrigin)\s*\(/u;
+const PUBLIC_BETA_GUARD = /\brequirePublicBetaSubmissionBoundary\s*\(/u;
+const PUBLIC_BETA_ROUTE = "apps/web/app/api/beta-access/route.ts";
 const BOUNDED_READER_CALL = /\b(?:readBoundedJson|readCalendarMutationJson)\s*\(/u;
 const DIRECT_BODY_READER = /\brequest\s*\.\s*(?:json|text|arrayBuffer|blob|formData)\s*\(/u;
 
@@ -54,8 +56,18 @@ export function findMutationBoundaryViolations(
       const line =
         sourceFile.getLineAndCharacterOfPosition(statement.getStart(sourceFile)).line + 1;
       const body = statement.body.getText(sourceFile);
-      const authentication = matchIndex(body, AUTHENTICATION_CALL);
-      const origin = matchIndex(body, ORIGIN_CALL);
+      const publicBetaGuard = matchIndex(body, PUBLIC_BETA_GUARD);
+      const publicBetaRoute = file === PUBLIC_BETA_ROUTE && handler === "POST";
+      if (publicBetaGuard !== null && !publicBetaRoute) {
+        violations.push({
+          file,
+          handler,
+          line,
+          message: "public beta mutation guard is restricted to the beta intake route"
+        });
+      }
+      const authentication = publicBetaRoute ? publicBetaGuard : matchIndex(body, AUTHENTICATION_CALL);
+      const origin = publicBetaRoute ? publicBetaGuard : matchIndex(body, ORIGIN_CALL);
       const boundedReader = matchIndex(body, BOUNDED_READER_CALL);
 
       const report = (message: string): void => {

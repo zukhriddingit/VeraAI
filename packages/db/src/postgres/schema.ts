@@ -70,6 +70,86 @@ export const users = pgTable(
   (table) => [uniqueIndex("users_email_unique").on(sql`lower(${table.email})`)]
 );
 
+export const betaAccessRequests = pgTable(
+  "beta_access_requests",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    normalizedEmail: text("normalized_email").notNull(),
+    status: text("status").notNull().default("requested"),
+    consentVersion: text("consent_version").notNull(),
+    consentedAt: instant("consented_at").notNull(),
+    requestedAt: instant("requested_at").notNull(),
+    reviewedAt: instant("reviewed_at"),
+    reviewedByUserId: uuid("reviewed_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "restrict"
+    })
+  },
+  (table) => [
+    uniqueIndex("beta_access_requests_email_unique").on(table.normalizedEmail),
+    index("beta_access_requests_status_requested_idx").on(table.status, table.requestedAt),
+    check(
+      "beta_access_requests_normalized_email_check",
+      sql`${table.normalizedEmail} = lower(btrim(${table.normalizedEmail}))`
+    ),
+    check(
+      "beta_access_requests_status_check",
+      sql`${table.status} IN ('requested', 'invited', 'declined', 'withdrawn')`
+    )
+  ]
+);
+
+export const betaMemberships = pgTable(
+  "beta_memberships",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    normalizedEmail: text("normalized_email").notNull(),
+    userId: uuid("user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "restrict"
+    }),
+    status: text("status").notNull().default("invited"),
+    invitedAt: instant("invited_at").notNull(),
+    activatedAt: instant("activated_at"),
+    revokedAt: instant("revoked_at"),
+    approvedByUserId: uuid("approved_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+      onUpdate: "restrict"
+    })
+  },
+  (table) => [
+    uniqueIndex("beta_memberships_email_unique").on(table.normalizedEmail),
+    uniqueIndex("beta_memberships_user_unique").on(table.userId),
+    index("beta_memberships_status_idx").on(table.status),
+    check(
+      "beta_memberships_normalized_email_check",
+      sql`${table.normalizedEmail} = lower(btrim(${table.normalizedEmail}))`
+    ),
+    check(
+      "beta_memberships_status_check",
+      sql`${table.status} IN ('invited', 'active', 'revoked')`
+    )
+  ]
+);
+
+export const betaAccessRateLimits = pgTable(
+  "beta_access_rate_limits",
+  {
+    keyDigest: text("key_digest").primaryKey(),
+    windowStartedAt: instant("window_started_at").notNull(),
+    attempts: integer("attempts").notNull().default(1),
+    expiresAt: instant("expires_at").notNull()
+  },
+  (table) => [
+    index("beta_access_rate_limits_expiry_idx").on(table.expiresAt),
+    check(
+      "beta_access_rate_limits_digest_check",
+      sql`${table.keyDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check("beta_access_rate_limits_attempts_check", sql`${table.attempts} > 0`)
+  ]
+);
+
 export const sessions = pgTable(
   "sessions",
   {
@@ -2901,6 +2981,9 @@ export const schema = {
   approvals,
   availabilityChecks,
   availabilityRuleSets,
+  betaAccessRateLimits,
+  betaAccessRequests,
+  betaMemberships,
   browserCaptureAcceptances,
   browserProfileControls,
   browserSourceControls,

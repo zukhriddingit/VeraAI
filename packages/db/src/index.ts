@@ -5,6 +5,7 @@ export * from "./postgres/config.ts";
 export * from "./postgres/calendar-repositories.ts";
 export * from "./postgres/browser-repositories.ts";
 export * from "./postgres/browser-transactions.ts";
+export * from "./postgres/beta-access-repository.ts";
 export * from "./postgres/calendar-transactions.ts";
 export * from "./postgres/connection.ts";
 export * from "./postgres/decision-repositories.ts";

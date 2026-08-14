@@ -1,5 +1,6 @@
 import {
   checkPostgresReadiness,
+  createPostgresBetaAccessRepository,
   createPostgresMaritimeOperationsRepository,
   createPostgresRepositoryProvider,
   openPostgresConnection,
@@ -91,7 +92,8 @@ export function createPostgresApplication(
   const connection = openPostgresConnection(postgres);
   try {
     const repositoryProvider = createPostgresRepositoryProvider(connection);
-    const auth = createVeraAuth(connection, environment);
+    const betaAccess = createPostgresBetaAccessRepository(connection);
+    const auth = createVeraAuth(connection, environment, betaAccess);
     const googleBindings = composeHostedGoogleIntegrations({
       configuration: googleIntegration,
       repositoryProvider
@@ -103,6 +105,7 @@ export function createPostgresApplication(
       auth,
       calendar: googleBindings.calendar,
       gmailOAuth: googleBindings.gmailOAuth,
+      betaAccess,
       maritimeOperations: createPostgresMaritimeOperationsRepository(connection.db),
       demoUserId: null,
       readiness: () => checkPostgresReadiness(connection, { service: "vera-web" }),

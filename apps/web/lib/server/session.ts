@@ -11,6 +11,13 @@ export class AuthenticationRequiredError extends Error {
   }
 }
 
+export class BetaAccessRequiredError extends AuthenticationRequiredError {
+  constructor() {
+    super();
+    this.name = "BetaAccessRequiredError";
+  }
+}
+
 export interface VeraRequestContext {
   readonly userId: VeraUserId;
   readonly repositories: UserRepositories;
@@ -20,7 +27,8 @@ export interface VeraRequestContext {
 
 export async function requireVeraSession(
   requestHeaders: Headers,
-  application: VeraApplication = getHostedApplication()
+  application: VeraApplication = getHostedApplication(),
+  environment: Readonly<Record<string, string | undefined>> = process.env
 ): Promise<VeraRequestContext> {
   if (application.mode === "demo") {
     if (application.demoUserId === null) throw new AuthenticationRequiredError();
@@ -39,6 +47,11 @@ export async function requireVeraSession(
   } | null;
   const parsedUserId = VeraUserIdSchema.safeParse(untrustedSession?.user?.id);
   if (!parsedUserId.success) throw new AuthenticationRequiredError();
+  if (environment.VERA_BETA_ACCESS_GATE_ENABLED === "1") {
+    if (!application.betaAccess || !(await application.betaAccess.isActiveUser(parsedUserId.data))) {
+      throw new BetaAccessRequiredError();
+    }
+  }
 
   return {
     userId: parsedUserId.data,

@@ -140,6 +140,19 @@ describe("PostgreSQL migration readiness", () => {
     expect(migration).toContain("'blocked_manual_action'");
   });
 
+  it("keeps private beta access additive, portable, and deny-by-default", () => {
+    const migration = readFileSync(
+      join(postgresMigrationsFolder, "0007_private_beta_access.sql"),
+      "utf8"
+    );
+    expect(migration).not.toMatch(/\b(?:DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE)\b/iu);
+    expect(migration).not.toContain('REFERENCES "public".');
+    expect(migration).toContain('CREATE TABLE "beta_access_requests"');
+    expect(migration).toContain('CREATE TABLE "beta_memberships"');
+    expect(migration).toContain('CREATE TABLE "beta_access_rate_limits"');
+    expect(migration).toContain('"status" text DEFAULT \'requested\' NOT NULL');
+  });
+
   it("reports ready only when the expected migration hash is present", async () => {
     await withPostgresTestDatabase(async ({ connection, schemaName }) => {
       await expect(
@@ -272,7 +285,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 7 }]);
+      expect(migrationCount.rows).toEqual([{ count: 8 }]);
     });
   });
 
@@ -333,7 +346,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 7 }]);
+      expect(migrationCount.rows).toEqual([{ count: 8 }]);
     }, 4);
   });
 

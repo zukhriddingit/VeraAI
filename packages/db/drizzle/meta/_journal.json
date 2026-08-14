@@ -50,6 +50,13 @@
       "when": 1786598735922,
       "tag": "0006_listing_integrity_repair",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1786668854680,
+      "tag": "0007_private_beta_access",
+      "breakpoints": true
     }
   ]
 }

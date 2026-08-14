@@ -70,6 +70,7 @@ function registerFixture(fixture: MemoryFixture, sessionUserId: VeraUserId | nul
     } as unknown as VeraApplication["auth"],
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
+    betaAccess: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

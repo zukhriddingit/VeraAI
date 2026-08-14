@@ -1,0 +1,234 @@
+.page {
+  width: 100%;
+  max-width: none;
+  min-height: 100dvh;
+  margin: 0;
+  padding: 0 0 4rem;
+  color: #eef2f6;
+  background:
+    radial-gradient(circle at 78% 3%, rgba(71, 101, 142, 0.26), transparent 34rem),
+    #050914;
+  font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+}
+
+.header,
+.content {
+  width: min(1180px, calc(100% - 3rem));
+  margin-inline: auto;
+}
+
+.header {
+  display: flex;
+  min-height: 5rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.header a {
+  color: #c8d0dc;
+  font-size: 0.78rem;
+  font-weight: 720;
+  text-decoration: none;
+}
+
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  color: #fff !important;
+  font-size: 0.95rem !important;
+}
+
+.brand span {
+  display: grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #1a0905;
+  background: #ff7658;
+}
+
+.content {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(22rem, 0.72fr);
+  gap: clamp(3rem, 9vw, 8rem);
+  align-items: center;
+  padding: clamp(4rem, 10vw, 8rem) 0;
+}
+
+.eyebrow,
+.formPanel > p:first-child {
+  margin: 0 0 1rem;
+  color: #ff7658;
+  font-size: 0.69rem;
+  font-weight: 830;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.copy h1 {
+  max-width: 720px;
+  margin: 0;
+  color: #f4f6f8;
+  font-family: inherit;
+  font-size: clamp(3.5rem, 7vw, 6.6rem);
+  font-weight: 690;
+  letter-spacing: -0.07em;
+  line-height: 0.92;
+}
+
+.lede {
+  max-width: 620px;
+  margin: 1.6rem 0 2.5rem;
+  color: #a9b3c2;
+  font-size: 1.06rem;
+  line-height: 1.7;
+}
+
+.copy ul {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem 1.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.copy li {
+  padding-top: 0.8rem;
+  border-top: 1px solid rgba(207, 219, 235, 0.16);
+  color: #b5bfcc;
+  font-size: 0.8rem;
+  line-height: 1.5;
+}
+
+.formPanel {
+  padding: clamp(1.5rem, 4vw, 2.4rem);
+  border: 1px solid rgba(207, 219, 235, 0.18);
+  border-radius: 1rem;
+  background: rgba(14, 23, 38, 0.9);
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.28);
+}
+
+.formPanel h2 {
+  margin: 0;
+  color: #f4f6f8;
+  font-family: inherit;
+  font-size: 2rem;
+  letter-spacing: -0.045em;
+}
+
+.formPanel > p:not(:first-child) {
+  color: #9eabba;
+  font-size: 0.84rem;
+  line-height: 1.6;
+}
+
+.form {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.6rem;
+}
+
+.form > label:not(.consent, .honeypot) {
+  display: grid;
+  gap: 0.5rem;
+  color: #d6dce4;
+  font-size: 0.76rem;
+  font-weight: 740;
+}
+
+.form input[type="email"] {
+  min-height: 3.15rem;
+  padding: 0 0.9rem;
+  border: 1px solid rgba(207, 219, 235, 0.25);
+  border-radius: 0.55rem;
+  color: #f3f5f8;
+  background: #070d18;
+}
+
+.consent {
+  display: grid;
+  grid-template-columns: 1.1rem 1fr;
+  gap: 0.7rem;
+  align-items: start;
+  color: #aab5c3;
+  font-size: 0.73rem;
+  line-height: 1.5;
+}
+
+.consent input {
+  width: 1rem;
+  height: 1rem;
+  margin: 0.15rem 0 0;
+  accent-color: #ff7658;
+}
+
+.consent a {
+  color: #ff9078;
+}
+
+.form button {
+  min-height: 3.1rem;
+  border: 0;
+  border-radius: 999px;
+  color: #1a0905;
+  background: #ff7658;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 830;
+}
+
+.form button:disabled {
+  cursor: wait;
+  opacity: 0.68;
+}
+
+.honeypot {
+  position: absolute;
+  left: -10000px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.error,
+.success {
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(255, 118, 88, 0.25);
+  border-radius: 0.6rem;
+  color: #e9c6bd;
+  background: rgba(255, 118, 88, 0.08);
+  font-size: 0.74rem;
+}
+
+.success {
+  margin-top: 1.5rem;
+}
+
+.success p {
+  margin: 0.35rem 0 0;
+  color: #b7c1cd;
+}
+
+.page :focus-visible {
+  outline: 3px solid #ff7658;
+  outline-offset: 3px;
+}
+
+@media (max-width: 820px) {
+  .header,
+  .content {
+    width: min(100% - 1.5rem, 1180px);
+  }
+
+  .content {
+    grid-template-columns: 1fr;
+    padding-top: 3rem;
+  }
+
+  .copy ul {
+    grid-template-columns: 1fr;
+  }
+}
