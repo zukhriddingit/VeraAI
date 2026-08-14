@@ -21,6 +21,7 @@ function register(): void {
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
     betaAccess: { submit, consumeRateLimit } as never,
+    browserGatewayAssignments: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

@@ -1,6 +1,7 @@
 import {
   checkPostgresReadiness,
   createPostgresBetaAccessRepository,
+  createPostgresBrowserGatewayAssignmentRepository,
   createPostgresMaritimeOperationsRepository,
   createPostgresRepositoryProvider,
   openPostgresConnection,
@@ -106,6 +107,7 @@ export function createPostgresApplication(
       calendar: googleBindings.calendar,
       gmailOAuth: googleBindings.gmailOAuth,
       betaAccess,
+      browserGatewayAssignments: createPostgresBrowserGatewayAssignmentRepository(connection),
       maritimeOperations: createPostgresMaritimeOperationsRepository(connection.db),
       demoUserId: null,
       readiness: () => checkPostgresReadiness(connection, { service: "vera-web" }),

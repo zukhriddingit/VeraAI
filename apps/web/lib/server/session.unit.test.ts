@@ -22,6 +22,7 @@ function application(session: unknown): VeraApplication {
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
     betaAccess: null,
+    browserGatewayAssignments: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

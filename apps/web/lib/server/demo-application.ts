@@ -19,6 +19,7 @@ export function createDemoApplication(connection: VeraDatabaseConnection): VeraA
     ),
     gmailOAuth: null,
     betaAccess: null,
+    browserGatewayAssignments: null,
     demoUserId: DEMO_USER_ID,
     readiness: async () =>
       ReadinessReportSchema.parse({

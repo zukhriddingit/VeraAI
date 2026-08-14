@@ -52,7 +52,8 @@ function registerFixture(
     readiness: vi.fn(),
     close: vi.fn(),
     ...overrides,
-    gmailOAuth: overrides.gmailOAuth ?? null
+    gmailOAuth: overrides.gmailOAuth ?? null,
+    browserGatewayAssignments: overrides.browserGatewayAssignments ?? null
   });
 }
 

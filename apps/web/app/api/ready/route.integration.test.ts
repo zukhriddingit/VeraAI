@@ -19,6 +19,7 @@ function register(status: "ready" | "not_ready"): void {
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
     betaAccess: null,
+    browserGatewayAssignments: null,
     demoUserId: null,
     readiness: vi.fn(async (): Promise<ReadinessReport> => ({
       service: "vera-web",

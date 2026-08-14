@@ -1220,6 +1220,99 @@ export const browserNodes = pgTable(
   ]
 );
 
+export const browserGatewayAssignments = pgTable(
+  "browser_gateway_assignments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    nodeId: text("node_id").notNull(),
+    maritimeAgentId: text("maritime_agent_id").notNull(),
+    gatewayOrigin: text("gateway_origin").notNull(),
+    checkpointOrigin: text("checkpoint_origin").notNull(),
+    secretReference: text("secret_reference").notNull(),
+    relayCredentialDigest: text("relay_credential_digest").notNull(),
+    checkpointCredentialDigest: text("checkpoint_credential_digest").notNull(),
+    status: text("status").notNull().default("pending"),
+    createdAt: instant("created_at").notNull(),
+    activatedAt: instant("activated_at"),
+    revokedAt: instant("revoked_at")
+  },
+  (table) => [
+    uniqueIndex("browser_gateway_assignments_user_live_unique")
+      .on(table.userId)
+      .where(sql`${table.status} IN ('pending', 'active')`),
+    uniqueIndex("browser_gateway_assignments_id_user_unique").on(table.id, table.userId),
+    uniqueIndex("browser_gateway_assignments_agent_unique").on(table.maritimeAgentId),
+    uniqueIndex("browser_gateway_assignments_gateway_origin_unique").on(table.gatewayOrigin),
+    uniqueIndex("browser_gateway_assignments_secret_reference_unique").on(table.secretReference),
+    uniqueIndex("browser_gateway_assignments_relay_digest_unique").on(
+      table.relayCredentialDigest
+    ),
+    uniqueIndex("browser_gateway_assignments_checkpoint_digest_unique").on(
+      table.checkpointCredentialDigest
+    ),
+    foreignKey({
+      name: "browser_gateway_assignments_node_tenant_fk",
+      columns: [table.userId, table.nodeId],
+      foreignColumns: [browserNodes.userId, browserNodes.nodeId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check(
+      "browser_gateway_assignments_status_check",
+      sql`${table.status} IN ('pending', 'active', 'revoked')`
+    ),
+    check(
+      "browser_gateway_assignments_digest_check",
+      sql`${table.relayCredentialDigest} ~ '^[a-f0-9]{64}$' AND ${table.checkpointCredentialDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_gateway_assignments_checkpoint_origin_check",
+      sql`${table.checkpointOrigin} = 'https://app.verahousing.app'`
+    )
+  ]
+);
+
+export const browserGatewayAcceptanceRuns = pgTable(
+  "browser_gateway_acceptance_runs",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    assignmentId: uuid("assignment_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    sourceJobId: text("source_job_id").notNull(),
+    source: text("source").notNull(),
+    forbiddenActionCount: integer("forbidden_action_count").notNull(),
+    unshareStoppedFutureWork: boolean("unshare_stopped_future_work").notNull(),
+    unpairVerified: boolean("unpair_verified").notNull(),
+    completedAt: instant("completed_at").notNull()
+  },
+  (table) => [
+    uniqueIndex("browser_gateway_acceptance_user_job_unique").on(
+      table.userId,
+      table.sourceJobId
+    ),
+    foreignKey({
+      name: "browser_gateway_acceptance_assignment_owner_fk",
+      columns: [table.assignmentId, table.userId],
+      foreignColumns: [browserGatewayAssignments.id, browserGatewayAssignments.userId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check(
+      "browser_gateway_acceptance_nonnegative",
+      sql`${table.forbiddenActionCount} >= 0`
+    ),
+    check(
+      "browser_gateway_acceptance_source_check",
+      sql`${table.source} IN ('zillow', 'apartments_com', 'facebook_marketplace', 'bu_off_campus', 'custom_website', 'craigslist')`
+    )
+  ]
+);
+
 export const browserUserControls = pgTable("browser_user_controls", {
   userId: uuid("user_id")
     .primaryKey()
@@ -2984,6 +3077,8 @@ export const schema = {
   betaAccessRateLimits,
   betaAccessRequests,
   betaMemberships,
+  browserGatewayAcceptanceRuns,
+  browserGatewayAssignments,
   browserCaptureAcceptances,
   browserProfileControls,
   browserSourceControls,
