@@ -45,14 +45,22 @@ function failure(
 
 export async function POST(request: Request): Promise<Response> {
   try {
-    const context = await requireVeraSession(request.headers, getHostedApplication());
+    const application = getHostedApplication();
+    const context = await requireVeraSession(request.headers, application);
     if (context.demoMode) return failure("spike_disabled", 409);
     assertSameOriginMutation(request);
     const input = RemoteExtensionSnapshotConfirmationSchema.parse(
       await readBoundedJson(request, { maxBytes: 2_000 })
     );
+    const browserRuntime =
+      (await application.browserGatewayRuntime?.resolveForUser(context.userId)) ?? null;
     const result = await requestRemoteExtensionSnapshot(
-      createRemoteExtensionSnapshotDependencies(context.userId, context.repositories, process.env),
+      createRemoteExtensionSnapshotDependencies(
+        context.userId,
+        context.repositories,
+        browserRuntime,
+        process.env
+      ),
       input
     );
     return Response.json(result, { status: 200, headers });

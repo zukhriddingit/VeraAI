@@ -6,6 +6,7 @@ import {
   requestCanonicalListingEnrichment
 } from "../../../../lib/listing-enrichment-service";
 import { parseRouteEntityId } from "../../../../lib/route-entity-id";
+import { getHostedApplication } from "../../../../lib/server/application";
 import { AuthenticationRequiredError, requireVeraSession } from "../../../../lib/server/session";
 
 export const runtime = "nodejs";
@@ -18,7 +19,8 @@ interface RouteContext {
 
 export async function GET(request: Request, context: RouteContext): Promise<Response> {
   try {
-    const session = await requireVeraSession(request.headers);
+    const application = getHostedApplication();
+    const session = await requireVeraSession(request.headers, application);
     const listingId = parseRouteEntityId((await context.params).id);
     if (listingId === null) {
       return Response.json(
@@ -33,7 +35,10 @@ export async function GET(request: Request, context: RouteContext): Promise<Resp
       await requestCanonicalListingEnrichment(
         listingId,
         "listing_opened",
-        createListingEnrichmentDependencies(session)
+        createListingEnrichmentDependencies(
+          session,
+          (await application.browserGatewayRuntime?.resolveForUser(session.userId)) ?? null
+        )
       ).catch(() => null);
     }
     const detail = await getListingDetail(session.repositories, listingId);

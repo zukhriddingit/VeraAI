@@ -1,12 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import {
-  createLoopbackBrowserResearchClient,
-  createLoopbackZillowResearchClient,
-  createMaritimeBrowserResearchClient,
-  createMaritimeZillowResearchClient,
   getBrowserSourceAdapter,
+  MaritimeBrowserResearchClient,
   MaritimeBrowserResearchError,
+  MaritimeZillowResearchClient,
   MaritimeZillowResearchError,
   zillowObservedListingToEnvelope,
   zillowResearchSafeCaptureMetadata,
@@ -26,6 +24,7 @@ import {
   SourceJobSchema,
   ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE,
   type ActivityEvent,
+  type BrowserGatewayRuntime,
   type BrowserResearchManualAction,
   type BrowserResearchOutput,
   type BrowserResearchPlan,
@@ -43,11 +42,12 @@ import {
   type ZillowResearchManualAction
 } from "@vera/domain";
 
-import { runLiveSearch, type LiveSearchServiceDependencies } from "./live-search-service.ts";
 import {
-  parseZillowResearchCheckpointEnvironment,
-  type ZillowResearchCheckpointEnvironment
-} from "./zillow-research-checkpoint-service.ts";
+  parseLiveSearchEnvironment,
+  runLiveSearch,
+  type LiveSearchServiceDependencies
+} from "./live-search-service.ts";
+import { parseHostedRuntimePolicy } from "./server/hosted-runtime-policy.ts";
 
 export const RENTAL_RESEARCH_ACTIONS = {
   requested: "rental_research_run_requested",
@@ -71,6 +71,8 @@ export class RentalResearchServiceError extends Error {
       | "profile_not_found"
       | "duplicate_run"
       | "zillow_disabled"
+      | "browser_assignment_required"
+      | "source_not_approved"
       | "zillow_profile_incomplete"
       | "run_not_found",
     readonly status: number,
@@ -92,7 +94,11 @@ export interface RentalResearchDependencies {
       options: { readonly signal: AbortSignal }
     ): Promise<ZillowRentalResearchOutput>;
   };
-  readonly zillowEnvironment: ZillowResearchCheckpointEnvironment;
+  readonly zillowEnvironment: {
+    readonly sourceEnabled: boolean;
+    readonly browserDisabled: boolean;
+    readonly assignmentAuthorized: boolean;
+  };
   readonly browserResearch: {
     run(
       plan: BrowserResearchPlan,
@@ -100,11 +106,12 @@ export interface RentalResearchDependencies {
     ): Promise<BrowserResearchOutput>;
   };
   readonly browserResearchEnvironment: {
-    readonly founderUserId: VeraUserId | null;
+    readonly assignmentAuthorized: boolean;
     readonly browserDisabled: boolean;
     readonly planSigningKey: string;
     readonly enabledSources: ReadonlySet<BrowserResearchSource>;
   };
+  readonly rentcastAuthorized: boolean;
   now(): Date;
   createId(): string;
 }
@@ -408,11 +415,13 @@ async function runZillowSource(
   isOnlySource: boolean
 ): Promise<void> {
   if (
-    !dependencies.zillowEnvironment.sourceEnabled ||
     dependencies.zillowEnvironment.browserDisabled ||
-    dependencies.zillowEnvironment.founderUserId !== dependencies.userId
+    !dependencies.zillowEnvironment.assignmentAuthorized
   ) {
-    throw new RentalResearchServiceError("zillow_disabled", 503, false);
+    throw new RentalResearchServiceError("browser_assignment_required", 403, false);
+  }
+  if (!dependencies.zillowEnvironment.sourceEnabled) {
+    throw new RentalResearchServiceError("source_not_approved", 403, false);
   }
   const jobId = isOnlySource ? parentRunId : `${parentRunId}.zillow`;
   const createdAt = nowIso(dependencies);
@@ -928,12 +937,11 @@ async function runAdditionalBrowserSource(
   configuration: SelectedHousingSourceConfiguration | undefined
 ): Promise<void> {
   const environment = dependencies.browserResearchEnvironment;
-  if (
-    environment.browserDisabled ||
-    environment.founderUserId !== dependencies.userId ||
-    !environment.enabledSources.has(source)
-  ) {
-    throw new RentalResearchServiceError("zillow_disabled", 503, false);
+  if (environment.browserDisabled || !environment.assignmentAuthorized) {
+    throw new RentalResearchServiceError("browser_assignment_required", 403, false);
+  }
+  if (!environment.enabledSources.has(source)) {
+    throw new RentalResearchServiceError("source_not_approved", 403, false);
   }
   const jobId = `${parentRunId}.${source}`;
   const createdAt = nowIso(dependencies);
@@ -1210,15 +1218,19 @@ export async function runRentalResearch(
   if (request.selectedSources.includes("rentcast")) {
     operations.push({
       source: "rentcast",
-      promise: runLiveSearch(
-        {
-          searchProfileId: profile.id,
-          confirmedExternalUsage: true,
-          veraRunId: request.veraRunId,
-          ...(request.retryOfSearchRunId ? { retryOfSearchRunId: request.retryOfSearchRunId } : {})
-        },
-        dependencies.liveSearch
-      )
+      promise: dependencies.rentcastAuthorized
+        ? runLiveSearch(
+            {
+              searchProfileId: profile.id,
+              confirmedExternalUsage: true,
+              veraRunId: request.veraRunId,
+              ...(request.retryOfSearchRunId
+                ? { retryOfSearchRunId: request.retryOfSearchRunId }
+                : {})
+            },
+            dependencies.liveSearch
+          )
+        : Promise.reject(new RentalResearchServiceError("source_not_approved", 403, false))
     });
   }
   let browserSequence = Promise.resolve();
@@ -1282,10 +1294,17 @@ export async function runRentalResearch(
             provider: source,
             resultState:
               source === "rentcast"
-                ? "provider_unavailable"
+                ? outcome.reason instanceof RentalResearchServiceError &&
+                  outcome.reason.code === "source_not_approved"
+                  ? "source_not_approved"
+                  : "provider_unavailable"
                 : source === "zillow"
-                  ? "zillow_disabled"
-                  : "browser_research_disabled",
+                  ? outcome.reason instanceof RentalResearchServiceError
+                    ? outcome.reason.code
+                    : "zillow_disabled"
+                  : outcome.reason instanceof RentalResearchServiceError
+                    ? outcome.reason.code
+                    : "browser_research_disabled",
             retryable: false
           },
           occurredAt: nowIso(dependencies)
@@ -1387,6 +1406,9 @@ function sourceStatus(
     const importedCount = numeric(finished?.metadata.importedCount) || imports.length;
     const rejectedCount = numeric(finished?.metadata.rejectedCount) || rejections.length;
     const safeWarning = firstSafeResearchWarning(finished);
+    const sourceDenied = ["browser_assignment_required", "source_not_approved"].includes(
+      String(failed?.metadata.resultState ?? "")
+    );
     let state: RentalResearchSourceStatus["state"] = "ready";
     if (job?.status === "manual_action_required") {
       if (manualAction === "login_required") state = "login_required";
@@ -1415,7 +1437,7 @@ function sourceStatus(
     ) {
       state = importedCount > 0 ? "partial" : "failed";
     } else if (failed) {
-      state = importedCount > 0 ? "partial" : "failed";
+      state = importedCount > 0 ? "partial" : sourceDenied ? "source_not_approved" : "failed";
     } else if (job !== null) {
       state = "searching";
     }
@@ -1433,9 +1455,11 @@ function sourceStatus(
             ? `${terminalNormalizationFailures.length} imported Zillow record(s) could not be normalized; accepted results were preserved.`
             : safeWarning !== null
               ? safeWarning
-              : failed
-                ? "Zillow stopped safely; other source results were preserved."
-                : null
+              : sourceDenied
+                ? "Zillow is not approved for this account."
+                : failed
+                  ? "Zillow stopped safely; other source results were preserved."
+                  : null
     };
   }
 
@@ -1455,6 +1479,9 @@ function sourceStatus(
     const importedCount = numeric(finished?.metadata.importedCount) || imports.length;
     const rejectedCount = numeric(finished?.metadata.rejectedCount) || rejections.length;
     const safeWarning = firstSafeResearchWarning(finished);
+    const sourceDenied = ["browser_assignment_required", "source_not_approved"].includes(
+      String(failed?.metadata.resultState ?? "")
+    );
     let state: RentalResearchSourceStatus["state"] =
       source === "facebook_marketplace" ? "account_recommended" : "ready";
     if (job?.status === "manual_action_required") {
@@ -1482,7 +1509,7 @@ function sourceStatus(
       job?.status === "cancelled_by_policy" ||
       failed
     ) {
-      state = importedCount > 0 ? "partial" : "failed";
+      state = importedCount > 0 ? "partial" : sourceDenied ? "source_not_approved" : "failed";
     } else if (job !== null) {
       state = "searching";
     }
@@ -1499,9 +1526,11 @@ function sourceStatus(
           ? `${terminalNormalizationFailures.length} imported ${sourceLabelsForMessage(source)} record(s) could not be normalized; accepted results were preserved.`
           : safeWarning !== null
             ? safeWarning
-            : failed
-              ? `${sourceLabelsForMessage(source)} stopped safely; other results were preserved.`
-              : null)
+            : sourceDenied
+              ? `${sourceLabelsForMessage(source)} is not approved for this account.`
+              : failed
+                ? `${sourceLabelsForMessage(source)} stopped safely; other results were preserved.`
+                : null)
     };
   }
 
@@ -1510,7 +1539,8 @@ function sourceStatus(
     (item) => item.action === "live_search_failed" && item.metadata.provider === "rentcast"
   );
   let state: RentalResearchSourceStatus["state"] = "ready";
-  if (failure) state = imports.length > 0 ? "partial" : "failed";
+  if (failure?.metadata.resultState === "source_not_approved") state = "source_not_approved";
+  else if (failure) state = imports.length > 0 ? "partial" : "failed";
   else if (job?.status === "completed") {
     state = terminalNormalizationFailures.length > 0 ? "partial" : "completed";
   } else if (job !== null) state = "searching";
@@ -1524,9 +1554,11 @@ function sourceStatus(
     message:
       terminalNormalizationFailures.length > 0
         ? `${terminalNormalizationFailures.length} imported RentCast record(s) could not be normalized; accepted results were preserved.`
-        : failure
-          ? "RentCast stopped safely; other source results were preserved."
-          : null
+        : failure?.metadata.resultState === "source_not_approved"
+          ? "RentCast is not approved for this account."
+          : failure
+            ? "RentCast stopped safely; other source results were preserved."
+            : null
   };
 }
 
@@ -1627,6 +1659,7 @@ export async function getRentalResearchStatus(
         "login_required",
         "browser_offline",
         "tab_required",
+        "source_not_approved",
         "manual_action_required"
       ].includes(source.state)
   );
@@ -1703,64 +1736,63 @@ export function createRentalResearchDependencies(
   repositories: UserRepositories,
   repositoryProvider: UserRepositoryProvider,
   liveSearch: LiveSearchServiceDependencies,
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: NodeJS.ProcessEnv = process.env
 ): RentalResearchDependencies {
-  const zillowEnvironment = parseZillowResearchCheckpointEnvironment(environment);
-  const canConfigureZillow =
-    (environment.MARITIME_BROWSER_GATEWAY_API_KEY?.trim().length ?? 0) >= 8 &&
-    (environment.MARITIME_BROWSER_GATEWAY_AGENT_ID?.trim().length ?? 0) > 0;
-  const signingKey = environment.VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY?.trim() ?? "";
-  const localBridgeConfigured =
-    (environment.VERA_BROWSER_RESEARCH_LOCAL_BRIDGE_URL?.trim().length ?? 0) > 0 &&
-    (environment.VERA_BROWSER_RESEARCH_LOCAL_BRIDGE_TOKEN?.trim().length ?? 0) >= 32;
-  const canConfigureBrowserResearch =
-    (canConfigureZillow || localBridgeConfigured) && signingKey.length >= 32;
-  const enabledSources = new Set<BrowserResearchSource>();
-  if (environment.VERA_APARTMENTS_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("apartments_com");
-  }
-  if (environment.VERA_FACEBOOK_MARKETPLACE_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("facebook_marketplace");
-  }
-  if (environment.VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("bu_off_campus");
-  }
-  if (environment.VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("custom_website");
-  }
-  if (environment.VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED === "1") {
-    enabledSources.add("craigslist");
-  }
+  const authorizedRuntime = browserRuntime?.assignment.userId === userId ? browserRuntime : null;
+  const enabledSources = authorizedRuntime?.enabledSources ?? new Set<BrowserResearchSource>();
+  const assignmentAuthorized = authorizedRuntime !== null;
+  const browserDisabled = parseHostedRuntimePolicy(environment).browserDisabled;
+  const liveEnvironment = parseLiveSearchEnvironment(environment);
   return {
     userId,
     repositories,
     repositoryProvider,
     liveSearch,
-    zillow: localBridgeConfigured
-      ? createLoopbackZillowResearchClient(environment)
-      : canConfigureZillow
-        ? createMaritimeZillowResearchClient(environment)
-        : {
+    zillow:
+      authorizedRuntime === null
+        ? {
             async run() {
               throw new MaritimeZillowResearchError("gateway_unavailable", true);
             }
-          },
-    zillowEnvironment,
-    browserResearch: canConfigureBrowserResearch
-      ? localBridgeConfigured
-        ? createLoopbackBrowserResearchClient(environment)
-        : createMaritimeBrowserResearchClient(environment)
-      : {
-          async run() {
-            throw new MaritimeBrowserResearchError("gateway_unavailable", true);
           }
-        },
+        : new MaritimeZillowResearchClient({
+            apiKey: authorizedRuntime.maritimeApiKey,
+            agentId: authorizedRuntime.assignment.maritimeAgentId,
+            timeoutMilliseconds: Number(
+              environment.VERA_ZILLOW_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000
+            ),
+            maxResponseBytes: Number(
+              environment.VERA_ZILLOW_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 500_000
+            )
+          }),
+    zillowEnvironment: {
+      sourceEnabled: enabledSources.has("zillow"),
+      browserDisabled,
+      assignmentAuthorized
+    },
+    browserResearch:
+      authorizedRuntime === null
+        ? {
+            async run() {
+              throw new MaritimeBrowserResearchError("gateway_unavailable", true);
+            }
+          }
+        : new MaritimeBrowserResearchClient({
+            apiKey: authorizedRuntime.maritimeApiKey,
+            agentId: authorizedRuntime.assignment.maritimeAgentId,
+            timeoutMilliseconds: Number(environment.VERA_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000),
+            maxResponseBytes: Number(
+              environment.VERA_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 750_000
+            )
+          }),
     browserResearchEnvironment: {
-      founderUserId: zillowEnvironment.founderUserId,
-      browserDisabled: zillowEnvironment.browserDisabled,
-      planSigningKey: signingKey,
+      assignmentAuthorized,
+      browserDisabled,
+      planSigningKey: authorizedRuntime?.planSigningKey ?? "",
       enabledSources
     },
+    rentcastAuthorized: liveEnvironment.enabled && liveEnvironment.founderUserIds.has(userId),
     now: () => new Date(),
     createId: randomUUID
   };

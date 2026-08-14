@@ -129,13 +129,13 @@ function dependencies(
     liveSearch: live,
     zillow: { run: zillowRun },
     zillowEnvironment: {
-      founderUserId: DEMO_USER_ID,
       sourceEnabled: true,
-      browserDisabled: false
+      browserDisabled: false,
+      assignmentAuthorized: true
     },
     browserResearch: { run: browserResearchRun },
     browserResearchEnvironment: {
-      founderUserId: DEMO_USER_ID,
+      assignmentAuthorized: true,
       browserDisabled: false,
       planSigningKey: "test-browser-research-signing-key-0000000000000000",
       enabledSources: new Set([
@@ -146,6 +146,7 @@ function dependencies(
         "craigslist"
       ])
     },
+    rentcastAuthorized: true,
     now: () => new Date("2026-07-30T12:01:00.000Z"),
     createId: () => `research-id-${String(++nextId)}`
   };
@@ -411,6 +412,70 @@ function browserOutput(
 }
 
 describe("multi-source browser research service", () => {
+  it("keeps approved browser results when RentCast is not approved for the account", async () => {
+    const browserRun = vi.fn(async (plan: BrowserResearchPlan) => browserOutput(plan));
+    const configured = dependencies(async () => output(), browserRun);
+    const deps: RentalResearchDependencies = {
+      ...configured,
+      rentcastAuthorized: false
+    };
+
+    const status = await runRentalResearch(
+      {
+        veraRunId: "run-account-source-isolation",
+        searchProfileId: profile.id,
+        selectedSources: ["rentcast", "apartments_com"],
+        confirmedExternalUsage: true
+      },
+      deps
+    );
+
+    expect(browserRun).toHaveBeenCalledOnce();
+    expect(status.partial).toBe(true);
+    expect(status.sources[0]).toMatchObject({
+      source: "rentcast",
+      state: "source_not_approved",
+      importedCount: 0,
+      message: "RentCast is not approved for this account."
+    });
+    expect(status.sources[1]).toMatchObject({ source: "zillow", state: "excluded_by_user" });
+    expect(status.sources[2]).toMatchObject({
+      source: "apartments_com",
+      state: "completed",
+      importedCount: 1
+    });
+  });
+
+  it("does not dispatch a browser source without the user's active assignment", async () => {
+    const browserRun = vi.fn(async (plan: BrowserResearchPlan) => browserOutput(plan));
+    const configured = dependencies(async () => output(), browserRun);
+    const deps: RentalResearchDependencies = {
+      ...configured,
+      browserResearchEnvironment: {
+        ...configured.browserResearchEnvironment,
+        assignmentAuthorized: false
+      }
+    };
+
+    const status = await runRentalResearch(
+      {
+        veraRunId: "run-missing-browser-assignment",
+        searchProfileId: profile.id,
+        selectedSources: ["apartments_com"],
+        confirmedExternalUsage: true
+      },
+      deps
+    );
+
+    expect(browserRun).not.toHaveBeenCalled();
+    expect(status.sources[2]).toMatchObject({
+      source: "apartments_com",
+      state: "source_not_approved",
+      importedCount: 0,
+      message: "Apartments.com is not approved for this account."
+    });
+  });
+
   it("imports Apartments.com through RawListing and preserves visible fee evidence", async () => {
     let observedPlan: BrowserResearchPlan | null = null;
     const deps = dependencies(

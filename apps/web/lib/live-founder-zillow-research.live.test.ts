@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  createPostgresBetaAccessRepository,
+  createPostgresBrowserGatewayAssignmentRepository,
   createPostgresRepositoryProvider,
   openPostgresConnection,
   parsePostgresConfig
@@ -12,14 +14,14 @@ import { afterAll, describe, expect, it } from "vitest";
 import { createPersistedPolicyRegistry } from "./connector-registry.ts";
 import { createLiveSearchDependencies } from "./live-search-service.ts";
 import { createRentalResearchDependencies, runRentalResearch } from "./rental-research-service.ts";
+import { BrowserGatewayRuntimeResolver } from "./server/browser-gateway-runtime-resolver.ts";
+import { EnvironmentBrowserGatewaySecretStore } from "./server/browser-gateway-secret-store.ts";
 
 const enabled =
   process.env.VERA_RUN_LIVE_ZILLOW_RESEARCH_TESTS === "1" &&
   process.env.VERA_ZILLOW_BROWSER_RESEARCH_ENABLED === "1" &&
   Boolean(process.env.DATABASE_URL) &&
-  Boolean(process.env.MARITIME_BROWSER_GATEWAY_API_KEY) &&
-  Boolean(process.env.MARITIME_BROWSER_GATEWAY_AGENT_ID) &&
-  Boolean(process.env.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID) &&
+  Boolean(process.env.VERA_LIVE_TEST_USER_ID) &&
   Boolean(process.env.VERA_LIVE_TEST_PROFILE_ID);
 
 const connection = enabled ? openPostgresConnection(parsePostgresConfig(process.env)) : null;
@@ -31,10 +33,20 @@ afterAll(async () => {
 describe.skipIf(!enabled)("opt-in live founder Zillow research", () => {
   it("imports at least one observed listing through the bounded source job", async () => {
     if (!connection) throw new Error("Live Zillow test connection is unavailable.");
-    const userId = VeraUserIdSchema.parse(process.env.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID);
+    const userId = VeraUserIdSchema.parse(process.env.VERA_LIVE_TEST_USER_ID);
     const profileId = process.env.VERA_LIVE_TEST_PROFILE_ID!;
     const repositoryProvider = createPostgresRepositoryProvider(connection);
     const repositories = repositoryProvider.forUser(userId);
+    const runtimeResolver = new BrowserGatewayRuntimeResolver({
+      assignments: createPostgresBrowserGatewayAssignmentRepository(connection),
+      betaAccess: createPostgresBetaAccessRepository(connection),
+      repositoryProvider,
+      secretStore: new EnvironmentBrowserGatewaySecretStore(process.env),
+      environment: process.env,
+      now: () => new Date()
+    });
+    const browserRuntime = await runtimeResolver.resolveForUser(userId);
+    if (!browserRuntime) throw new Error("Live Zillow test browser assignment is unavailable.");
     const policy: SourcePolicyRegistry = await createPersistedPolicyRegistry(repositories);
     const live = createLiveSearchDependencies(
       userId,
@@ -56,7 +68,14 @@ describe.skipIf(!enabled)("opt-in live founder Zillow research", () => {
         selectedSources: ["zillow"],
         confirmedExternalUsage: true
       },
-      createRentalResearchDependencies(userId, repositories, repositoryProvider, live, process.env)
+      createRentalResearchDependencies(
+        userId,
+        repositories,
+        repositoryProvider,
+        live,
+        browserRuntime,
+        process.env
+      )
     );
 
     const zillow = result.sources.find((source) => source.source === "zillow");

@@ -1,13 +1,9 @@
-import {
-  createMaritimeRemoteExtensionClient,
-  MaritimeRemoteExtensionError,
-  type MaritimeRemoteExtensionClient
-} from "@vera/connectors";
+import { MaritimeRemoteExtensionClient, MaritimeRemoteExtensionError } from "@vera/connectors";
 import {
   ActivityEventSchema,
   RemoteExtensionSnapshotConfirmationSchema,
   RemoteExtensionSnapshotResponseSchema,
-  VeraUserIdSchema,
+  type BrowserGatewayRuntime,
   type RemoteExtensionSnapshotFailureCode,
   type RemoteExtensionSnapshotResponse,
   type VeraUserId
@@ -30,7 +26,7 @@ export class RemoteExtensionSnapshotServiceError extends Error {
 export interface RemoteExtensionSnapshotEnvironment {
   readonly enabled: boolean;
   readonly browserDisabled: boolean;
-  readonly founderUserId: VeraUserId | null;
+  readonly assignmentAuthorized: boolean;
   readonly gatewayConfigured: boolean;
 }
 
@@ -43,35 +39,44 @@ export interface RemoteExtensionSnapshotDependencies {
 }
 
 export function parseRemoteExtensionSnapshotEnvironment(
-  environment: Readonly<Record<string, string | undefined>>
+  environment: Readonly<Record<string, string | undefined>>,
+  assignmentAuthorized: boolean
 ): RemoteExtensionSnapshotEnvironment {
-  const founder = environment.VERA_BROWSER_GATEWAY_FOUNDER_USER_ID?.trim();
-  const parsedFounder = founder ? VeraUserIdSchema.safeParse(founder) : null;
-  if (parsedFounder && !parsedFounder.success) {
-    throw new Error("VERA_BROWSER_GATEWAY_FOUNDER_USER_ID must be one exact Vera user UUID.");
-  }
   return {
     enabled: environment.VERA_REMOTE_EXTENSION_SNAPSHOT_ENABLED === "1",
     browserDisabled: parseHostedRuntimePolicy(environment).browserDisabled,
-    founderUserId: parsedFounder?.success ? parsedFounder.data : null,
-    gatewayConfigured:
-      Boolean(environment.MARITIME_BROWSER_GATEWAY_API_KEY?.trim()) &&
-      Boolean(environment.MARITIME_BROWSER_GATEWAY_AGENT_ID?.trim())
+    assignmentAuthorized,
+    gatewayConfigured: assignmentAuthorized
   };
 }
 
 export function createRemoteExtensionSnapshotDependencies(
   userId: VeraUserId,
   repositories: UserRepositories,
+  browserRuntime: BrowserGatewayRuntime | null,
   environment: Readonly<Record<string, string | undefined>> = process.env
 ): RemoteExtensionSnapshotDependencies {
-  const parsedEnvironment = parseRemoteExtensionSnapshotEnvironment(environment);
+  const authorizedRuntime = browserRuntime?.assignment.userId === userId ? browserRuntime : null;
+  const assignmentAuthorized = authorizedRuntime !== null;
+  const parsedEnvironment = parseRemoteExtensionSnapshotEnvironment(
+    environment,
+    assignmentAuthorized
+  );
   return {
     userId,
     repositories,
     environment: parsedEnvironment,
-    client: parsedEnvironment.gatewayConfigured
-      ? createMaritimeRemoteExtensionClient(environment)
+    client: authorizedRuntime
+      ? new MaritimeRemoteExtensionClient({
+          apiKey: authorizedRuntime.maritimeApiKey,
+          agentId: authorizedRuntime.assignment.maritimeAgentId,
+          timeoutMilliseconds: Number(
+            environment.VERA_REMOTE_EXTENSION_SNAPSHOT_TIMEOUT_MS ?? 15_000
+          ),
+          maxResponseBytes: Number(
+            environment.VERA_REMOTE_EXTENSION_SNAPSHOT_MAX_RESPONSE_BYTES ?? 20_000
+          )
+        })
       : {
           snapshot: async () => {
             throw new MaritimeRemoteExtensionError("gateway_unavailable", false);
@@ -157,10 +162,7 @@ export async function requestRemoteExtensionSnapshot(
   if (!dependencies.environment.enabled) {
     throw new RemoteExtensionSnapshotServiceError("spike_disabled", 409, false);
   }
-  if (
-    dependencies.environment.founderUserId === null ||
-    dependencies.environment.founderUserId !== dependencies.userId
-  ) {
+  if (!dependencies.environment.assignmentAuthorized) {
     throw new RemoteExtensionSnapshotServiceError("assignment_denied", 403, false);
   }
   if (!dependencies.environment.gatewayConfigured) {

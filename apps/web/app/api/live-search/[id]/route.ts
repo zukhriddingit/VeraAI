@@ -1,11 +1,6 @@
 import { EntityIdSchema } from "@vera/domain";
 
-import {
-  assertLiveSearchFounder,
-  getLiveSearchStatus,
-  LiveSearchServiceError,
-  parseLiveSearchEnvironment
-} from "../../../../lib/live-search-service";
+import { getLiveSearchStatus, LiveSearchServiceError } from "../../../../lib/live-search-service";
 import {
   getRentalResearchStatus,
   RentalResearchServiceError
@@ -25,7 +20,6 @@ export async function GET(
 ): Promise<Response> {
   try {
     const session = await requireVeraSession(request.headers);
-    assertLiveSearchFounder(session.userId, parseLiveSearchEnvironment(process.env));
     const { id } = await context.params;
     const runId = EntityIdSchema.parse(id);
     const events = await session.repositories.activityEvents.list();

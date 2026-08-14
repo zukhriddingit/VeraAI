@@ -146,6 +146,7 @@ export const RentalResearchSourceStateSchema = z.enum([
   "account_recommended",
   "browser_offline",
   "tab_required",
+  "source_not_approved",
   "excluded_by_user",
   "searching",
   "completed",

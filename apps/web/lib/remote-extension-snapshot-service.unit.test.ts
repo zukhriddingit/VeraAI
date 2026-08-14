@@ -1,9 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { VeraUserId } from "@vera/domain";
+import type { BrowserGatewayRuntime, VeraUserId } from "@vera/domain";
+import type { UserRepositories } from "@vera/db";
 import { MaritimeRemoteExtensionError, type MaritimeRemoteExtensionClient } from "@vera/connectors";
 
 import {
+  createRemoteExtensionSnapshotDependencies,
   RemoteExtensionSnapshotServiceError,
   parseRemoteExtensionSnapshotEnvironment,
   requestRemoteExtensionSnapshot,
@@ -11,6 +13,7 @@ import {
 } from "./remote-extension-snapshot-service.ts";
 
 const founderId = "11111111-1111-4111-8111-111111111111" as VeraUserId;
+const otherUserId = "33333333-3333-4333-8333-333333333333" as VeraUserId;
 const requestId = "22222222-2222-4222-8222-222222222222";
 
 const confirmation = {
@@ -34,6 +37,29 @@ function snapshot() {
   };
 }
 
+function runtime(userId: VeraUserId): BrowserGatewayRuntime {
+  return {
+    assignment: {
+      id: "44444444-4444-4444-8444-444444444444",
+      userId,
+      nodeId: "node-private-beta-1",
+      maritimeAgentId: "agent-private-beta-1",
+      gatewayOrigin: "https://gateway-one.verahousing.app",
+      checkpointOrigin: "https://app.verahousing.app",
+      secretReference: "BETA_USER_ONE",
+      relayCredentialDigest: "a".repeat(64),
+      checkpointCredentialDigest: "b".repeat(64),
+      status: "active",
+      createdAt: "2026-08-13T12:00:00.000Z",
+      activatedAt: "2026-08-13T12:01:00.000Z",
+      revokedAt: null
+    },
+    maritimeApiKey: "private-maritime-key",
+    planSigningKey: "p".repeat(32),
+    enabledSources: new Set(["zillow"])
+  };
+}
+
 function dependencies(
   patch: Partial<RemoteExtensionSnapshotDependencies> = {}
 ): RemoteExtensionSnapshotDependencies {
@@ -42,7 +68,7 @@ function dependencies(
     environment: {
       enabled: true,
       browserDisabled: false,
-      founderUserId: founderId,
+      assignmentAuthorized: true,
       gatewayConfigured: true
     },
     client: {
@@ -59,19 +85,43 @@ function dependencies(
 }
 
 describe("remote extension snapshot service", () => {
-  it("parses a separate founder-bound browser Gateway configuration", () => {
-    expect(
-      parseRemoteExtensionSnapshotEnvironment({
+  it("rejects a runtime assigned to another Vera user without a global fallback", async () => {
+    const base = dependencies();
+    const created = createRemoteExtensionSnapshotDependencies(
+      founderId,
+      base.repositories as UserRepositories,
+      runtime(otherUserId),
+      {
         VERA_REMOTE_EXTENSION_SNAPSHOT_ENABLED: "1",
-        VERA_BROWSER_DISABLED: "0",
         VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: founderId,
-        MARITIME_BROWSER_GATEWAY_API_KEY: "synthetic-key",
-        MARITIME_BROWSER_GATEWAY_AGENT_ID: "founder-browser-gateway"
-      })
+        MARITIME_BROWSER_GATEWAY_API_KEY: "legacy-global-key-must-be-ignored"
+      }
+    );
+
+    expect(created.environment).toMatchObject({
+      assignmentAuthorized: false,
+      gatewayConfigured: false
+    });
+    await expect(created.client.snapshot({} as never)).rejects.toEqual(
+      new MaritimeRemoteExtensionError("gateway_unavailable", false)
+    );
+  });
+
+  it("parses a separate assignment-bound browser Gateway configuration", () => {
+    expect(
+      parseRemoteExtensionSnapshotEnvironment(
+        {
+          VERA_REMOTE_EXTENSION_SNAPSHOT_ENABLED: "1",
+          VERA_BROWSER_DISABLED: "0",
+          VERA_BROWSER_GATEWAY_FOUNDER_USER_ID: "legacy-value-must-be-ignored",
+          MARITIME_BROWSER_GATEWAY_API_KEY: "legacy-value-must-be-ignored"
+        },
+        true
+      )
     ).toEqual({
       enabled: true,
       browserDisabled: false,
-      founderUserId: founderId,
+      assignmentAuthorized: true,
       gatewayConfigured: true
     });
   });
@@ -110,8 +160,8 @@ describe("remote extension snapshot service", () => {
       new RemoteExtensionSnapshotServiceError("spike_disabled", 409, false)
     ],
     [
-      "wrong founder",
-      { founderUserId: "33333333-3333-4333-8333-333333333333" as VeraUserId },
+      "wrong assignment",
+      { assignmentAuthorized: false },
       new RemoteExtensionSnapshotServiceError("assignment_denied", 403, false)
     ],
     [

@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { requireVeraPageSession } from "../../../../lib/server/page-session.ts";
+import { getHostedApplication } from "../../../../lib/server/application.ts";
 import { parseRemoteExtensionSnapshotEnvironment } from "../../../../lib/remote-extension-snapshot-service.ts";
 import { RemoteBrowserPanel } from "./remote-browser-panel.tsx";
 
@@ -8,13 +9,15 @@ export const dynamic = "force-dynamic";
 
 export default async function RemoteBrowserSettingsPage() {
   const context = await requireVeraPageSession();
-  const environment = parseRemoteExtensionSnapshotEnvironment(process.env);
+  const application = getHostedApplication();
+  const runtime = (await application.browserGatewayRuntime?.resolveForUser(context.userId)) ?? null;
+  const environment = parseRemoteExtensionSnapshotEnvironment(process.env, runtime !== null);
   const available =
     !context.demoMode &&
     environment.enabled &&
     !environment.browserDisabled &&
     environment.gatewayConfigured &&
-    environment.founderUserId === context.userId;
+    environment.assignmentAuthorized;
 
   return (
     <main>
