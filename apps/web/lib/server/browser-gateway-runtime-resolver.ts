@@ -115,6 +115,10 @@ export class BrowserGatewayRuntimeResolver {
 
   private async baseUserAuthorized(userId: VeraUserId): Promise<boolean> {
     if (this.dependencies.environment.VERA_BETA_ACCESS_GATE_ENABLED !== "1") return false;
+    if (this.dependencies.environment.VERA_BROWSER_ASSIGNMENT_ROUTING_ENABLED !== "1") return false;
+    if (this.dependencies.environment.VERA_BROWSER_ASSIGNMENT_TOKEN_HASH_VERSION !== "sha256.v1") {
+      return false;
+    }
     if (!parseBrowserBetaUserIds(this.dependencies.environment).has(userId)) return false;
     if (parseHostedRuntimePolicy(this.dependencies.environment).browserDisabled) return false;
     return this.dependencies.betaAccess.isActiveUser(userId);

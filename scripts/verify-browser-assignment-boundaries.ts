@@ -76,6 +76,8 @@ export function findBrowserAssignmentViolations(
 
   for (const required of [
     "VERA_BETA_ACCESS_GATE_ENABLED",
+    "VERA_BROWSER_ASSIGNMENT_ROUTING_ENABLED",
+    "VERA_BROWSER_ASSIGNMENT_TOKEN_HASH_VERSION",
     "VERA_BROWSER_BETA_USER_IDS",
     "isActiveUser(",
     "getActiveForUser(",

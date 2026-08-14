@@ -1,6 +1,10 @@
-# OpenClaw founder setup — current-tab capture
+# OpenClaw founder setup — legacy local current-tab capture
 
-Status: unsupported founder experiment · OpenClaw `2026.6.33` · Maritime gateway supported by operator runbook
+Status: local founder fallback only · OpenClaw `2026.6.33` · not a private-beta enrollment flow
+
+For assignment-routed Browser Connector operations, use
+[`docs/BROWSER_BETA_OPERATIONS.md`](./BROWSER_BETA_OPERATIONS.md). This page preserves the earlier
+single-founder current-tab fallback and must not be used to enroll unrelated testers.
 
 Vera can capture one Zillow listing page that the authenticated founder has already opened in a dedicated local OpenClaw browser profile. Vera's adapter emits only `GET /tabs` and `GET /snapshot`; no Vera request can navigate, discover, paginate, click, type, evaluate arbitrary JavaScript, message, submit a form, apply, pay, change account settings, or bypass a blocker.
 
@@ -81,15 +85,16 @@ openclaw nodes status
 
 Approve only the selected node and the browser-proxy capability. Do not grant Vera `system.run`, filesystem, unrelated profile, messaging, or broad browser capability. For a remote gateway, use `wss://` with a trusted certificate or a reviewed Tailscale/private-tunnel path; never expose raw CDP or a plaintext public WebSocket.
 
-## 4. Configure hosted Vera
+## 4. Configure the legacy local fallback
 
-Set these as web/worker server secrets, never browser variables or committed files:
+The following global selectors are allowed only for local development or an exact reviewed rollback
+with the browser kill switch on. They must not be configured in an assignment-routed release:
 
 ```text
 OPENCLAW_GATEWAY_URL=wss://<existing-reviewed-maritime-gateway-endpoint>
 OPENCLAW_GATEWAY_TOKEN=<secret>
 VERA_OPENCLAW_EXECUTABLE=/workspace/apps/worker/node_modules/.bin/openclaw
-VERA_BROWSER_DISABLED=0
+VERA_BROWSER_DISABLED=1
 ```
 
 Inventory and reconcile the existing Maritime/OpenClaw agent before setting these values. Do not create a second gateway merely because Vera's runbook contains deployment examples.
@@ -107,7 +112,14 @@ VERA_OPENCLAW_CAPABILITY_VERIFIED='I_VERIFIED_BROWSER_PROXY_ONLY' \
 pnpm openclaw:register-node
 ```
 
-Registration never transfers an OpenClaw token or profile path and leaves user/source controls disabled. Until registration and pairing evidence exist, the UI remains fail-closed. For production beyond founder dogfooding, replace this manual synchronization command with an authenticated, signed gateway-heartbeat adapter; do not treat it as a multi-user enrollment flow.
+Registration never transfers an OpenClaw token or profile path and leaves user/source controls
+disabled. Until registration and pairing evidence exist, the UI remains fail-closed. This manual
+synchronization command is not a multi-user enrollment flow. The private beta uses the authenticated
+per-user assignment and onboarding path in `docs/BROWSER_BETA_OPERATIONS.md`.
+
+For an explicitly reviewed founder fallback session, clear `VERA_BROWSER_DISABLED` only after the
+registration, pairing, capability, and source checks pass. Restore it to `1` immediately after the
+session.
 
 Then visit:
 
