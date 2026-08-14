@@ -9,7 +9,7 @@
     "name": "Vera Browser Connector BETA",
     "version": "2.1.0",
     "manifestSha256": "383b42a33a32ab45b35f14ae66c7c915db8075d002b2a3b3c9d664fcd652bf77",
-    "runtimeSha256": "6959e462fb8db997020e7a512fa18501a96f40848ad81f79633b53c102d2516d",
+    "runtimeSha256": "ecaeacee3f2b9875454762a1e8ef345fa000c7a6661bdee0024ce61931c6cb0b",
     "iconsSha256": "311bd8204663048a70a144d1816a52ebcc7d5e323ba73a012beb934ab6228989"
   }
 }
