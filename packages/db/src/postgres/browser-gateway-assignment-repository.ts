@@ -78,6 +78,7 @@ export interface BrowserGatewayAssignmentRepository {
   }): Promise<BrowserGatewayAssignment>;
   getActiveForUser(userId: VeraUserId): Promise<BrowserGatewayAssignment | null>;
   getActiveByCheckpointDigest(digest: string): Promise<BrowserGatewayAssignment | null>;
+  listEnabledConnectorIdsForUser(userId: VeraUserId): Promise<readonly string[]>;
   revokeForUser(input: {
     readonly userId: VeraUserId;
     readonly revokedAt: string;
@@ -194,6 +195,21 @@ export function createPostgresBrowserGatewayAssignmentRepository(
         )
         .limit(1);
       return rows[0] ? mapAssignment(rows[0]) : null;
+    },
+
+    async listEnabledConnectorIdsForUser(userIdInput) {
+      const userId = VeraUserIdSchema.parse(userIdInput);
+      const rows = await connection.db
+        .select({ connectorId: browserSourceControls.connectorId })
+        .from(browserSourceControls)
+        .where(
+          and(
+            eq(browserSourceControls.userId, userId),
+            eq(browserSourceControls.enabled, true)
+          )
+        )
+        .orderBy(browserSourceControls.connectorId);
+      return rows.map((row) => EntityIdSchema.parse(row.connectorId));
     },
 
     async revokeForUser(input) {

@@ -22,6 +22,7 @@ function register(): void {
     gmailOAuth: null,
     betaAccess: { submit, consumeRateLimit } as never,
     browserGatewayAssignments: null,
+    browserGatewayRuntime: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

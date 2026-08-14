@@ -11,6 +11,8 @@ import {
 
 import { createVeraAuth } from "./auth.ts";
 import { parseIdentityAuthEnvironment } from "./auth-config.ts";
+import { BrowserGatewayRuntimeResolver } from "./browser-gateway-runtime-resolver.ts";
+import { EnvironmentBrowserGatewaySecretStore } from "./browser-gateway-secret-store.ts";
 import {
   createLazyGoogleIntegrationBindings,
   type GoogleIntegrationBindings
@@ -94,6 +96,16 @@ export function createPostgresApplication(
   try {
     const repositoryProvider = createPostgresRepositoryProvider(connection);
     const betaAccess = createPostgresBetaAccessRepository(connection);
+    const browserGatewayAssignments =
+      createPostgresBrowserGatewayAssignmentRepository(connection);
+    const browserGatewayRuntime = new BrowserGatewayRuntimeResolver({
+      assignments: browserGatewayAssignments,
+      betaAccess,
+      repositoryProvider,
+      secretStore: new EnvironmentBrowserGatewaySecretStore(environment),
+      environment,
+      now: () => new Date()
+    });
     const auth = createVeraAuth(connection, environment, betaAccess);
     const googleBindings = composeHostedGoogleIntegrations({
       configuration: googleIntegration,
@@ -107,7 +119,8 @@ export function createPostgresApplication(
       calendar: googleBindings.calendar,
       gmailOAuth: googleBindings.gmailOAuth,
       betaAccess,
-      browserGatewayAssignments: createPostgresBrowserGatewayAssignmentRepository(connection),
+      browserGatewayAssignments,
+      browserGatewayRuntime,
       maritimeOperations: createPostgresMaritimeOperationsRepository(connection.db),
       demoUserId: null,
       readiness: () => checkPostgresReadiness(connection, { service: "vera-web" }),

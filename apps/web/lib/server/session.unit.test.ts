@@ -23,6 +23,7 @@ function application(session: unknown): VeraApplication {
     gmailOAuth: null,
     betaAccess: null,
     browserGatewayAssignments: null,
+    browserGatewayRuntime: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

@@ -131,6 +131,7 @@ describe("browser Gateway assignment repository", () => {
       });
       await expect(repository.getActiveForUser(userA)).resolves.toBeNull();
       await expect(repository.revokeForUser({ userId: userA, revokedAt })).resolves.toBeNull();
+      await expect(repository.listEnabledConnectorIdsForUser(userA)).resolves.toEqual([]);
       await expect(repositories.browserIntegrationControls.get()).resolves.toMatchObject({
         userBrowserEnabled: false,
         zillowSourceEnabled: false

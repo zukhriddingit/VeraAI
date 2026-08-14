@@ -20,6 +20,7 @@ function register(status: "ready" | "not_ready"): void {
     gmailOAuth: null,
     betaAccess: null,
     browserGatewayAssignments: null,
+    browserGatewayRuntime: null,
     demoUserId: null,
     readiness: vi.fn(async (): Promise<ReadinessReport> => ({
       service: "vera-web",

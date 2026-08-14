@@ -72,6 +72,7 @@ function registerFixture(fixture: MemoryFixture, sessionUserId: VeraUserId | nul
     gmailOAuth: null,
     betaAccess: null,
     browserGatewayAssignments: null,
+    browserGatewayRuntime: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()
