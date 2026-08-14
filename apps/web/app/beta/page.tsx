@@ -43,6 +43,9 @@ export default function BetaAccessPage() {
             request does not create an account or approve access.
           </p>
           <BetaAccessForm />
+          <p>
+            Browser testing has a separate <a href="https://verahousing.app/privacy/browser-connector">connector privacy notice</a>.
+          </p>
         </div>
       </section>
     </main>

@@ -80,10 +80,32 @@
       #error {
         color: #ff9b91;
       }
+      .consent {
+        background: #10231c;
+        border: 1px solid #557c6c;
+        border-radius: 8px;
+        margin-top: 10px;
+        padding: 10px;
+      }
+      .consent h2 {
+        font-size: 12px;
+        margin: 0 0 5px;
+      }
+      .consent p {
+        margin: 0;
+      }
+      .links {
+        display: flex;
+        gap: 12px;
+      }
+      a {
+        color: #8de1b5;
+        font-size: 11px;
+      }
     </style>
   </head>
   <body>
-    <h1><span id="statusDot" class="dot"></span>Vera OpenClaw</h1>
+    <h1><span id="statusDot" class="dot"></span>Vera Browser Connector BETA</h1>
     <div id="pairSection">
       <p>Paste the one-time pairing string for your Vera Browser Gateway.</p>
       <textarea
@@ -97,8 +119,17 @@
       <p id="connectionLine"></p>
       <p id="readinessLine" class="ready"></p>
       <button id="prepareButton">Prepare Vera Search tab</button>
+      <section class="consent" aria-labelledby="consentHeading">
+        <h2 id="consentHeading">Before you share</h2>
+        <p id="consentDisclosure"></p>
+      </section>
       <button id="shareButton" class="secondary"></button>
       <button id="unpairButton" class="secondary">Unpair and revoke browser access</button>
+      <p>Unsharing stops future tab access. Unpairing also removes this device&apos;s relay credential.</p>
+      <p class="links">
+        <a href="https://verahousing.app/privacy/browser-connector" target="_blank" rel="noreferrer">Privacy</a>
+        <a href="https://verahousing.app/support/browser-connector" target="_blank" rel="noreferrer">Support</a>
+      </p>
       <p id="error" class="hidden"></p>
     </div>
     <script src="popup.js" type="module"></script>

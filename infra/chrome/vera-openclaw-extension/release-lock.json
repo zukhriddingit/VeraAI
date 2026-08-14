@@ -6,9 +6,10 @@
     "manifestSha256": "90dc60974ff7b68b4b487cc7040268d4ce458224beeb8bb715e56f59d23bec23"
   },
   "vera": {
-    "name": "Vera OpenClaw",
-    "version": "2.0.3",
-    "manifestSha256": "971d4a7765976f6aa7f443f4bb1e848f73bd27611feed2a9518568fbd55da3fe",
-    "runtimeSha256": "cac47a935f6777e3de814bec1ef48756276fe212f674af2e8438f6dba2e49df6"
+    "name": "Vera Browser Connector BETA",
+    "version": "2.1.0",
+    "manifestSha256": "383b42a33a32ab45b35f14ae66c7c915db8075d002b2a3b3c9d664fcd652bf77",
+    "runtimeSha256": "6959e462fb8db997020e7a512fa18501a96f40848ad81f79633b53c102d2516d",
+    "iconsSha256": "311bd8204663048a70a144d1816a52ebcc7d5e323ba73a012beb934ab6228989"
   }
 }

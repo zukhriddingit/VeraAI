@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { approvedBrowserConnectorLink } from "../../../../lib/browser-connector-release.ts";
 import { getBrowserAgentStatus } from "../../../../lib/browser-agent-service.ts";
 import { requireVeraPageSession } from "../../../../lib/server/page-session.ts";
 import { parseHostedRuntimePolicy } from "../../../../lib/server/hosted-runtime-policy.ts";
@@ -15,6 +16,7 @@ export default async function BrowserAgentSettingsPage() {
     now: () => new Date(),
     createId: crypto.randomUUID
   });
+  const connectorUrl = approvedBrowserConnectorLink(process.env);
   return (
     <main>
       <nav className="page-nav" aria-label="Vera navigation">
@@ -34,6 +36,11 @@ export default async function BrowserAgentSettingsPage() {
           OpenClaw browser proxy is an administrative capability and remains disabled by default.
         </p>
       </header>
+      {connectorUrl ? (
+        <p><a className="primary-action" href={connectorUrl}>Install Browser Connector for approved testers</a></p>
+      ) : (
+        <p className="lede">Browser Connector is waiting for concierge onboarding.</p>
+      )}
       <BrowserAgentPanel initialStatus={status} />
     </main>
   );

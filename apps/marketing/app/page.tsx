@@ -1,5 +1,6 @@
 import Image from "next/image";
 
+import { approvedBrowserConnectorLink } from "../lib/browser-connector-release.ts";
 import { VERA_BETA_URL, VERA_DEMO_URL } from "../lib/urls.ts";
 import { AtlasHero } from "./atlas-hero.tsx";
 import styles from "./landing-page.module.css";
@@ -44,6 +45,7 @@ const controlPoints = [
 ] as const;
 
 export default function LandingPage() {
+  const connectorUrl = approvedBrowserConnectorLink(process.env);
   return (
     <main className={styles.page}>
       <section className={styles.hero} aria-labelledby="landing-title">
@@ -275,6 +277,13 @@ export default function LandingPage() {
             <a className={styles.outlineAction} href="/privacy/browser-connector">
               Read connector privacy details <span aria-hidden="true">↗</span>
             </a>
+            {connectorUrl ? (
+              <a className={styles.primaryAction} href={connectorUrl}>
+                Install browser connector — approved testers
+              </a>
+            ) : (
+              <a className={styles.primaryAction} href={VERA_BETA_URL}>Join private beta</a>
+            )}
           </div>
         </SectionReveal>
       </section>
@@ -318,6 +327,8 @@ export default function LandingPage() {
             <a href={VERA_BETA_URL}>Private beta</a>
             <a href="/privacy">Privacy</a>
             <a href="/support">Support</a>
+            <a href="/privacy/browser-connector">Connector privacy</a>
+            <a href="/support/browser-connector">Connector support</a>
           </div>
         </div>
       </footer>
