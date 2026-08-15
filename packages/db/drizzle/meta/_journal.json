@@ -64,6 +64,13 @@
       "when": 1786671936452,
       "tag": "0008_browser_gateway_assignments",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1786763311206,
+      "tag": "0009_perpetual_metal_master",
+      "breakpoints": true
     }
   ]
 }
