@@ -6,13 +6,17 @@ test("browser-agent settings expose the experimental boundary without live capab
   await page.goto("/settings/integrations/browser-agent");
 
   await expect(
-    page.getByRole("heading", { name: "Capture one page you already opened." })
+    page.getByRole("heading", {
+      level: 1,
+      name: "Connect once. Share one tab only when you search."
+    })
   ).toBeVisible();
   await expect(page.getByText("Private beta · experimental personal")).toBeVisible();
   await expect(page.getByText("Assignment service unavailable")).toBeVisible();
   await expect(
-    page.getByText("Browser Connector is waiting for concierge onboarding.")
+    page.getByText("Install or update version 2.2.0 in this Chrome profile, then return here.")
   ).toBeVisible();
+  await expect(page.getByRole("button", { name: "Install Browser Connector" })).toBeDisabled();
   await expect(page.getByText("Disabled by policy")).toBeVisible();
   await expect(page.getByRole("button", { name: "Capture current tab" })).toBeDisabled();
   await expect(
