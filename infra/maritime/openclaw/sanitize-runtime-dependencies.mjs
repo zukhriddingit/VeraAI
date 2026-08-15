@@ -1,9 +1,12 @@
 import { createHash } from "node:crypto";
 import {
+  chmodSync,
+  copyFileSync,
   lstatSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
+  realpathSync,
   readdirSync,
   renameSync,
   rmSync,
@@ -131,6 +134,32 @@ const FORBIDDEN_FINAL_PATHS = Object.freeze([
   "/usr/local/share/corepack"
 ]);
 const ALLOWED_FINAL_EXECUTABLES = Object.freeze(["/usr/bin/node"]);
+const EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME = Object.freeze({
+  packageName: "ws",
+  version: "8.21.0",
+  sourcePath: "node_modules/ws",
+  targetPath: "/opt/vera/node_modules/ws",
+  files: Object.freeze([
+    ["lib/buffer-util.js", "8b0a45739132f82e25ea13163780abf547ccfe989267f3eb7abb475beec92da3"],
+    ["lib/constants.js", "391e823142b8b370e55a2fd32b022deaf03b8415c56000009674ebc86a0b4f86"],
+    ["lib/event-target.js", "c45d3c6e12d170c860c0c3f1a050aa0f864d9806632b609a1e607d675aba128c"],
+    ["lib/extension.js", "852564f0f6b460287043803eae732666fb5610f676874354fc89f06aa4e986ed"],
+    ["lib/limiter.js", "e0469d4b83f6ba764b15f80e1766b75c136fbff68f048f4c050f0b1c7f065f69"],
+    [
+      "lib/permessage-deflate.js",
+      "02c31796f0132a335d4efe7b7adcebadbb69543a1ce65ae04aaccc3530e27ab9"
+    ],
+    ["lib/receiver.js", "4879edbf8e48d04d09783cf9c04b5e25f5a448247bb01279438ded2899747220"],
+    ["lib/sender.js", "d0791d30c3defd44dcabbddb879a901c757993fea2c00a7ffea01d53b23b4b77"],
+    ["lib/stream.js", "a56fcb6e2b152097ee820b6f5410b1f71e59819b45d08d9f8bda588fe39070ec"],
+    ["lib/subprotocol.js", "be3f6323d6f549568577dcba9004c1479d95c65a7abb0fe0c582875b9fac0b7c"],
+    ["lib/validation.js", "41ce8e83d0d434132e1704895fedb91f6703a701b42d91c80954ab29b2845593"],
+    ["lib/websocket-server.js", "29029a4d346800c792300df153df2007e9805d9d7b67b0883f9730b64f25b1c8"],
+    ["lib/websocket.js", "48fdb0f54c1f8ce580d3cfa2908fe7d96fe18f06f9d82306950441cb09b5db26"],
+    ["package.json", "584ce6e7516587ba249dc910b0c04e2753f6b3f451fc3a5bc324f7735bdacc71"],
+    ["wrapper.mjs", "fe154662301fd558f935f9c217fccbe7a7dac02ff39e648a000589403ff27c7f"]
+  ])
+});
 
 function isObject(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -154,6 +183,22 @@ function sameRepair(actual, expected) {
     actual.tarball === expected.tarball &&
     actual.integrity === expected.integrity &&
     sameStringArray(actual.dependencyNames, expected.dependencyNames)
+  );
+}
+
+function sameEnrollmentWebSocketRuntime(actual) {
+  return (
+    isObject(actual) &&
+    actual.packageName === EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME.packageName &&
+    actual.version === EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME.version &&
+    actual.sourcePath === EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME.sourcePath &&
+    actual.targetPath === EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME.targetPath &&
+    Array.isArray(actual.files) &&
+    actual.files.length === EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME.files.length &&
+    actual.files.every((file, index) => {
+      const expected = EXPECTED_ENROLLMENT_WEBSOCKET_RUNTIME.files[index];
+      return isObject(file) && file.path === expected[0] && file.sha256 === expected[1];
+    })
   );
 }
 
@@ -189,6 +234,9 @@ export function findRuntimeLockViolations(lock) {
     ])
   ) {
     violations.push("Final Gateway runtime entrypoint must use the fixed Node supervisor.");
+  }
+  if (!sameEnrollmentWebSocketRuntime(lock.enrollmentWebSocketRuntime)) {
+    violations.push("Gateway enrollment WebSocket runtime must match the exact locked ws files.");
   }
   if (
     !isObject(lock.scanner) ||
@@ -264,6 +312,72 @@ export function resolveRepairTarget(appRoot, packagePath) {
   return target;
 }
 
+function safeRelativeFile(root, relativePath) {
+  if (typeof relativePath !== "string" || isAbsolute(relativePath)) {
+    throw new Error("Locked runtime file must remain below its package root.");
+  }
+  const path = resolve(root, relativePath);
+  const relation = relative(root, path);
+  if (relation === "" || relation.startsWith("..") || isAbsolute(relation)) {
+    throw new Error("Locked runtime file must remain below its package root.");
+  }
+  return path;
+}
+
+export function retainEnrollmentWebSocketRuntime({ appRoot, runtimeRoot, runtime }) {
+  if (!isObject(runtime) || !Array.isArray(runtime.files)) {
+    throw new Error("Gateway enrollment WebSocket runtime lock is missing.");
+  }
+  const sourceLink = resolveRepairTarget(appRoot, runtime.sourcePath);
+  const sourceRoot = realpathSync(sourceLink);
+  const sourceRelation = relative(realpathSync(appRoot), sourceRoot);
+  if (sourceRelation.startsWith("..") || isAbsolute(sourceRelation)) {
+    throw new Error("Enrollment WebSocket runtime source escaped the application root.");
+  }
+  const manifest = readJson(join(sourceRoot, "package.json"));
+  if (manifest.name !== runtime.packageName || manifest.version !== runtime.version) {
+    throw new Error("Enrollment WebSocket runtime package identity does not match the lock.");
+  }
+  const relativeTarget = relative("/opt/vera", runtime.targetPath);
+  if (relativeTarget.startsWith("..") || isAbsolute(relativeTarget) || relativeTarget === "") {
+    throw new Error("Enrollment WebSocket runtime target escaped the fixed image boundary.");
+  }
+  const target = resolve(runtimeRoot, relativeTarget);
+  const parent = dirname(target);
+  mkdirSync(parent, { recursive: true, mode: 0o755 });
+  const staged = mkdtempSync(join(parent, ".ws-runtime-"));
+  try {
+    for (const file of runtime.files) {
+      if (!isObject(file) || !/^[a-f0-9]{64}$/u.test(file.sha256)) {
+        throw new Error("Enrollment WebSocket runtime file lock is invalid.");
+      }
+      const source = safeRelativeFile(sourceRoot, file.path);
+      const sourceStat = lstatSync(source);
+      if (!sourceStat.isFile() || sourceStat.isSymbolicLink()) {
+        throw new Error("Enrollment WebSocket runtime source must contain regular files only.");
+      }
+      const bytes = readFileSync(source);
+      if (createHash("sha256").update(bytes).digest("hex") !== file.sha256) {
+        throw new Error("Enrollment WebSocket runtime file hash mismatch.");
+      }
+      const destination = safeRelativeFile(staged, file.path);
+      mkdirSync(dirname(destination), { recursive: true, mode: 0o755 });
+      copyFileSync(source, destination);
+      chmodSync(destination, 0o444);
+    }
+    rmSync(target, { recursive: true, force: true });
+    renameSync(staged, target);
+    chmodSync(target, 0o555);
+    for (const entry of readdirSync(target, { withFileTypes: true })) {
+      if (entry.isDirectory()) chmodSync(join(target, entry.name), 0o555);
+    }
+  } catch (error) {
+    rmSync(staged, { recursive: true, force: true });
+    throw error;
+  }
+  return { fileCount: runtime.files.length };
+}
+
 function verifyNoSymlinks(directory) {
   const pending = [directory];
   while (pending.length > 0) {
@@ -298,10 +412,12 @@ function readJson(path) {
 
 export async function sanitizeRuntimeDependencies({
   appRoot = APP_ROOT,
+  runtimeRoot = "/opt/vera",
   lock,
   fetchImplementation = fetch,
   extractImplementation = extractTarball,
-  integrityImplementation = verifyIntegrity
+  integrityImplementation = verifyIntegrity,
+  retainImplementation = retainEnrollmentWebSocketRuntime
 }) {
   const lockViolations = findRuntimeLockViolations(lock);
   if (lockViolations.length > 0) throw new Error(lockViolations.join("\n"));
@@ -350,6 +466,12 @@ export async function sanitizeRuntimeDependencies({
       rmSync(temporaryDirectory, { recursive: true, force: true });
     }
   }
+
+  retainImplementation({
+    appRoot,
+    runtimeRoot,
+    runtime: lock.enrollmentWebSocketRuntime
+  });
 
   return { status: "repaired", packageCount: lock.repairs.length };
 }

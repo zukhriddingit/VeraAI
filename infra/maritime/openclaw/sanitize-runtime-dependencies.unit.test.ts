@@ -1,5 +1,13 @@
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -9,6 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 // @ts-expect-error The runtime module has no generated declaration file.
 import {
   findRuntimeLockViolations,
+  retainEnrollmentWebSocketRuntime,
   resolveRepairTarget,
   sanitizeRuntimeDependencies,
   verifyIntegrity,
@@ -34,6 +43,9 @@ interface RuntimeLock {
     readonly gid: number;
   };
   readonly repairs: readonly Repair[];
+  readonly enrollmentWebSocketRuntime: {
+    readonly files: ReadonlyArray<{ readonly path: string; readonly sha256: string }>;
+  };
 }
 
 const lock = JSON.parse(
@@ -66,6 +78,18 @@ describe("Gateway runtime dependency sanitizer", () => {
         repairs: [...lock.repairs, { ...lock.repairs[0], name: "unexpected" }]
       })
     ).toContain("Runtime repair lock must contain exactly the eight approved packages.");
+    expect(
+      findRuntimeLockViolations({
+        ...lock,
+        enrollmentWebSocketRuntime: {
+          ...lock.enrollmentWebSocketRuntime,
+          files: [
+            ...lock.enrollmentWebSocketRuntime.files,
+            { path: "bin/ws", sha256: "a".repeat(64) }
+          ]
+        }
+      })
+    ).toContain("Gateway enrollment WebSocket runtime must match the exact locked ws files.");
     expect(
       findRuntimeLockViolations({
         ...lock,
@@ -207,6 +231,7 @@ describe("Gateway runtime dependency sanitizer", () => {
         return new Response(bytes, { status: 200 });
       },
       integrityImplementation: () => undefined,
+      retainImplementation: () => ({ fileCount: lock.enrollmentWebSocketRuntime.files.length }),
       extractImplementation: async ({
         destination,
         repair
@@ -236,6 +261,47 @@ describe("Gateway runtime dependency sanitizer", () => {
       ) as { version: string };
       expect(manifest.version).toBe(repair.toVersion);
     }
+  });
+
+  it("retains only hash-locked non-executable ws runtime files", () => {
+    const appRoot = mkdtempSync(join(tmpdir(), "vera-runtime-ws-source-"));
+    const runtimeRoot = mkdtempSync(join(tmpdir(), "vera-runtime-ws-target-"));
+    temporaryDirectories.push(appRoot, runtimeRoot);
+    const sourceRoot = join(appRoot, "node_modules", "ws");
+    mkdirSync(sourceRoot, { recursive: true });
+    const packageBytes = Buffer.from(
+      `${JSON.stringify({ name: "ws", version: "8.21.0" })}\n`,
+      "utf8"
+    );
+    const wrapperBytes = Buffer.from("export const WebSocketServer = class {};\n", "utf8");
+    writeFileSync(join(sourceRoot, "package.json"), packageBytes);
+    writeFileSync(join(sourceRoot, "wrapper.mjs"), wrapperBytes);
+    writeFileSync(join(sourceRoot, "unexpected-executable"), "must-not-copy", { mode: 0o755 });
+    const runtime = {
+      packageName: "ws",
+      version: "8.21.0",
+      sourcePath: "node_modules/ws",
+      targetPath: "/opt/vera/node_modules/ws",
+      files: [
+        {
+          path: "package.json",
+          sha256: createHash("sha256").update(packageBytes).digest("hex")
+        },
+        {
+          path: "wrapper.mjs",
+          sha256: createHash("sha256").update(wrapperBytes).digest("hex")
+        }
+      ]
+    };
+
+    expect(retainEnrollmentWebSocketRuntime({ appRoot, runtimeRoot, runtime })).toEqual({
+      fileCount: 2
+    });
+    const target = join(runtimeRoot, "node_modules", "ws");
+    expect(readFileSync(join(target, "wrapper.mjs"), "utf8")).toBe(wrapperBytes.toString());
+    expect(statSync(join(target, "wrapper.mjs")).mode & 0o777).toBe(0o444);
+    expect(() => statSync(join(target, "unexpected-executable"))).toThrow();
+    chmodSync(target, 0o755);
   });
 
   it("rejects a repair path outside the application root", () => {
