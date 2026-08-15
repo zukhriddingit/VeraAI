@@ -132,7 +132,7 @@ export function findRemoteExtensionDocumentationViolations(
   const browserConnectorRequired = [
     "What the founder installs",
     "Direct WSS topology",
-    "Pairing",
+    "One-click enrollment",
     "Consent and the founder snapshot",
     "Connection states and offline behavior",
     "Kill switches and revocation",
