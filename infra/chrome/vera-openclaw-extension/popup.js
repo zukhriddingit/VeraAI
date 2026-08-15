@@ -5,14 +5,11 @@ import { CONSENT_DISCLOSURE, shareButtonLabel } from "./modules/popup-copy.js";
 const statusDot = document.getElementById("statusDot");
 const pairSection = document.getElementById("pairSection");
 const connectedSection = document.getElementById("connectedSection");
-const pairingInput = document.getElementById("pairingString");
-const pairButton = document.getElementById("pairButton");
 const prepareButton = document.getElementById("prepareButton");
 const shareButton = document.getElementById("shareButton");
 const unpairButton = document.getElementById("unpairButton");
 const connectionLine = document.getElementById("connectionLine");
 const readinessLine = document.getElementById("readinessLine");
-const pairError = document.getElementById("pairError");
 const errorLine = document.getElementById("error");
 const consentDisclosure = document.getElementById("consentDisclosure");
 
@@ -70,23 +67,6 @@ async function refresh() {
   shareButton.textContent = shareButtonLabel(result.shared);
   shareButton.dataset.tabId = String(tab.id);
 }
-
-pairButton.addEventListener("click", () => {
-  void (async () => {
-    pairError.classList.add("hidden");
-    const result = await chrome.runtime.sendMessage({
-      type: "pair",
-      pairingString: pairingInput.value
-    });
-    if (!result.ok) {
-      pairError.textContent = "The pairing string is invalid.";
-      pairError.classList.remove("hidden");
-      return;
-    }
-    pairingInput.value = "";
-    await refresh();
-  })();
-});
 
 prepareButton.addEventListener("click", () => {
   void (async () => {

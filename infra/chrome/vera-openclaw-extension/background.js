@@ -13,6 +13,15 @@ import {
   toRelayTabInfo
 } from "./modules/relay-core.js";
 import {
+  ENROLLMENT_PROTOCOL_VERSION,
+  EXTENSION_VERSION,
+  EnrollmentError,
+  createInstallationId,
+  digestInstallationId,
+  enrollWithGateway,
+  parseEnrollmentRequest
+} from "./modules/enrollment.js";
+import {
   PREPARED_SEARCH_START_URL,
   PreparedTabError,
   TAB_READINESS,
@@ -36,6 +45,7 @@ let reconnectAttempt = 0;
 let reconnectTimer = null;
 let tabsSyncTimer = null;
 let tabReadiness = TAB_READINESS.NOT_SHARED;
+let installationIdentityPromise = null;
 const attachedTabs = new Set();
 const attachingTabs = new Map();
 const NAVIGATION_REATTACH_DELAYS_MS = Object.freeze([0, 150, 400]);
@@ -56,6 +66,45 @@ async function getConfig() {
     token: typeof stored.token === "string" ? stored.token : "",
     groupColor: typeof stored.groupColor === "string" ? stored.groupColor : "orange"
   };
+}
+
+async function loadInstallationIdentity() {
+  const stored = await chrome.storage.local.get(["installationId"]);
+  let installationId =
+    typeof stored.installationId === "string" && /^[a-f0-9]{64}$/u.test(stored.installationId)
+      ? stored.installationId
+      : "";
+  if (!installationId) {
+    installationId = createInstallationId();
+    await chrome.storage.local.set({ installationId });
+  }
+  return {
+    installationId,
+    installationDigest: await digestInstallationId(installationId)
+  };
+}
+
+async function getInstallationIdentity() {
+  if (!installationIdentityPromise) {
+    installationIdentityPromise = loadInstallationIdentity().catch((error) => {
+      installationIdentityPromise = null;
+      throw error;
+    });
+  }
+  return installationIdentityPromise;
+}
+
+function enrollmentFailureState(error) {
+  if (!(error instanceof EnrollmentError)) return "unavailable";
+  if (
+    error.code === "expired" ||
+    error.code === "denied" ||
+    error.code === "unavailable" ||
+    error.code === "version_incompatible"
+  ) {
+    return error.code;
+  }
+  return "unavailable";
 }
 
 async function findOpenClawGroups() {
@@ -455,6 +504,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       switch (message?.type) {
         case "getStatus": {
           const { relayUrl } = await getConfig();
+          const { installationDigest } = await getInstallationIdentity();
           const { shared, ready } = await readySharedTabs();
           const readiness = deriveTabReadiness({
             sharedTabCount: shared.length,
@@ -465,8 +515,48 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
             paired: Boolean(relayUrl),
             state: relayState,
             sharedTabCount: shared.length,
-            readiness
+            readiness,
+            extensionVersion: EXTENSION_VERSION,
+            enrollmentProtocolVersion: ENROLLMENT_PROTOCOL_VERSION,
+            installationDigest
           });
+          return;
+        }
+        case "getEnrollmentIdentity": {
+          const { installationDigest } = await getInstallationIdentity();
+          sendResponse({
+            ok: true,
+            extensionVersion: EXTENSION_VERSION,
+            enrollmentProtocolVersion: ENROLLMENT_PROTOCOL_VERSION,
+            installationDigest
+          });
+          return;
+        }
+        case "enroll": {
+          let requestId =
+            typeof message.request?.requestId === "string" ? message.request.requestId : null;
+          try {
+            const request = parseEnrollmentRequest(message.request);
+            requestId = request.requestId;
+            const { installationId } = await getInstallationIdentity();
+            const enrolled = await enrollWithGateway(request, { installationId });
+            await chrome.storage.local.set({
+              relayUrl: enrolled.relayUrl,
+              token: enrolled.token,
+              groupColor: "orange"
+            });
+            reconnectAttempt = 0;
+            relayWs?.close();
+            relayWs = null;
+            await connectRelay();
+            sendResponse({ ok: true, requestId, state: "connected" });
+          } catch (error) {
+            sendResponse({
+              ok: false,
+              ...(requestId ? { requestId } : {}),
+              state: enrollmentFailureState(error)
+            });
+          }
           return;
         }
         case "pair": {
@@ -551,8 +641,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === "openclaw-relay-watchdog") void connectRelay();
 });
 chrome.runtime.onStartup.addListener(() => void connectRelay());
-chrome.runtime.onInstalled.addListener(() => void connectRelay());
+chrome.runtime.onInstalled.addListener(() => {
+  void getInstallationIdentity();
+  void connectRelay();
+});
 
+void getInstallationIdentity();
 void connectRelay();
 
 // Kept as a named constant in this runtime so release verification can assert the

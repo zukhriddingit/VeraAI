@@ -7,6 +7,12 @@ type RuntimeMessageListener = (
 ) => boolean;
 
 const calls: string[] = [];
+const storageState: Record<string, unknown> = {};
+const sockets: FakeWebSocket[] = [];
+let nextEnrollmentResponse: Record<string, unknown> = {
+  protocol: "vera-browser-enrollment.v1",
+  token: "d".repeat(64)
+};
 const tabs = new Map<
   number,
   { id: number; url: string; title: string; windowId: number; status: string }
@@ -30,6 +36,51 @@ let backgroundModule: {
   handleDebuggerDetach(source: { tabId?: number }, reason: string): Promise<void>;
 };
 
+class FakeWebSocket {
+  static readonly CONNECTING = 0;
+  static readonly OPEN = 1;
+  readonly listeners = new Map<string, Array<(event: { data?: string }) => void>>();
+  readonly protocol: string;
+  readyState = FakeWebSocket.CONNECTING;
+
+  constructor(
+    readonly url: string,
+    protocols: string | string[]
+  ) {
+    this.protocol = Array.isArray(protocols) ? (protocols[0] ?? "") : protocols;
+    sockets.push(this);
+    queueMicrotask(() => {
+      this.readyState = FakeWebSocket.OPEN;
+      this.emit("open");
+    });
+  }
+
+  addEventListener(type: string, listener: (event: { data?: string }) => void) {
+    const current = this.listeners.get(type) ?? [];
+    current.push(listener);
+    this.listeners.set(type, current);
+  }
+
+  send(value: string) {
+    calls.push(`socket:${this.protocol}:send`);
+    if (this.protocol === "vera-browser-enrollment.v1") {
+      expect(JSON.parse(value)).toMatchObject({
+        ticket: expect.stringMatching(/^[A-Za-z0-9_-]{43}$/u),
+        installationId: expect.stringMatching(/^[a-f0-9]{64}$/u)
+      });
+      queueMicrotask(() => this.emit("message", { data: JSON.stringify(nextEnrollmentResponse) }));
+    }
+  }
+
+  close() {
+    this.readyState = 3;
+  }
+
+  emit(type: string, event: { data?: string } = {}) {
+    for (const listener of this.listeners.get(type) ?? []) listener(event);
+  }
+}
+
 function eventHook<T extends (...arguments_: never[]) => unknown>() {
   return { addListener: vi.fn((_listener: T) => undefined) };
 }
@@ -41,9 +92,17 @@ const chromeMock = {
   },
   storage: {
     local: {
-      get: vi.fn(async () => ({ relayUrl: "", token: "", groupColor: "orange" })),
-      set: vi.fn(async () => undefined),
-      remove: vi.fn(async () => undefined)
+      get: vi.fn(async (keys: string[]) =>
+        Object.fromEntries(
+          keys.filter((key) => key in storageState).map((key) => [key, storageState[key]])
+        )
+      ),
+      set: vi.fn(async (values: Record<string, unknown>) => {
+        Object.assign(storageState, values);
+      }),
+      remove: vi.fn(async (keys: string[]) => {
+        for (const key of keys) delete storageState[key];
+      })
     }
   },
   tabGroups: {
@@ -108,7 +167,7 @@ const chromeMock = {
     onDetach: eventHook()
   },
   runtime: {
-    getManifest: vi.fn(() => ({ version: "2.0.3" })),
+    getManifest: vi.fn(() => ({ version: "2.2.0" })),
     onMessage: {
       addListener: vi.fn((listener: RuntimeMessageListener) => {
         runtimeMessageListener = listener;
@@ -130,10 +189,28 @@ async function message(message: Record<string, unknown>) {
 
 beforeAll(async () => {
   vi.stubGlobal("chrome", chromeMock);
+  vi.stubGlobal("WebSocket", FakeWebSocket);
   backgroundModule = await import("./background.js");
 });
 
 describe("Vera OpenClaw background lifecycle", () => {
+  it("creates one persistent installation identity and exposes only its digest", async () => {
+    const first = (await message({ type: "getStatus" })) as Record<string, unknown>;
+    const installationId = storageState.installationId;
+    const second = (await message({ type: "getEnrollmentIdentity" })) as Record<string, unknown>;
+
+    expect(installationId).toMatch(/^[a-f0-9]{64}$/u);
+    expect(first).toMatchObject({
+      extensionVersion: "2.2.0",
+      enrollmentProtocolVersion: "1",
+      installationDigest: expect.stringMatching(/^[a-f0-9]{64}$/u)
+    });
+    expect(second.installationDigest).toBe(first.installationDigest);
+    expect(JSON.stringify(first)).not.toContain(String(installationId));
+    expect(JSON.stringify(second)).not.toContain(String(installationId));
+    expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(1);
+  });
+
   it("reconciles an owned debugger lease after a worker restart", async () => {
     await expect(message({ type: "getStatus" })).resolves.toMatchObject({
       readiness: "ready",
@@ -225,5 +302,74 @@ describe("Vera OpenClaw background lifecycle", () => {
       readiness: "attachment_failed",
       sharedTabCount: 1
     });
+  });
+
+  it("enrolls persistently without sharing, grouping, or attaching another tab", async () => {
+    const callOffset = calls.length;
+    const requestId = "10000000-0000-4000-8000-000000000013";
+
+    await expect(
+      message({
+        type: "enroll",
+        request: {
+          source: "vera-web",
+          type: "connect-browser",
+          version: "1",
+          requestId,
+          confirmation: "connect_read_only_browser",
+          ticket: "A".repeat(43),
+          expiresAt: "2099-08-14T12:01:00.000Z",
+          gatewayOrigin: "https://gateway-a.verahousing.app",
+          protocolVersion: "1"
+        }
+      })
+    ).resolves.toEqual({ ok: true, requestId, state: "connected" });
+
+    expect(storageState).toMatchObject({
+      installationId: expect.stringMatching(/^[a-f0-9]{64}$/u),
+      relayUrl: "wss://gateway-a.verahousing.app/browser/extension",
+      token: "d".repeat(64)
+    });
+    expect(sockets.some((socket) => socket.protocol === "vera-browser-enrollment.v1")).toBe(true);
+    expect(sockets.some((socket) => socket.protocol === "openclaw-extension-relay")).toBe(true);
+    const enrollmentCalls = calls.slice(callOffset);
+    expect(enrollmentCalls.some((call) => call.startsWith("group:"))).toBe(false);
+    expect(enrollmentCalls.some((call) => call.startsWith("attach:"))).toBe(false);
+  });
+
+  it("unpair removes transport secrets while retaining the non-secret installation identity", async () => {
+    const installationId = storageState.installationId;
+
+    await expect(message({ type: "unpair" })).resolves.toEqual({ ok: true });
+
+    expect(storageState.installationId).toBe(installationId);
+    expect(storageState).not.toHaveProperty("relayUrl");
+    expect(storageState).not.toHaveProperty("token");
+  });
+
+  it("stores no relay material after a denied enrollment", async () => {
+    nextEnrollmentResponse = {
+      protocol: "vera-browser-enrollment.v1",
+      error: "ticket_replayed"
+    };
+
+    await expect(
+      message({
+        type: "enroll",
+        request: {
+          source: "vera-web",
+          type: "connect-browser",
+          version: "1",
+          requestId: "20000000-0000-4000-8000-000000000013",
+          confirmation: "connect_read_only_browser",
+          ticket: "B".repeat(43),
+          expiresAt: "2099-08-14T12:01:00.000Z",
+          gatewayOrigin: "https://gateway-a.verahousing.app",
+          protocolVersion: "1"
+        }
+      })
+    ).resolves.toMatchObject({ ok: false, state: "denied" });
+    expect(storageState).not.toHaveProperty("relayUrl");
+    expect(storageState).not.toHaveProperty("token");
   });
 });
