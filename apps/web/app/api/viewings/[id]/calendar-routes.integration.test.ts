@@ -48,6 +48,7 @@ function registerFixture(
     auth: null,
     calendar: fixture.calendar,
     betaAccess: null,
+    browserConnectorEnrollments: overrides.browserConnectorEnrollments ?? null,
     demoUserId: "018f9f64-7b5a-7c91-a12e-000000000001",
     readiness: vi.fn(),
     close: vi.fn(),

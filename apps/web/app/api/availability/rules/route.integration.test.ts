@@ -71,6 +71,7 @@ function registerFixture(fixture: MemoryFixture, sessionUserId: VeraUserId | nul
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
     betaAccess: null,
+    browserConnectorEnrollments: null,
     browserGatewayAssignments: null,
     browserGatewayRuntime: null,
     demoUserId: null,

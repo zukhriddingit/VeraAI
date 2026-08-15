@@ -40,6 +40,11 @@ export interface AuthenticatedBrowserCheckpoint {
   readonly runtime: BrowserGatewayRuntime;
 }
 
+export interface AuthenticatedBrowserEnrollmentCheckpoint {
+  readonly userId: VeraUserId;
+  readonly assignment: BrowserGatewayAssignment;
+}
+
 export interface BrowserGatewayRuntimeResolverDependencies {
   readonly assignments: BrowserGatewayAssignmentRepository;
   readonly betaAccess: BetaAccessRepository;
@@ -75,6 +80,17 @@ function checkpointDigest(token: string): string {
   return createHash("sha256").update(token, "utf8").digest("hex");
 }
 
+function validateCheckpointToken(token: string): void {
+  if (
+    token.length < 32 ||
+    token.length > 512 ||
+    token.trim() !== token ||
+    /[\u0000-\u001f\u007f]/u.test(token)
+  ) {
+    throw new BrowserGatewayAuthorizationError();
+  }
+}
+
 export class BrowserGatewayRuntimeResolver {
   constructor(private readonly dependencies: BrowserGatewayRuntimeResolverDependencies) {}
 
@@ -86,19 +102,20 @@ export class BrowserGatewayRuntimeResolver {
     return this.resolveAssignment(assignment);
   }
 
+  async resolveEnrollmentForUser(
+    userIdInput: VeraUserId
+  ): Promise<BrowserGatewayAssignment | null> {
+    const userId = VeraUserIdSchema.parse(userIdInput);
+    if (!(await this.enrollmentUserAuthorized(userId))) return null;
+    return this.dependencies.assignments.getActiveForUser(userId);
+  }
+
   async authenticateCheckpoint(input: {
     readonly bearerToken: string;
     readonly origin: string;
   }): Promise<AuthenticatedBrowserCheckpoint> {
     const token = input.bearerToken;
-    if (
-      token.length < 32 ||
-      token.length > 512 ||
-      token.trim() !== token ||
-      /[\u0000-\u001f\u007f]/u.test(token)
-    ) {
-      throw new BrowserGatewayAuthorizationError();
-    }
+    validateCheckpointToken(token);
     const assignment = await this.dependencies.assignments.getActiveByCheckpointDigest(
       checkpointDigest(token)
     );
@@ -113,14 +130,40 @@ export class BrowserGatewayRuntimeResolver {
     return { userId: assignment.userId, runtime };
   }
 
+  async authenticateEnrollmentCheckpoint(input: {
+    readonly bearerToken: string;
+    readonly origin: string;
+  }): Promise<AuthenticatedBrowserEnrollmentCheckpoint> {
+    validateCheckpointToken(input.bearerToken);
+    const assignment = await this.dependencies.assignments.getActiveByCheckpointDigest(
+      checkpointDigest(input.bearerToken)
+    );
+    if (!assignment || input.origin !== assignment.checkpointOrigin) {
+      throw new BrowserGatewayAuthorizationError();
+    }
+    if (!(await this.enrollmentUserAuthorized(assignment.userId))) {
+      throw new BrowserGatewayAuthorizationError();
+    }
+    return { userId: assignment.userId, assignment };
+  }
+
   private async baseUserAuthorized(userId: VeraUserId): Promise<boolean> {
+    if (!(await this.baseAssignmentAuthorized(userId))) return false;
+    return !parseHostedRuntimePolicy(this.dependencies.environment).browserDisabled;
+  }
+
+  private async enrollmentUserAuthorized(userId: VeraUserId): Promise<boolean> {
+    if (this.dependencies.environment.VERA_BROWSER_ENROLLMENT_ENABLED !== "1") return false;
+    return this.baseAssignmentAuthorized(userId);
+  }
+
+  private async baseAssignmentAuthorized(userId: VeraUserId): Promise<boolean> {
     if (this.dependencies.environment.VERA_BETA_ACCESS_GATE_ENABLED !== "1") return false;
     if (this.dependencies.environment.VERA_BROWSER_ASSIGNMENT_ROUTING_ENABLED !== "1") return false;
     if (this.dependencies.environment.VERA_BROWSER_ASSIGNMENT_TOKEN_HASH_VERSION !== "sha256.v1") {
       return false;
     }
     if (!parseBrowserBetaUserIds(this.dependencies.environment).has(userId)) return false;
-    if (parseHostedRuntimePolicy(this.dependencies.environment).browserDisabled) return false;
     return this.dependencies.betaAccess.isActiveUser(userId);
   }
 

@@ -2,6 +2,7 @@ import type { VeraUserId } from "@vera/domain";
 import type { ReadinessReport } from "@vera/domain";
 import type {
   BetaAccessRepository,
+  BrowserConnectorEnrollmentRepository,
   BrowserGatewayAssignmentRepository,
   MaritimeOperationsRepository,
   UserRepositoryProvider
@@ -19,6 +20,7 @@ export interface VeraApplication {
   readonly calendar: CalendarApplicationDependencies;
   readonly gmailOAuth: GmailIntegrationOAuth | null;
   readonly betaAccess: BetaAccessRepository | null;
+  readonly browserConnectorEnrollments: BrowserConnectorEnrollmentRepository | null;
   readonly browserGatewayAssignments: BrowserGatewayAssignmentRepository | null;
   readonly browserGatewayRuntime: BrowserGatewayRuntimeResolver | null;
   readonly maritimeOperations?: MaritimeOperationsRepository;
