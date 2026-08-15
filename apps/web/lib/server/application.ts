@@ -1,6 +1,7 @@
 import {
   checkPostgresReadiness,
   createPostgresBetaAccessRepository,
+  createPostgresBrowserConnectorEnrollmentRepository,
   createPostgresBrowserGatewayAssignmentRepository,
   createPostgresMaritimeOperationsRepository,
   createPostgresRepositoryProvider,
@@ -96,6 +97,8 @@ export function createPostgresApplication(
   try {
     const repositoryProvider = createPostgresRepositoryProvider(connection);
     const betaAccess = createPostgresBetaAccessRepository(connection);
+    const browserConnectorEnrollments =
+      createPostgresBrowserConnectorEnrollmentRepository(connection);
     const browserGatewayAssignments = createPostgresBrowserGatewayAssignmentRepository(connection);
     const browserGatewayRuntime = new BrowserGatewayRuntimeResolver({
       assignments: browserGatewayAssignments,
@@ -118,6 +121,7 @@ export function createPostgresApplication(
       calendar: googleBindings.calendar,
       gmailOAuth: googleBindings.gmailOAuth,
       betaAccess,
+      browserConnectorEnrollments,
       browserGatewayAssignments,
       browserGatewayRuntime,
       maritimeOperations: createPostgresMaritimeOperationsRepository(connection.db),

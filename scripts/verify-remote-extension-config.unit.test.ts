@@ -59,7 +59,11 @@ function fixture() {
       resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
       "utf8"
     ),
-    routeFilterSource: readFileSync(resolve(directory, "remote-extension-route-filter.mjs"), "utf8")
+    routeFilterSource: readFileSync(
+      resolve(directory, "remote-extension-route-filter.mjs"),
+      "utf8"
+    ),
+    enrollmentSource: readFileSync(resolve(directory, "remote-extension-enrollment.mjs"), "utf8")
   };
 }
 
@@ -357,6 +361,43 @@ describe("remote extension configuration verifier", () => {
     );
     expect(findRemoteExtensionConfigViolations(input)).toContain(
       "Public Gateway ingress must expose only the exact extension route and preserve its upgrade bytes."
+    );
+  });
+
+  it("rejects enrollment forwarding to OpenClaw before the local handoff", () => {
+    const input = fixture();
+    input.routeFilterSource = input.routeFilterSource.replace(
+      "if (protocols.includes(ENROLLMENT_PROTOCOL)) {",
+      'if (protocols.includes("unreviewed-protocol")) {'
+    );
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Enrollment upgrades must terminate in the bounded local handoff before OpenClaw relay forwarding."
+    );
+  });
+
+  it.each([
+    [
+      "unbounded frames",
+      (source: string) => source.replace("maxPayload: MAX_FRAME_BYTES", "maxPayload: Infinity")
+    ],
+    [
+      "credential reads before checkpoint authorization",
+      (source: string) =>
+        source.replace(
+          "const fetchImplementation = dependencies.fetchImplementation ?? fetch;",
+          "const leaked = readCredentialImplementation();\n  const fetchImplementation = dependencies.fetchImplementation ?? fetch;"
+        )
+    ],
+    [
+      "symlink-following credential reads",
+      (source: string) => source.replace("constants.O_NOFOLLOW", "0")
+    ],
+    ["ticket logging", (source: string) => `${source}\nconsole.log(frame.ticket);\n`]
+  ])("rejects browser enrollment with %s", (_label, mutate) => {
+    const input = fixture();
+    input.enrollmentSource = mutate(input.enrollmentSource);
+    expect(findRemoteExtensionConfigViolations(input)).toContain(
+      "Browser enrollment must be a bounded, checkpoint-first, secret-safe exact-route handoff."
     );
   });
 

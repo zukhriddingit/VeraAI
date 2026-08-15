@@ -79,7 +79,7 @@ describe("remote extension release documentation", () => {
     ])
   ) as Record<(typeof RELEASE_DEPLOYMENT_DOCUMENTS)[number], string>;
 
-  it("records the exact pin, route, pairing boundary, isolation, audits, and no-go state", () => {
+  it("records the exact pin, route, enrollment boundary, isolation, audits, and no-go state", () => {
     expect(findRemoteExtensionDocumentationViolations(repositoryDocuments)).toEqual([]);
   });
 

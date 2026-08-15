@@ -1267,6 +1267,147 @@ export const browserGatewayAssignments = pgTable(
   ]
 );
 
+export const browserConnectorDevices = pgTable(
+  "browser_connector_devices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    assignmentId: uuid("assignment_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    installationDigest: text("installation_digest").notNull(),
+    extensionVersion: text("extension_version").notNull(),
+    protocolVersion: text("protocol_version").notNull(),
+    status: text("status").notNull().default("pending"),
+    createdAt: instant("created_at").notNull(),
+    connectedAt: instant("connected_at"),
+    lastSeenAt: instant("last_seen_at"),
+    revokedAt: instant("revoked_at")
+  },
+  (table) => [
+    uniqueIndex("browser_connector_devices_owner_assignment_id_unique").on(
+      table.id,
+      table.userId,
+      table.assignmentId
+    ),
+    uniqueIndex("browser_connector_devices_assignment_live_unique")
+      .on(table.assignmentId)
+      .where(sql`${table.status} IN ('pending', 'active')`),
+    uniqueIndex("browser_connector_devices_installation_live_unique")
+      .on(table.installationDigest)
+      .where(sql`${table.status} IN ('pending', 'active')`),
+    foreignKey({
+      name: "browser_connector_devices_assignment_owner_fk",
+      columns: [table.assignmentId, table.userId],
+      foreignColumns: [browserGatewayAssignments.id, browserGatewayAssignments.userId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check(
+      "browser_connector_devices_installation_digest_check",
+      sql`${table.installationDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_connector_devices_version_check",
+      sql`${table.extensionVersion} = '2.2.0' AND ${table.protocolVersion} = '1'`
+    ),
+    check(
+      "browser_connector_devices_status_check",
+      sql`${table.status} IN ('pending', 'active', 'revoked')`
+    ),
+    check(
+      "browser_connector_devices_state_consistency",
+      sql`
+        (${table.status} = 'pending' AND ${table.connectedAt} IS NULL AND ${table.revokedAt} IS NULL)
+        OR (${table.status} = 'active' AND ${table.connectedAt} IS NOT NULL AND ${table.revokedAt} IS NULL)
+        OR (${table.status} = 'revoked' AND ${table.revokedAt} IS NOT NULL)
+      `
+    )
+  ]
+);
+
+export const browserConnectorEnrollmentTickets = pgTable(
+  "browser_connector_enrollment_tickets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    assignmentId: uuid("assignment_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    deviceId: uuid("device_id").notNull(),
+    installationDigest: text("installation_digest").notNull(),
+    ticketDigest: text("ticket_digest").notNull(),
+    extensionVersion: text("extension_version").notNull(),
+    protocolVersion: text("protocol_version").notNull(),
+    gatewayOrigin: text("gateway_origin").notNull(),
+    idempotencyKey: text("idempotency_key").notNull(),
+    status: text("status").notNull().default("issued"),
+    issuedAt: instant("issued_at").notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    consumedAt: instant("consumed_at"),
+    terminalAt: instant("terminal_at"),
+    terminalReason: text("terminal_reason")
+  },
+  (table) => [
+    uniqueIndex("browser_connector_enrollment_tickets_digest_unique").on(table.ticketDigest),
+    uniqueIndex("browser_connector_enrollment_tickets_owner_idempotency_unique").on(
+      table.userId,
+      table.idempotencyKey
+    ),
+    uniqueIndex("browser_connector_enrollment_tickets_assignment_issued_unique")
+      .on(table.assignmentId)
+      .where(sql`${table.status} = 'issued'`),
+    index("browser_connector_enrollment_tickets_expiry_idx").on(table.status, table.expiresAt),
+    foreignKey({
+      name: "browser_connector_enrollment_tickets_assignment_owner_fk",
+      columns: [table.assignmentId, table.userId],
+      foreignColumns: [browserGatewayAssignments.id, browserGatewayAssignments.userId]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    foreignKey({
+      name: "browser_connector_enrollment_tickets_device_owner_fk",
+      columns: [table.deviceId, table.userId, table.assignmentId],
+      foreignColumns: [
+        browserConnectorDevices.id,
+        browserConnectorDevices.userId,
+        browserConnectorDevices.assignmentId
+      ]
+    })
+      .onDelete("restrict")
+      .onUpdate("restrict"),
+    check(
+      "browser_connector_enrollment_tickets_digest_check",
+      sql`${table.ticketDigest} ~ '^[a-f0-9]{64}$' AND ${table.installationDigest} ~ '^[a-f0-9]{64}$' AND ${table.idempotencyKey} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "browser_connector_enrollment_tickets_version_check",
+      sql`${table.extensionVersion} = '2.2.0' AND ${table.protocolVersion} = '1'`
+    ),
+    check(
+      "browser_connector_enrollment_tickets_gateway_origin_check",
+      sql`${table.gatewayOrigin} ~ '^https://[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:\\:[1-9][0-9]{0,4})?$'`
+    ),
+    check(
+      "browser_connector_enrollment_tickets_status_check",
+      sql`${table.status} IN ('issued', 'consumed', 'expired', 'revoked')`
+    ),
+    check(
+      "browser_connector_enrollment_tickets_lifetime_check",
+      sql`${table.expiresAt} > ${table.issuedAt} AND ${table.expiresAt} <= ${table.issuedAt} + interval '60 seconds'`
+    ),
+    check(
+      "browser_connector_enrollment_tickets_state_consistency",
+      sql`
+        (${table.status} = 'issued' AND ${table.consumedAt} IS NULL AND ${table.terminalAt} IS NULL AND ${table.terminalReason} IS NULL)
+        OR (${table.status} = 'consumed' AND ${table.consumedAt} IS NOT NULL AND ${table.terminalAt} = ${table.consumedAt} AND ${table.terminalReason} IS NULL)
+        OR (${table.status} = 'expired' AND ${table.consumedAt} IS NULL AND ${table.terminalAt} IS NOT NULL AND ${table.terminalReason} = 'expired')
+        OR (${table.status} = 'revoked' AND ${table.consumedAt} IS NULL AND ${table.terminalAt} IS NOT NULL AND ${table.terminalReason} = 'revoked')
+      `
+    )
+  ]
+);
+
 export const browserGatewayAcceptanceRuns = pgTable(
   "browser_gateway_acceptance_runs",
   {
@@ -3063,6 +3204,8 @@ export const schema = {
   betaAccessRateLimits,
   betaAccessRequests,
   betaMemberships,
+  browserConnectorDevices,
+  browserConnectorEnrollmentTickets,
   browserGatewayAcceptanceRuns,
   browserGatewayAssignments,
   browserCaptureAcceptances,

@@ -11,7 +11,7 @@ const icon = {
 const manifest = {
   manifest_version: 3,
   name: "Vera Browser Connector BETA",
-  version: "2.1.0",
+  version: "2.2.0",
   description:
     "THIS EXTENSION IS FOR BETA TESTING. Share one dedicated housing-search tab with an approved Vera Browser Gateway.",
   permissions: ["debugger", "tabs", "tabGroups", "storage", "alarms"],
@@ -38,7 +38,8 @@ const manifest = {
 const clean = {
   manifest,
   runtime:
-    "Prepare Vera Search tab openclaw-extension-relay openclaw-extension-token. browser_extension_conflict about:blank https://www.zillow.com/homes/for_rent/",
+    "Prepare Vera Search tab openclaw-extension-relay openclaw-extension-token. browser_extension_conflict about:blank https://www.zillow.com/homes/for_rent/ vera-browser-enrollment.v1 extensionVersion enrollmentProtocolVersion installationDigest event.source !== window event.origin !== window.location.origin",
+  popup: "Open Vera to connect",
   iconDimensions: new Map(
     [16, 32, 48, 128].map((size) => [`icon-${size}.png`, [size, size] as const])
   )
@@ -69,6 +70,20 @@ describe("Vera Store extension verifier", () => {
         manifest: { ...manifest, permissions: [...manifest.permissions, "scripting"] }
       })
     ).toContain("Permissions are not exact."));
+  it("rejects a production pairing-value UI", () =>
+    expect(
+      findVeraExtensionViolations({
+        ...clean,
+        popup: '<textarea id="pairingString"></textarea>'
+      })
+    ).toContain("Popup must use one-click Vera enrollment without credential entry."));
+  it("rejects a version drift", () =>
+    expect(
+      findVeraExtensionViolations({
+        ...clean,
+        manifest: { ...manifest, version: "2.2.1" }
+      })
+    ).toContain("Store identity is not exact."));
   it("rejects an incorrectly sized icon", () =>
     expect(
       findVeraExtensionViolations({

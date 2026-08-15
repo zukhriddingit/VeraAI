@@ -106,7 +106,11 @@ function browserReadinessCopy(message: BrowserExtensionReadinessMessage | null):
   if (message === null) {
     return "Vera OpenClaw is not detected. Open the extension and prepare a Vera Search tab.";
   }
-  if (!message.paired) return "Pair Vera OpenClaw with the Browser Gateway first.";
+  if (!message.paired) {
+    return message.version === "2"
+      ? "Connect this browser in Browser Connector settings first."
+      : "Update the Vera Browser Connector, then connect this browser in settings.";
+  }
   if (message.relayState !== "on") return "Vera OpenClaw is paired but the Gateway is offline.";
   if (message.readiness === "ready" && message.sharedTabCount === 1) {
     return "Browser ready — recording and bounded browser research may start.";

@@ -3,6 +3,8 @@ import { createServer } from "node:http";
 import { connect } from "node:net";
 import { pathToFileURL } from "node:url";
 
+import { ENROLLMENT_PROTOCOL, handleEnrollmentUpgrade } from "./remote-extension-enrollment.mjs";
+
 const EXTENSION_ROUTE = "/browser/extension";
 const PUBLIC_GATEWAY_HOST = "0.0.0.0";
 const PUBLIC_GATEWAY_PORT = 18789;
@@ -45,6 +47,15 @@ function denyUpgrade(socket, statusLine) {
   socket.end(`HTTP/1.1 ${statusLine}\r\nConnection: close\r\n\r\n`);
 }
 
+export function requestedWebSocketProtocols(request) {
+  const header = request.headers["sec-websocket-protocol"];
+  if (typeof header !== "string") return [];
+  return header
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
 function destroyBoth(left, right) {
   left.destroy();
   right.destroy();
@@ -83,6 +94,15 @@ export async function startRemoteExtensionRouteFilter(options) {
   server.on("upgrade", (request, clientSocket, head) => {
     if (request.url !== EXTENSION_ROUTE) {
       denyUpgrade(clientSocket, "404 Not Found");
+      return;
+    }
+    const protocols = requestedWebSocketProtocols(request);
+    if (protocols.includes(ENROLLMENT_PROTOCOL)) {
+      void handleEnrollmentUpgrade(request, clientSocket, head, options.enrollmentDependencies);
+      return;
+    }
+    if (!protocols.includes("openclaw-extension-relay")) {
+      denyUpgrade(clientSocket, "400 Bad Request");
       return;
     }
     const upstream = connect(options.upstreamPort, options.upstreamHost);

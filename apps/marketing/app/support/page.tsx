@@ -27,10 +27,10 @@ export default function SupportPage() {
           </p>
         </section>
         <section>
-          <h2>Never send a password or pairing credential</h2>
+          <h2>Never send a password or browser credential</h2>
           <p>
-            Support will never ask you to email a marketplace password, cookie, one-time pairing
-            value, payment, or identity document.
+            Support will never ask you to email a marketplace password, cookie, enrollment ticket,
+            relay credential, payment, or identity document.
           </p>
         </section>
       </article>

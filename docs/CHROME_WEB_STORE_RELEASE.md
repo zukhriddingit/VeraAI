@@ -1,6 +1,6 @@
 # Chrome Web Store private release
 
-Vera Browser Connector BETA v2.1.0 is prepared for a **Private — trusted testers** release with
+Vera Browser Connector BETA v2.2.0 is prepared for a **Private — trusted testers** release with
 deferred publishing. It must not be submitted as Unlisted or Public.
 
 ## Prerequisites
@@ -22,27 +22,30 @@ ZIP, copy the checked-in `store/listing.json` fields, choose Productivity, and u
 
 Copy the five permission justifications and privacy declarations from the checked-in Store files.
 Add only the founder and explicitly approved Google test accounts as trusted testers, select all
-regions, enable deferred publishing, and submit for review. Never paste a production pairing
-credential into metadata; a time-boxed reviewer Gateway value belongs only in the private dashboard
-credential field or direct reviewer coordination.
+regions, enable deferred publishing, and submit for review. Provide only the time-boxed Vera reviewer
+account through the dashboard's private reviewer-access field or direct reviewer coordination.
+Never provide an enrollment ticket, relay credential, checkpoint credential, or browser secret.
 
 Private evidence may retain the item ID, version, ZIP SHA-256, commit, publisher label, private
 visibility, tester count, deferred-publishing state, submission time, and review state. It must not
-retain dashboard cookies, credential fields, pairing values, or tester emails.
+retain dashboard cookies, credential fields, enrollment tickets, relay credentials, or tester emails.
 
 ## Approval and publication
 
 After approval, publish privately and install with one listed tester in a clean Chrome profile.
-Verify version 2.1.0 and exactly `debugger`, `tabs`, `tabGroups`, `storage`, and `alarms`. With a fresh
-time-boxed Gateway, prove pair, prepare, share, unshare, and unpair; finish with zero shared tabs and
-no stored relay credential.
+Verify version 2.2.0 and exactly `debugger`, `tabs`, `tabGroups`, `storage`, and `alarms`. With a fresh
+time-boxed Gateway, sign in to Vera and click **Connect this browser**. Prove that connection alone
+shares zero tabs, then prepare, share, unshare, and revoke; finish with zero shared tabs, no
+established connection, and no local relay credential.
 
 Only then set `VERA_CHROME_STORE_RELEASE_STATUS=published` and the exact Chrome Web Store item URL in
-Vercel and Heroku. Redeploy marketing and product apps only. Do not rebuild or redeploy the Gateway.
+Vercel and Heroku. One-click enrollment requires a new signed, SBOM-attested Gateway image built from
+the merged commit because it adds an objectively missing bounded primitive. Keep both previously
+accepted Gateway images immutable as rollback artifacts; do not replace either digest in place.
 
 ## Rollback
 
 If review rejects the item, leave the release status unset and keep **Join private beta** visible.
 When package bytes change, increment the extension version before resubmission. If an already
-published version is unsafe, unpublish it or publish a higher fixed version; never reuse 2.1.0 for
+published version is unsafe, unpublish it or publish a higher fixed version; never reuse 2.2.0 for
 different bytes.

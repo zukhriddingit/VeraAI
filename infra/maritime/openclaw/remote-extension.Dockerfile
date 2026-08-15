@@ -30,6 +30,8 @@ COPY --chown=1000:1000 --chmod=0555 remote-extension-supervisor.mjs \
   /opt/vera/bin/remote-extension-supervisor.mjs
 COPY --chown=1000:1000 --chmod=0555 remote-extension-route-filter.mjs \
   /opt/vera/bin/remote-extension-route-filter.mjs
+COPY --chown=1000:1000 --chmod=0555 remote-extension-enrollment.mjs \
+  /opt/vera/bin/remote-extension-enrollment.mjs
 COPY --chown=1000:1000 --chmod=0444 \
   vera-read-shared-tab/index.mjs \
   vera-read-shared-tab/openclaw.plugin.json \
@@ -61,7 +63,7 @@ LABEL org.opencontainers.image.title="Vera OpenClaw Browser Gateway" \
   org.opencontainers.image.description="Hardened founder-only OpenClaw direct-extension Gateway" \
   org.opencontainers.image.source="https://github.com/zukhriddingit/VeraAI" \
   org.opencontainers.image.revision="${VERA_SOURCE_COMMIT}" \
-  org.opencontainers.image.version="2026.7.1-vera.9" \
+  org.opencontainers.image.version="2026.7.1-vera.10" \
   org.opencontainers.image.base.name="cgr.dev/chainguard/node" \
   org.opencontainers.image.base.digest="sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22" \
   io.vera.openclaw.image.digest="sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c"

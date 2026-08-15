@@ -19,6 +19,7 @@ function register(status: "ready" | "not_ready"): void {
     calendar: createUnconfiguredCalendarApplication(),
     gmailOAuth: null,
     betaAccess: null,
+    browserConnectorEnrollments: null,
     browserGatewayAssignments: null,
     browserGatewayRuntime: null,
     demoUserId: null,

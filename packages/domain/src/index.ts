@@ -8,6 +8,7 @@ export * from "./browser-agent-api.ts";
 export * from "./browser-beta-evidence.ts";
 export * from "./browser-acquisition.ts";
 export * from "./browser-extension-readiness.ts";
+export * from "./browser-connector-enrollment.ts";
 export * from "./browser-gateway-assignment.ts";
 export * from "./browser-research.ts";
 export * from "./capture-api.ts";

@@ -46,18 +46,6 @@
         color: #eaf7f0;
         padding: 9px 10px;
       }
-      textarea {
-        background: #203a31;
-        border: 1px solid #48665b;
-        border-radius: 6px;
-        box-sizing: border-box;
-        color: #f5f3ec;
-        font-family: ui-monospace, monospace;
-        font-size: 11px;
-        min-height: 54px;
-        resize: vertical;
-        width: 100%;
-      }
       button {
         background: #f06a43;
         border: 0;
@@ -102,18 +90,35 @@
         color: #8de1b5;
         font-size: 11px;
       }
+      a.connect {
+        background: #f06a43;
+        border-radius: 7px;
+        color: white;
+        display: block;
+        font-size: 13px;
+        font-weight: 650;
+        margin-top: 9px;
+        padding: 9px 11px;
+        text-align: center;
+        text-decoration: none;
+      }
     </style>
   </head>
   <body>
     <h1><span id="statusDot" class="dot"></span>Vera Browser Connector BETA</h1>
     <div id="pairSection">
-      <p>Paste the one-time pairing string for your Vera Browser Gateway.</p>
-      <textarea
-        id="pairingString"
-        placeholder="wss://gateway.example/browser/extension#…"
-      ></textarea>
-      <p id="pairError" class="hidden"></p>
-      <button id="pairButton">Pair</button>
+      <p>
+        Sign in to Vera and connect this Chrome profile once. Vera never displays or copies the
+        private Gateway credential.
+      </p>
+      <a
+        class="connect"
+        href="https://app.verahousing.app/settings/integrations/browser-agent"
+        target="_blank"
+        rel="noreferrer"
+        >Open Vera to connect</a
+      >
+      <p>Connecting does not share a tab. You choose one tab separately when you search.</p>
     </div>
     <div id="connectedSection" class="hidden">
       <p id="connectionLine"></p>

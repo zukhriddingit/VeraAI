@@ -6,9 +6,9 @@ import ts from "typescript";
 
 const MUTATION_HANDLERS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const AUTHENTICATION_CALL =
-  /\b(?:requireVeraSession|calendarRouteService|requireAssignedCheckpoint|authenticateCheckpoint)\s*\(/u;
+  /\b(?:requireVeraSession|calendarRouteService|requireAssignedCheckpoint|requireEnrollmentCheckpoint|authenticateCheckpoint)\s*\(/u;
 const ORIGIN_CALL =
-  /\b(?:assertSameOriginMutation|requireAssignedCheckpoint|authenticateCheckpoint)\s*\(/u;
+  /\b(?:assertSameOriginMutation|requireAssignedCheckpoint|requireEnrollmentCheckpoint|authenticateCheckpoint)\s*\(/u;
 const PUBLIC_BETA_GUARD = /\brequirePublicBetaSubmissionBoundary\s*\(/u;
 const PUBLIC_BETA_ROUTE = "apps/web/app/api/beta-access/route.ts";
 const BOUNDED_READER_CALL = /\b(?:readBoundedJson|readCalendarMutationJson)\s*\(/u;

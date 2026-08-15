@@ -57,6 +57,17 @@ describe("web mutation boundary verifier", () => {
         `)
       )
     ).toEqual([]);
+    expect(
+      findMutationBoundaryViolations(
+        files(`
+          export async function POST(request: Request) {
+            await requireEnrollmentCheckpoint(request, browserGatewayRuntime);
+            const input = await readBoundedJson(request, { maxBytes: 4_096 });
+            return enroll(input);
+          }
+        `)
+      )
+    ).toEqual([]);
   });
 
   it("reports missing controls, direct body buffering, and unsafe ordering per handler", () => {

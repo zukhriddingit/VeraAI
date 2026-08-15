@@ -15,7 +15,9 @@ describe("public browser connector policy", () => {
       "do not sell",
       "advertising",
       "Chrome Web Store User Data Policy",
-      "unpair",
+      "saved browser connection",
+      "Connecting alone shares no tab",
+      "installation digest",
       "deletion",
       "login, 2FA, CAPTCHA, consent"
     ])

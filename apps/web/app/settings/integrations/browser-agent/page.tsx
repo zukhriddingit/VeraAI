@@ -39,23 +39,18 @@ export default async function BrowserAgentSettingsPage() {
       </nav>
       <header className="subpage-hero settings-hero">
         <p className="eyebrow">Settings · Integrations · Browser agent</p>
-        <h1>Capture one page you already opened.</h1>
+        <h1>Connect once. Share one tab only when you search.</h1>
         <p className="lede">
           This private beta reads only an explicitly shared Vera Search tab through your isolated
           Browser Connector assignment. Vera never automates sign-in, CAPTCHA, contact,
           applications, payments, uploads, downloads, or blocker bypasses.
         </p>
       </header>
-      {connectorUrl ? (
-        <p>
-          <a className="primary-action" href={connectorUrl}>
-            Install Browser Connector for approved testers
-          </a>
-        </p>
-      ) : (
-        <p className="lede">Browser Connector is waiting for concierge onboarding.</p>
-      )}
-      <BrowserAgentPanel initialStatus={status} initialAssignmentStatus={assignmentStatus} />
+      <BrowserAgentPanel
+        initialStatus={status}
+        initialAssignmentStatus={assignmentStatus}
+        connectorUrl={connectorUrl}
+      />
     </main>
   );
 }

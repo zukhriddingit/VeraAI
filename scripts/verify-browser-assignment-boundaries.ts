@@ -6,7 +6,10 @@ export interface BrowserAssignmentBoundarySources {
   readonly activeServices: string;
   readonly dispatchRoutes: readonly string[];
   readonly checkpointRoute: string;
+  readonly enrollmentCheckpointRoute: string;
   readonly assignmentMigration: string;
+  readonly enrollmentMigration: string;
+  readonly enrollmentService: string;
   readonly runtimeResolver: string;
   readonly gatewayRuntimeManifest: string;
 }
@@ -53,6 +56,27 @@ export function findBrowserAssignmentViolations(
     violations.push("Checkpoint owner must resolve before body parsing and tenant repositories.");
   }
 
+  const enrollmentPostHandler = sources.enrollmentCheckpointRoute.slice(
+    sources.enrollmentCheckpointRoute.indexOf("export async function POST")
+  );
+  const enrollmentAuthentication = enrollmentPostHandler.indexOf("requireEnrollmentCheckpoint(");
+  const enrollmentBodyRead = enrollmentPostHandler.indexOf("readBoundedJson(");
+  const enrollmentTenantLookup = enrollmentPostHandler.indexOf(
+    "repositoryProvider.forUser(resolved.userId)"
+  );
+  if (
+    !sources.enrollmentCheckpointRoute.includes("authenticateEnrollmentCheckpoint(") ||
+    enrollmentAuthentication < 0 ||
+    enrollmentBodyRead < 0 ||
+    enrollmentTenantLookup < 0 ||
+    enrollmentAuthentication > enrollmentBodyRead ||
+    enrollmentBodyRead > enrollmentTenantLookup
+  ) {
+    violations.push(
+      "Enrollment checkpoint owner must resolve before body parsing and tenant repositories."
+    );
+  }
+
   const assignmentTable =
     /CREATE TABLE "browser_gateway_assignments" \(([\s\S]*?)\n\);/u.exec(
       sources.assignmentMigration
@@ -74,9 +98,36 @@ export function findBrowserAssignmentViolations(
     }
   }
 
+  const enrollmentTicketTable =
+    /CREATE TABLE "browser_connector_enrollment_tickets" \(([\s\S]*?)\n\);/u.exec(
+      sources.enrollmentMigration
+    )?.[1] ?? "";
+  if (!enrollmentTicketTable || !enrollmentTicketTable.includes("interval '60 seconds'")) {
+    violations.push("Browser enrollment tickets must be explicit and expire within 60 seconds.");
+  } else {
+    const enrollmentColumns = [...enrollmentTicketTable.matchAll(/^\s*"([a-z0-9_]+)"\s/gmu)].map(
+      (match) => match[1]!
+    );
+    const unsafeEnrollmentColumns = enrollmentColumns.filter(
+      (name) => /ticket|token|credential|secret/u.test(name) && name !== "ticket_digest"
+    );
+    if (unsafeEnrollmentColumns.length > 0) {
+      violations.push("Browser enrollment persistence must not contain raw credential columns.");
+    }
+  }
+  if (
+    !sources.enrollmentService.includes("digestEnrollmentSecret(ticket)") ||
+    /secretStore\.resolve\(|OPENCLAW_EXTENSION_PAIRING_SEED|browser-extension-relay\.secret/u.test(
+      sources.enrollmentService
+    )
+  ) {
+    violations.push("The web enrollment service must persist only ticket digests.");
+  }
+
   for (const required of [
     "VERA_BETA_ACCESS_GATE_ENABLED",
     "VERA_BROWSER_ASSIGNMENT_ROUTING_ENABLED",
+    "VERA_BROWSER_ENROLLMENT_ENABLED",
     "VERA_BROWSER_ASSIGNMENT_TOKEN_HASH_VERSION",
     "VERA_BROWSER_BETA_USER_IDS",
     "isActiveUser(",
@@ -125,7 +176,12 @@ function loadSources(root: string): BrowserAssignmentBoundarySources {
       "apps/web/app/api/integrations/remote-browser/snapshot/route.ts"
     ].map(read),
     checkpointRoute: read("apps/web/app/api/internal/browser-research/checkpoint/route.ts"),
+    enrollmentCheckpointRoute: read(
+      "apps/web/app/api/internal/browser-connector/enrollment/checkpoint/route.ts"
+    ),
     assignmentMigration: read("packages/db/drizzle/0008_browser_gateway_assignments.sql"),
+    enrollmentMigration: read("packages/db/drizzle/0009_perpetual_metal_master.sql"),
+    enrollmentService: read("apps/web/lib/browser-connector-enrollment-service.ts"),
     runtimeResolver: read("apps/web/lib/server/browser-gateway-runtime-resolver.ts"),
     gatewayRuntimeManifest: read("infra/maritime/browser-beta/runtime.json")
   };

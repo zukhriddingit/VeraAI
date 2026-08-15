@@ -861,12 +861,14 @@ export interface EphemeralCleanupResult {
   readonly dispatchesExpired: number;
   readonly heartbeatsDeleted: number;
   readonly scheduleRunsDeleted: number;
+  readonly browserEnrollmentTicketsExpired: number;
 }
 
 export interface SystemEphemeralCleanupRepository {
   cleanup(input: {
     readonly now: string;
     readonly batchSize: number;
+    readonly enrollmentTicketLimit?: number;
   }): Promise<EphemeralCleanupResult>;
 }
 

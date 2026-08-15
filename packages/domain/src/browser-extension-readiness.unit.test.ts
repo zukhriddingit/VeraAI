@@ -8,7 +8,10 @@ import {
 const ready = BrowserExtensionReadinessMessageSchema.parse({
   source: "vera-openclaw-extension",
   type: "readiness",
-  version: "1",
+  version: "2",
+  extensionVersion: "2.2.0",
+  enrollmentProtocolVersion: "1",
+  installationDigest: "a".repeat(64),
   paired: true,
   relayState: "on",
   readiness: "ready",
@@ -41,5 +44,18 @@ describe("browser extension readiness", () => {
         token: "must-never-cross-the-bridge"
       }).success
     ).toBe(false);
+  });
+
+  it("keeps the accepted v1 readiness shape compatible during rollout", () => {
+    const legacy = BrowserExtensionReadinessMessageSchema.parse({
+      source: "vera-openclaw-extension",
+      type: "readiness",
+      version: "1",
+      paired: true,
+      relayState: "on",
+      readiness: "ready",
+      sharedTabCount: 1
+    });
+    expect(browserExtensionReadyForResearch(legacy)).toBe(true);
   });
 });

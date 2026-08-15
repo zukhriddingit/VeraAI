@@ -16,6 +16,8 @@ it("creates identical allowlisted package bytes", async () => {
   const a = await packageVeraBrowserConnector({ sourceDirectory, outputDirectory: first });
   const b = await packageVeraBrowserConnector({ sourceDirectory, outputDirectory: second });
   expect(a.sha256).toBe(b.sha256);
+  expect(a.zipPath).toMatch(/vera-browser-connector-2\.2\.0\.zip$/u);
   expect(a.entries).toEqual(CONNECTOR_PACKAGE_ENTRIES);
+  expect(a.entries).toContain("modules/enrollment.js");
   expect(a.entries.some((entry) => /test|store|\.ts$/u.test(entry))).toBe(false);
 });

@@ -69,6 +69,7 @@ const environment = {
   VERA_BROWSER_ASSIGNMENT_ROUTING_ENABLED: "1",
   VERA_BROWSER_ASSIGNMENT_TOKEN_HASH_VERSION: "sha256.v1",
   VERA_BROWSER_BETA_USER_IDS: userA,
+  VERA_BROWSER_ENROLLMENT_ENABLED: "1",
   VERA_BROWSER_DISABLED: "0",
   VERA_GMAIL_ALERTS_DISABLED: "1",
   VERA_INTEGRATIONS_DISABLED: "1",
@@ -181,6 +182,48 @@ describe("browser Gateway runtime resolver", () => {
 
     await expect(
       configured.resolver.authenticateCheckpoint({
+        bearerToken: checkpointToken,
+        origin: "https://evil.example"
+      })
+    ).rejects.toEqual(new BrowserGatewayAuthorizationError());
+  });
+
+  it("authorizes enrollment without requiring a paired node or enabled browser jobs", async () => {
+    const configured = fixture();
+    const resolver = new BrowserGatewayRuntimeResolver({
+      assignments: configured.assignments,
+      betaAccess: { isActiveUser: configured.isActiveUser } as unknown as BetaAccessRepository,
+      repositoryProvider: { forUser: configured.forUser } as unknown as UserRepositoryProvider,
+      secretStore: { resolve: configured.resolveSecret },
+      environment: { ...environment, VERA_BROWSER_DISABLED: "1" },
+      now: () => new Date("2026-08-13T18:10:00.000Z")
+    });
+    configured.getNode.mockResolvedValueOnce({ ...node, pairingState: "not_paired" });
+
+    await expect(resolver.resolveEnrollmentForUser(userA)).resolves.toEqual(assignmentA);
+    await expect(
+      resolver.authenticateEnrollmentCheckpoint({
+        bearerToken: checkpointToken,
+        origin: assignmentA.checkpointOrigin
+      })
+    ).resolves.toEqual({ userId: userA, assignment: assignmentA });
+    expect(configured.forUser).not.toHaveBeenCalled();
+    expect(configured.resolveSecret).not.toHaveBeenCalled();
+  });
+
+  it("fails enrollment closed when its dedicated flag or checkpoint origin is invalid", async () => {
+    const configured = fixture();
+    const disabled = new BrowserGatewayRuntimeResolver({
+      assignments: configured.assignments,
+      betaAccess: { isActiveUser: configured.isActiveUser } as unknown as BetaAccessRepository,
+      repositoryProvider: { forUser: configured.forUser } as unknown as UserRepositoryProvider,
+      secretStore: { resolve: configured.resolveSecret },
+      environment: { ...environment, VERA_BROWSER_ENROLLMENT_ENABLED: "0" },
+      now: () => new Date("2026-08-13T18:10:00.000Z")
+    });
+    await expect(disabled.resolveEnrollmentForUser(userA)).resolves.toBeNull();
+    await expect(
+      configured.resolver.authenticateEnrollmentCheckpoint({
         bearerToken: checkpointToken,
         origin: "https://evil.example"
       })

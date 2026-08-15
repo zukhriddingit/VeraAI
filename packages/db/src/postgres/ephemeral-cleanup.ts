@@ -19,6 +19,7 @@ export function createPostgresEphemeralCleanupRepository(
     async cleanup(input): Promise<EphemeralCleanupResult> {
       const now = IsoDateTimeSchema.parse(input.now);
       const batchSize = BatchSizeSchema.parse(input.batchSize);
+      const enrollmentTicketLimit = BatchSizeSchema.parse(input.enrollmentTicketLimit ?? batchSize);
       const oauthCutoff = new Date(Date.parse(now) - 24 * 60 * 60 * 1_000).toISOString();
       const heartbeatCutoff = new Date(Date.parse(now) - 7 * 24 * 60 * 60 * 1_000).toISOString();
       const scheduleRunCutoff = new Date(Date.parse(now) - 30 * 24 * 60 * 60 * 1_000).toISOString();
@@ -79,11 +80,27 @@ export function createPostgresEphemeralCleanupRepository(
             using candidates
             where target.ctid = candidates.ctid
           `);
+          const browserEnrollmentTickets = await transaction.execute(sql`
+            with candidates as (
+              select ctid
+              from browser_connector_enrollment_tickets
+              where status = 'issued'
+                and expires_at <= ${now}::timestamptz
+              order by expires_at, user_id, id
+              limit ${enrollmentTicketLimit}
+              for update skip locked
+            )
+            update browser_connector_enrollment_tickets as target
+            set status = 'expired', terminal_at = ${now}::timestamptz, terminal_reason = 'expired'
+            from candidates
+            where target.ctid = candidates.ctid
+          `);
           return {
             gmailOauthStatesDeleted: affected(oauth),
             dispatchesExpired: affected(dispatches),
             heartbeatsDeleted: affected(heartbeats),
-            scheduleRunsDeleted: affected(scheduleRuns)
+            scheduleRunsDeleted: affected(scheduleRuns),
+            browserEnrollmentTicketsExpired: affected(browserEnrollmentTickets)
           };
         });
       } catch (error: unknown) {
