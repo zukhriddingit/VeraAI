@@ -16,6 +16,7 @@ It has no local OpenClaw installation, node, CLI, daemon, Companion, or Vera age
 | Search profile, shortlist state, and listing decisions | Vera user | Browser to Vera over HTTPS | PostgreSQL | Tenant-owned. Money is integer minor units; persisted instants are `timestamptz`. |
 | Listing source evidence and provenance | Deterministic fixture in the explicit offline demo only; hosted user capture, Gmail alert, approved API, or founder browser capture | Connector to Vera worker | PostgreSQL for hosted data; isolated SQLite for the deterministic demo | Raw evidence, source records, provenance, and activity history are append-only. The hosted connector composition and policy seed exclude fixture acquisition. Contact data is excluded from normal logs and audit metadata. |
 | Marketplace password, cookie, local/session storage, profile, and password-manager data | User-controlled Chrome profile | Must remain inside Chrome | Local machine only | Vera never asks for, types, uploads, stores, logs, or backs up these artifacts. Manual login, reauthentication, 2FA, CAPTCHA, and consent remain manual. |
+| Browser Connector installation and enrollment | Extension and authenticated Vera settings page | Vera web over HTTPS; one exact WSS enrollment exchange with the assigned Gateway | Raw installation ID and relay credential in Chrome local storage; installation/ticket digests and device state in PostgreSQL; relay credential in the assigned Gateway | The Vera page receives only the installation digest. The raw installation ID transits once in the bounded WSS enrollment frame to the internal checkpoint, where it is digested but not stored or logged. A 256-bit one-time ticket expires within 60 seconds and is stored only as a digest. The durable relay credential is never displayed by Vera. Connecting shares no tab and persists only for that Chrome profile until revocation. |
 | Remote-extension consent-tab content | One tab explicitly placed in the OpenClaw tab group | Chrome extension over WSS to the dedicated per-user Gateway; minimized result to Vera | Not accepted as listing evidence; connectivity response is ephemeral | The result contains only page origin, sanitized title, at most 24 bounded accessibility lines, safe counts, UTC capture time, and hashes. Full snapshots, screenshots, tab lists, target IDs, query strings, paths, cookies, storage, profile paths, contacts, and credentials are rejected. |
 | Legacy local-node current-tab content | Disabled historical adapter | No authorized founder transport | None in the remote-extension spike | The legacy code remains for regression protection and cannot satisfy a remote-extension phase. |
 | Google connection | Google OAuth web flow | Browser redirects; server-to-Google code/token exchange | PostgreSQL | Account subject, display email, scopes, status, expiry metadata, and AES-256-GCM-encrypted refresh token only. Authorization codes and access tokens are not durable. |
@@ -41,6 +42,8 @@ Vera distinguishes durable evidence from disposable control state:
 - Expired Maritime dispatches are moved to the terminal `expired` state; their safe dispatch evidence is retained.
 - Service heartbeats expired for more than 7 days are deleted in bounded batches.
 - Terminal production-schedule runs completed more than 30 days ago are deleted in bounded batches.
+- Expired issued Browser Connector tickets are moved to terminal `expired` state in bounded batches;
+  consumed ticket evidence is retained without the raw ticket.
 - Expired notification leases are reclaimable; a crashed worker cannot strand a delivery indefinitely.
 - Cleanup uses one bounded PostgreSQL transaction and `FOR UPDATE SKIP LOCKED`; it never deletes raw listings, source records, provenance, canonical listings, extractions, approvals, source jobs/attempts, or activity events.
 
@@ -65,9 +68,10 @@ There is no self-service account-deletion endpoint. A privacy deletion is a sepa
 
 1. Verify the exact founder UUID twice and obtain a fresh, explicit approval naming the production environment and deletion scope.
 2. Enable global/per-user kill switches, stop user schedules, cancel safe queued work by policy,
-   revoke the dedicated browser API key and extension pairing secret, and stop the user's dedicated
-   Gateway. Removing the consent tab and browser-profile deletion remain user-controlled local
-   actions.
+   revoke the dedicated browser API key, Browser Connector devices, and outstanding enrollment
+   tickets, clear the local extension relay credential through the authenticated Vera page, and stop
+   the user's dedicated Gateway. Removing the consent tab and browser-profile deletion remain
+   user-controlled local actions.
 3. For Google, acquire the same database-backed integration refresh lease used by refresh. Attempt provider revocation first, then delete Vera's encrypted refresh-token material regardless of provider response. Record only the safe outcome and manual Google-account recovery link if revocation is unconfirmed.
 4. Remove Web Push subscriptions and revoke provider-side notification credentials where supported.
 5. Produce a pre-delete manifest containing only owner-scoped counts and hashes. A second operator or delayed re-verification must confirm the UUID and scope before execution.
@@ -93,7 +97,7 @@ The absence of self-service export/deletion is accepted only for the single-foun
 1. Activate the narrowest kill switch; use the global browser/integration/schedule/notification switches for uncertain scope.
 2. Stop new dispatch and provider work while preserving canonical PostgreSQL and sanitized audit evidence.
 3. Revoke the affected Google grant, dedicated Maritime browser credential, OpenClaw Gateway
-   token/extension pairing secret, Web Push subscription, session, or encryption key.
+   token/extension relay credential, Web Push subscription, session, or encryption key.
 4. Rotate through protected operator tooling. Never paste raw secrets, browser artifacts, page snapshots, database URLs, or provider payloads into chat or tickets.
 5. Preserve source commit, image/config digests, safe correlation IDs, hashes, affected time range, and provider audit references.
 6. If an application-encryption key is affected, block decrypting flows, introduce a new key ID, re-encrypt through a separately reviewed procedure, verify every envelope, and retain the old key until no row references it.
@@ -123,6 +127,6 @@ Before founder beta, record without secrets:
 - runtime versus migration database roles and grants;
 - actual Maritime log/diagnostic retention;
 - dedicated Maritime/OpenClaw deployment and immutable version identities;
-- least-privilege OpenClaw tool, extension-profile, pairing, and per-user Gateway configuration;
+- least-privilege OpenClaw tool, extension-profile, enrollment, and per-user Gateway configuration;
 - sanitized positive and failure-path staging results;
 - verified Web Push provider behavior, or keep production push disabled.

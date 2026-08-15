@@ -79,6 +79,7 @@ export function findRemoteExtensionConfigViolations(input: {
   readonly supervisorSource: string;
   readonly diagnosticSource: string;
   readonly routeFilterSource: string;
+  readonly enrollmentSource: string;
 }): string[] {
   const violations: string[] = [];
   const {
@@ -103,7 +104,8 @@ export function findRemoteExtensionConfigViolations(input: {
     dockerfile,
     supervisorSource,
     diagnosticSource,
-    routeFilterSource
+    routeFilterSource,
+    enrollmentSource
   } = input;
 
   if (objectAt(config, "meta")?.lastTouchedVersion !== REMOTE_EXTENSION_OPENCLAW_VERSION) {
@@ -247,6 +249,7 @@ export function findRemoteExtensionConfigViolations(input: {
     !dockerfile.includes("--chmod=0555") ||
     !dockerfile.includes("remote-extension-supervisor.mjs") ||
     !dockerfile.includes("remote-extension-route-filter.mjs") ||
+    !dockerfile.includes("remote-extension-enrollment.mjs") ||
     !dockerfile.includes("vera-zillow-rental-research/index.mjs") ||
     !dockerfile.includes("vera-zillow-rental-research/contract.mjs") ||
     !dockerfile.includes("vera-zillow-rental-research/zillow-snapshot.mjs") ||
@@ -658,6 +661,59 @@ export function findRemoteExtensionConfigViolations(input: {
     );
   }
 
+  const enrollmentBranch = routeFilterSource.indexOf("protocols.includes(ENROLLMENT_PROTOCOL)");
+  const enrollmentHandler = routeFilterSource.indexOf("handleEnrollmentUpgrade(", enrollmentBranch);
+  const enrollmentReturn = routeFilterSource.indexOf("return;", enrollmentHandler);
+  const upstreamConnect = routeFilterSource.indexOf("const upstream = connect(");
+  if (
+    !routeFilterSource.includes(
+      'import { ENROLLMENT_PROTOCOL, handleEnrollmentUpgrade } from "./remote-extension-enrollment.mjs"'
+    ) ||
+    enrollmentBranch < 0 ||
+    enrollmentHandler < 0 ||
+    enrollmentReturn < 0 ||
+    upstreamConnect < 0 ||
+    enrollmentBranch > upstreamConnect ||
+    enrollmentHandler > upstreamConnect ||
+    enrollmentReturn > upstreamConnect
+  ) {
+    violations.push(
+      "Enrollment upgrades must terminate in the bounded local handoff before OpenClaw relay forwarding."
+    );
+  }
+
+  const checkpointRequest = enrollmentSource.indexOf("await fetchImplementation(");
+  const credentialRead = enrollmentSource.indexOf("readCredentialImplementation()");
+  if (
+    !enrollmentSource.includes('ENROLLMENT_PROTOCOL = "vera-browser-enrollment.v1"') ||
+    !enrollmentSource.includes('const EXTENSION_ROUTE = "/browser/extension"') ||
+    !enrollmentSource.includes("const MAX_FRAME_BYTES = 4_096") ||
+    !enrollmentSource.includes("const ENROLLMENT_TIMEOUT_MILLISECONDS = 10_000") ||
+    !enrollmentSource.includes("new WebSocketServer({") ||
+    !enrollmentSource.includes("noServer: true") ||
+    !enrollmentSource.includes("maxPayload: MAX_FRAME_BYTES") ||
+    !enrollmentSource.includes("perMessageDeflate: false") ||
+    !enrollmentSource.includes(
+      'RELAY_CREDENTIAL_PATH = "/data/.openclaw/credentials/browser-extension-relay.secret"'
+    ) ||
+    !enrollmentSource.includes("constants.O_RDONLY | constants.O_NOFOLLOW") ||
+    !enrollmentSource.includes("(stat.mode & 0o777) !== 0o600") ||
+    !enrollmentSource.includes("VERA_BROWSER_ENROLLMENT_ENABLED") ||
+    !enrollmentSource.includes("VERA_BROWSER_ENROLLMENT_CHECKPOINT_URL") ||
+    !enrollmentSource.includes("VERA_BROWSER_PUBLIC_GATEWAY_ORIGIN") ||
+    !enrollmentSource.includes("VERA_BROWSER_RESEARCH_CHECKPOINT_TOKEN") ||
+    checkpointRequest < 0 ||
+    credentialRead < 0 ||
+    checkpointRequest > credentialRead ||
+    /(?:console\.(?:debug|info|log|warn|error)|process\.(?:stdout|stderr)\.write)\s*\([\s\S]{0,300}(?:ticket|token|credential|headers|frame)/iu.test(
+      enrollmentSource
+    )
+  ) {
+    violations.push(
+      "Browser enrollment must be a bounded, checkpoint-first, secret-safe exact-route handoff."
+    );
+  }
+
   return violations;
 }
 
@@ -720,7 +776,11 @@ export function verifyRemoteExtensionConfig(root = resolve(import.meta.dirname, 
       resolve(root, "infra/maritime/diagnostics/websocket-diagnostic-server.mjs"),
       "utf8"
     ),
-    routeFilterSource: readFileSync(resolve(directory, "remote-extension-route-filter.mjs"), "utf8")
+    routeFilterSource: readFileSync(
+      resolve(directory, "remote-extension-route-filter.mjs"),
+      "utf8"
+    ),
+    enrollmentSource: readFileSync(resolve(directory, "remote-extension-enrollment.mjs"), "utf8")
   });
   if (violations.length > 0) throw new Error(violations.join("\n"));
 }

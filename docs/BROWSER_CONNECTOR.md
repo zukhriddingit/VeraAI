@@ -1,19 +1,19 @@
 # Vera Browser Connector
 
-Status: founder connectivity spike; bootstrap-compatible candidate awaits verified signing recovery
+Status: accepted founder browser baseline; v2.2.0 one-click enrollment is activation-gated
 
-Reviewed: 2026-07-27
+Reviewed: 2026-08-14
 
 Release profile: `founder_browser_experimental`
 
-Current classification: `no_go`
+Current classification: `private_beta_gated`
 
 ## What the founder installs
 
-The founder installs one unpacked Chrome extension: the official OpenClaw Chrome extension from the
-exact reviewed OpenClaw `2026.7.1` image. The founder does **not** install OpenClaw, an OpenClaw
-node, a CLI, a daemon, Maritime Companion, or a local Vera agent. No inbound port is opened on the
-founder's computer.
+An approved tester installs Vera Browser Connector BETA v2.2.0 from the private Chrome Web Store
+item, or the exact verified unpacked package during pre-publication acceptance. The tester does
+**not** install OpenClaw, an OpenClaw node, a CLI, a daemon, Maritime Companion, or a local Vera
+agent. No inbound port is opened on the tester's computer.
 
 The extension is necessary because Chrome does not expose an authenticated consumer session to a
 remote server by default. It uses Chrome's extension APIs and makes one outbound WSS connection to
@@ -110,49 +110,31 @@ Normal application tables must not store a raw Gateway token, extension pairing 
 cookie, local/session storage, password, browser history, full tab inventory, full snapshot, raw
 target/profile identifier, or unrelated-tab metadata.
 
-## Pairing
+## One-click enrollment
 
-An authorized operator creates the dedicated Gateway credential in protected server tooling. When
-the provider offers a safe exec channel, the operator uses the official OpenClaw pairing command
-inside that user's Gateway:
+The tester installs the extension, signs in to Vera, opens **Settings → Browser Connector**, accepts
+the read-only disclosure, and clicks **Connect this browser**. The Vera page sees only the extension
+version, protocol version, and SHA-256 installation digest. The server issues a 256-bit ticket that
+expires within 60 seconds and stores only its digest.
 
-```sh
-maritime exec <dedicated-browser-agent> \
-  -- \
-  openclaw browser extension pair \
-  --gateway-url 'wss://api.maritime.sh/a/<opaque-agent-id>'
-```
+The extension opens the exact assigned `wss://<gateway>/browser/extension` route with protocol
+`vera-browser-enrollment.v1` and sends the ticket in one bounded first frame. The Gateway authenticates
+the assignment with Vera before reading its fixed mode-`0600` relay credential. Only then does it
+return that credential to the extension. The ticket never appears in a URL, header, WebSocket
+subprotocol, log, browser page, or persistent database field. The Vera application never resolves or
+displays the relay credential.
 
-The command emits
-`wss://api.maritime.sh/a/<opaque-agent-id>/browser/extension#<secret>`. The fragment must be handed
-directly to the correct founder through an approved secret channel. Do not paste it into Codex,
-GitHub, logs, analytics, screenshots, tickets, ordinary release evidence, or a query string.
+The connection is remembered in that Chrome profile across browser restarts. Enrollment does not
+prepare, attach, group, or share a tab. The tester must separately prepare and share exactly one tab
+for every research session. Server revocation disables the device and outstanding tickets before the
+response; the authenticated Vera page then tells the extension to clear its local relay credential.
 
-When a managed provider exposes no safe exec channel, inject one independently generated
-64-character lowercase hexadecimal value through its private server setting as
-`OPENCLAW_EXTENSION_PAIRING_SEED`. Vera's fixed supervisor installs it at
-`/data/.openclaw/credentials/browser-extension-relay.secret` before OpenClaw starts, removes the
-setting from both supervisor and child environments, and fails closed on malformed input, a
-symbolic link, a non-regular entry, or an existing mismatch. Never set it to
-`OPENCLAW_GATEWAY_TOKEN`.
-
-Restricted operator tooling may assemble the founder's connection string from the exact WSS route
-and the private seed without printing either value. Deliver it only through the approved secret
-channel. The seed remains a Gateway bootstrap setting; the repository's opt-in proxy probe reads
-the distinct local operator variable `OPENCLAW_EXTENSION_PAIRING_SECRET`.
-
-The founder:
-
-1. receives the unpacked extension directory extracted from the exact reviewed image;
-2. opens `chrome://extensions`;
-3. enables Developer mode and chooses **Load unpacked**;
-4. selects that extension directory;
-5. opens the extension popup and pastes the one-user pairing string; and
-6. confirms that the extension reports connected to the expected safe hostname.
-
-The pairing secret is a host-local credential carried in the WebSocket subprotocol, not an operator
-token shared with the browser. Rotate it after suspected disclosure, revoke it when the connection
-is disabled, and remove the dedicated Gateway during user deletion.
+Operators still create the dedicated 64-character lowercase hexadecimal Gateway relay credential
+through protected server tooling. Vera's fixed supervisor installs it at
+`/data/.openclaw/credentials/browser-extension-relay.secret`, removes the bootstrap seed from parent
+and child environments, and fails closed on malformed input, a symbolic link, a non-regular entry,
+or an existing mismatch. Never set it to `OPENCLAW_GATEWAY_TOKEN`, print it, or deliver it to a
+tester.
 
 Vera must display:
 
@@ -234,8 +216,8 @@ another user's isolated Gateway.
 ## Prepared Vera Search tab
 
 The reviewed Vera OpenClaw extension package lives at
-`infra/chrome/vera-openclaw-extension`. It preserves the official OpenClaw 2.0.0 pairing and relay
-protocol but changes when Chrome's debugger lease is acquired.
+`infra/chrome/vera-openclaw-extension`. It preserves the reviewed OpenClaw relay protocol, adds the
+bounded Vera enrollment handoff, and changes when Chrome's debugger lease is acquired.
 
 Choose **Prepare Vera Search tab** before starting browser research or a screen recording. The
 extension creates one blank consented tab, attaches while no third-party page or extension frame is
@@ -254,9 +236,10 @@ Load the directory as an unpacked extension only after this check passes:
 pnpm verify:vera-openclaw-extension
 ```
 
-The readiness bridge runs only on the reviewed Vera application origins and publishes pairing,
-relay, shared-tab count, and typed readiness state. It publishes no URLs, tab titles, page content,
-cookies, credentials, pairing values, extension identifiers, or raw Chrome errors.
+The readiness bridge runs only on the reviewed Vera application origins and publishes the extension
+version, enrollment protocol version, SHA-256 installation digest, connection state, shared-tab
+count, and typed readiness state. It publishes no URLs, tab titles, page content, cookies, relay
+credentials, raw installation identifier, or raw Chrome errors.
 
 Configured housing sources use the same prepared single tab and signed bounded tool. BU Off-Campus
 is a registry entry for the reusable Off Campus Partners adapter. A custom website supplies one

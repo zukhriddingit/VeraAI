@@ -25,6 +25,7 @@ const browserResearchSnapshot = read(
 const remoteConfig = read("infra/maritime/openclaw/remote-extension.openclaw.json5");
 const remoteImage = read("infra/maritime/openclaw/remote-extension-image.json");
 const remoteRouteFilter = read("infra/maritime/openclaw/remote-extension-route-filter.mjs");
+const remoteEnrollment = read("infra/maritime/openclaw/remote-extension-enrollment.mjs");
 const remoteClient = read("packages/connectors/src/maritime-remote-extension-client.ts");
 const remoteService = read("apps/web/lib/remote-extension-snapshot-service.ts");
 const rentalResearchService = read("apps/web/lib/rental-research-service.ts");
@@ -33,6 +34,12 @@ const remoteRoute = read("apps/web/app/api/integrations/remote-browser/snapshot/
 const zillowCheckpointRoute = read(
   "apps/web/app/api/internal/browser-research/checkpoint/route.ts"
 );
+const enrollmentCheckpointRoute = read(
+  "apps/web/app/api/internal/browser-connector/enrollment/checkpoint/route.ts"
+);
+const enrollmentService = read("apps/web/lib/browser-connector-enrollment-service.ts");
+const extensionEnrollment = read("infra/chrome/vera-openclaw-extension/modules/enrollment.js");
+const extensionBridge = read("infra/chrome/vera-openclaw-extension/readiness-bridge.js");
 const zillowCheckpointService = read("apps/web/lib/zillow-research-checkpoint-service.ts");
 const browserResearchCheckpointService = read(
   "apps/web/lib/browser-research-checkpoint-service.ts"
@@ -248,6 +255,36 @@ rejectText(
   "The public browser Gateway filter must not use partial route matching."
 );
 requireText(
+  remoteRouteFilter,
+  /protocols\.includes\(ENROLLMENT_PROTOCOL\)[\s\S]*handleEnrollmentUpgrade\([\s\S]*return;[\s\S]*const upstream = connect\(/u,
+  "Enrollment upgrades must terminate locally before the normal OpenClaw relay path."
+);
+requireText(
+  remoteEnrollment,
+  /ENROLLMENT_PROTOCOL\s*=\s*"vera-browser-enrollment\.v1"[\s\S]*EXTENSION_ROUTE\s*=\s*"\/browser\/extension"[\s\S]*MAX_FRAME_BYTES\s*=\s*4_096[\s\S]*ENROLLMENT_TIMEOUT_MILLISECONDS\s*=\s*10_000/u,
+  "Browser enrollment must keep its exact protocol, route, payload, and timeout bounds."
+);
+requireText(
+  remoteEnrollment,
+  /new WebSocketServer\(\{[\s\S]*noServer:\s*true[\s\S]*maxPayload:\s*MAX_FRAME_BYTES[\s\S]*perMessageDeflate:\s*false/u,
+  "Browser enrollment WebSocket handling must remain bounded and compression-free."
+);
+requireText(
+  remoteEnrollment,
+  /await fetchImplementation\([\s\S]*parseCheckpointDecision\([\s\S]*readCredentialImplementation\(\)/u,
+  "The Gateway must authorize enrollment before reading the relay credential."
+);
+requireText(
+  remoteEnrollment,
+  /constants\.O_RDONLY\s*\|\s*constants\.O_NOFOLLOW[\s\S]*\(stat\.mode & 0o777\) !== 0o600/u,
+  "The Gateway must read the fixed relay credential without following symlinks and require mode 0600."
+);
+rejectText(
+  remoteEnrollment,
+  /(?:console\.(?:debug|info|log|warn|error)|process\.(?:stdout|stderr)\.write)\s*\([\s\S]{0,300}(?:ticket|token|credential|headers|frame)/iu,
+  "Browser enrollment must not log tickets, tokens, credentials, headers, or frames."
+);
+requireText(
   remoteClient,
   /MARITIME_BROWSER_GATEWAY_API_KEY/u,
   "The remote browser client must use a dedicated browser-Gateway API key."
@@ -294,9 +331,14 @@ requireText(
   /VERA_APARTMENTS_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_FACEBOOK_MARKETPLACE_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BU_OFF_CAMPUS_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_GENERIC_HOUSING_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_CRAIGSLIST_BROWSER_RESEARCH_ENABLED=0[\s\S]*VERA_BROWSER_RESEARCH_PLAN_SIGNING_KEY=/u,
   "The additional browser sources must remain disabled by default and require a server-only signing key."
 );
+requireText(
+  environmentExample,
+  /VERA_BROWSER_ENROLLMENT_ENABLED=0[\s\S]*VERA_BROWSER_ENROLLMENT_CHECKPOINT_URL=[\r\n]+VERA_BROWSER_PUBLIC_GATEWAY_ORIGIN=/u,
+  "One-click Browser Connector enrollment must stay disabled by default with server-only endpoints."
+);
 rejectText(
   environmentExample,
-  /NEXT_PUBLIC_(?:MARITIME_BROWSER_GATEWAY|VERA_REMOTE_EXTENSION|OPENCLAW_EXTENSION)/u,
+  /NEXT_PUBLIC_(?:MARITIME_BROWSER_GATEWAY|VERA_REMOTE_EXTENSION|OPENCLAW_EXTENSION|VERA_BROWSER_ENROLLMENT)/u,
   "Remote browser credentials must never use a public environment prefix."
 );
 requireText(
@@ -308,6 +350,36 @@ requireText(
   zillowCheckpointRoute,
   /authenticateCheckpoint[\s\S]*readBoundedJson[\s\S]*repositoryProvider\.forUser\(resolved\.userId\)/u,
   "The Gateway checkpoint route must resolve a credential owner before bounded input and tenant repository selection."
+);
+requireText(
+  enrollmentCheckpointRoute,
+  /requireEnrollmentCheckpoint[\s\S]*authenticateEnrollmentCheckpoint[\s\S]*export async function POST[\s\S]*requireEnrollmentCheckpoint\([\s\S]*readBoundedJson[\s\S]*repositoryProvider\.forUser\(resolved\.userId\)/u,
+  "The enrollment checkpoint must authenticate the assignment before bounded input and tenant selection."
+);
+requireText(
+  enrollmentService,
+  /randomBytes\(32\)[\s\S]*digestEnrollmentSecret\(ticket\)[\s\S]*60_000/u,
+  "The web enrollment service must issue a 256-bit, digest-only, 60-second ticket."
+);
+rejectText(
+  enrollmentService,
+  /secretStore\.resolve|OPENCLAW_EXTENSION_PAIRING_SEED|browser-extension-relay\.secret/u,
+  "The web enrollment service must not resolve the durable relay credential."
+);
+requireText(
+  extensionEnrollment,
+  /new WebSocket\(url, protocol\)[\s\S]*socket\.send\(frame\)[\s\S]*parseEnrollmentResponse/u,
+  "The extension must send the one-time ticket only in the bounded first WebSocket frame."
+);
+rejectText(
+  extensionEnrollment,
+  /[?&](?:ticket|token)=|document\.cookie|localStorage|sessionStorage|fetch\s*\(/u,
+  "The extension enrollment transport must not put secrets in URLs, web storage, cookies, or fetch headers."
+);
+requireText(
+  extensionBridge,
+  /event\.source !== window \|\| event\.origin !== window\.location\.origin/u,
+  "The Vera page bridge must accept enrollment only from the same window and exact origin."
 );
 requireText(
   zillowCheckpointService,

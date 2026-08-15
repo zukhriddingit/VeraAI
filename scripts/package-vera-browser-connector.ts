@@ -12,6 +12,7 @@ export const CONNECTOR_PACKAGE_ENTRIES = [
   "images/icon-32.png",
   "images/icon-48.png",
   "manifest.json",
+  "modules/enrollment.js",
   "modules/popup-copy.js",
   "modules/prepared-tab.js",
   "modules/relay-core.js",
@@ -43,7 +44,7 @@ export async function packageVeraBrowserConnector(input: {
     await utimes(target, fixed, fixed);
   }
   await mkdir(input.outputDirectory, { recursive: true });
-  const zipPath = resolve(input.outputDirectory, "vera-browser-connector-2.1.0.zip");
+  const zipPath = resolve(input.outputDirectory, "vera-browser-connector-2.2.0.zip");
   const zipped = spawnSync("/usr/bin/zip", ["-X", "-q", zipPath, ...CONNECTOR_PACKAGE_ENTRIES], {
     cwd: staging,
     encoding: "utf8",

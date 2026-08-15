@@ -21,6 +21,7 @@ export function findStoreAssetViolations(input: {
   readonly listing: StoreListing;
   readonly permissionText: string;
   readonly privacyText: string;
+  readonly reviewerText: string;
 }): readonly string[] {
   const violations: string[] = [];
   const listing = input.listing;
@@ -36,6 +37,12 @@ export function findStoreAssetViolations(input: {
     )
   )
     violations.push("Store listing overclaims browser behavior.");
+  if (
+    !String(listing.detailedDescription).includes("Connect this browser") ||
+    !String(listing.detailedDescription).includes("Connecting does not share any tab")
+  ) {
+    violations.push("Store listing must explain one-click connection and separate tab consent.");
+  }
   if (
     listing.homepageUrl !== "https://verahousing.app" ||
     listing.privacyUrl !== "https://verahousing.app/privacy/browser-connector" ||
@@ -54,6 +61,23 @@ export function findStoreAssetViolations(input: {
       violations.push(`Permission justification is missing ${permission}.`);
   if (!input.privacyText.includes("Limited Use requirements"))
     violations.push("Limited Use disclosure is missing.");
+  for (const disclosure of [
+    "SHA-256 digest",
+    "expires within 60 seconds",
+    "Connecting never shares a tab",
+    "revocation clears the extension credential"
+  ]) {
+    if (!input.privacyText.includes(disclosure)) {
+      violations.push(`Enrollment privacy disclosure is missing ${disclosure}.`);
+    }
+  }
+  if (
+    !/Connect this\s+browser/u.test(input.reviewerText) ||
+    !input.reviewerText.includes("zero tabs are shared") ||
+    /pairing value|enter (?:the )?.*pairing|paste (?:the )?.*pairing/iu.test(input.reviewerText)
+  ) {
+    violations.push("Reviewer flow must use authenticated one-click enrollment without secrets.");
+  }
   return violations;
 }
 
@@ -64,10 +88,16 @@ export function verifyStoreSource(root = resolve(".")): Record<string, unknown> 
   ) as StoreListing;
   const permissionText = readFileSync(resolve(directory, "permission-justifications.md"), "utf8");
   const privacyText = readFileSync(resolve(directory, "privacy-practices.md"), "utf8");
-  const combined = `${JSON.stringify(listing)}\n${permissionText}\n${privacyText}\n${readFileSync(resolve(directory, "reviewer-instructions.md"), "utf8")}`;
+  const reviewerText = readFileSync(resolve(directory, "reviewer-instructions.md"), "utf8");
+  const combined = `${JSON.stringify(listing)}\n${permissionText}\n${privacyText}\n${reviewerText}`;
   if (/wss:\/\/[^\s#]+#[A-Za-z0-9_-]{16,}/u.test(combined))
     throw new Error("Store source contains pairing material.");
-  const violations = findStoreAssetViolations({ listing, permissionText, privacyText });
+  const violations = findStoreAssetViolations({
+    listing,
+    permissionText,
+    privacyText,
+    reviewerText
+  });
   if (violations.length)
     throw new Error(`Store source verification failed: ${violations.join(" ")}`);
   return {

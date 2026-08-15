@@ -7,9 +7,9 @@
   },
   "vera": {
     "name": "Vera Browser Connector BETA",
-    "version": "2.1.0",
-    "manifestSha256": "383b42a33a32ab45b35f14ae66c7c915db8075d002b2a3b3c9d664fcd652bf77",
-    "runtimeSha256": "ecaeacee3f2b9875454762a1e8ef345fa000c7a6661bdee0024ce61931c6cb0b",
+    "version": "2.2.0",
+    "manifestSha256": "d43858efbd412bfacfc263ed3cd7f9e7b27ad6b26210f2375b9ac4126cd3119f",
+    "runtimeSha256": "24d1df5dd88690bc1491fbc904f64e0f20ae96dded3c2459899fd3ca3860f913",
     "iconsSha256": "311bd8204663048a70a144d1816a52ebcc7d5e323ba73a012beb934ab6228989"
   }
 }

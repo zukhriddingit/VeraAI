@@ -24,6 +24,7 @@ type Manifest = Record<string, unknown>;
 export interface VeraExtensionVerificationInput {
   readonly manifest: Manifest;
   readonly runtime: string;
+  readonly popup: string;
   readonly iconDimensions: ReadonlyMap<string, readonly [number, number]>;
 }
 
@@ -39,7 +40,7 @@ export function findVeraExtensionViolations(
   if (
     manifest.manifest_version !== 3 ||
     manifest.name !== "Vera Browser Connector BETA" ||
-    manifest.version !== "2.1.0" ||
+    manifest.version !== "2.2.0" ||
     typeof manifest.description !== "string" ||
     !manifest.description.startsWith("THIS EXTENSION IS FOR BETA TESTING.")
   )
@@ -98,6 +99,12 @@ export function findVeraExtensionViolations(
   ];
   if (forbidden.some((pattern) => pattern.test(input.runtime)))
     violations.push("Runtime contains prohibited authority.");
+  if (
+    !input.popup.includes("Open Vera to connect") ||
+    /pairingString|<textarea|type=["']password["']/iu.test(input.popup)
+  ) {
+    violations.push("Popup must use one-click Vera enrollment without credential entry.");
+  }
   if (input.runtime.split("https://www.zillow.com/homes/for_rent/").length !== 2) {
     violations.push("Prepared start URL is not exact.");
   }
@@ -106,7 +113,13 @@ export function findVeraExtensionViolations(
     "openclaw-extension-token.",
     "browser_extension_conflict",
     "Prepare Vera Search tab",
-    "about:blank"
+    "about:blank",
+    "vera-browser-enrollment.v1",
+    "extensionVersion",
+    "enrollmentProtocolVersion",
+    "installationDigest",
+    "event.source !== window",
+    "event.origin !== window.location.origin"
   ])
     if (!input.runtime.includes(required)) violations.push(`Runtime is missing ${required}.`);
   return violations;
@@ -126,12 +139,17 @@ export async function verifyVeraExtension(root = resolve(".")): Promise<Record<s
     "popup.js",
     "readiness-bridge.js",
     "modules/popup-copy.js",
+    "modules/enrollment.js",
     "modules/prepared-tab.js",
     "modules/relay-core.js"
   ] as const;
   const runtime = runtimeFiles
     .map((file) => `${file}\n${readFileSync(resolve(extensionDirectory, file), "utf8")}`)
     .join("\n");
+  const popup = `${readFileSync(resolve(extensionDirectory, "popup.html"), "utf8")}\n${readFileSync(
+    resolve(extensionDirectory, "popup.js"),
+    "utf8"
+  )}`;
   const iconDimensions = new Map<string, readonly [number, number]>();
   const iconParts: Buffer[] = [];
   for (const size of ICON_SIZES) {
@@ -141,7 +159,7 @@ export async function verifyVeraExtension(root = resolve(".")): Promise<Record<s
     iconDimensions.set(name, [metadata.width ?? 0, metadata.height ?? 0]);
     iconParts.push(Buffer.from(`${name}\n`), bytes);
   }
-  const violations = findVeraExtensionViolations({ manifest, runtime, iconDimensions });
+  const violations = findVeraExtensionViolations({ manifest, runtime, popup, iconDimensions });
   if (violations.length)
     throw new Error(`Vera extension verification failed: ${violations.join(" ")}`);
   const releaseLock = JSON.parse(

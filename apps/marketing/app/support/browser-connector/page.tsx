@@ -22,19 +22,24 @@ export default function BrowserConnectorSupportPage() {
           <h2>Safe setup</h2>
           <ol>
             <li>Verify your approved Vera beta access.</li>
-            <li>Pair using only the concierge one-time value.</li>
+            <li>
+              Sign in to Vera, open Browser Connector settings, and choose Connect this browser.
+            </li>
+            <li>Confirm that connecting alone shares zero tabs.</li>
             <li>Prepare one dedicated Vera Search tab.</li>
             <li>Confirm Vera reports Browser ready.</li>
             <li>Handle login, 2FA, CAPTCHA, checkpoints, and consent manually.</li>
-            <li>Unshare when research is complete, then unpair to revoke the device credential.</li>
+            <li>
+              Unshare when research is complete; revoke browser access when you are done testing.
+            </li>
           </ol>
         </section>
         <section>
           <h2>Never email private browser material</h2>
           <p>
-            Never send support a password, cookie, pairing value, browser profile, raw page
-            snapshot, authenticated header, payment, or identity document. Vera support will not ask
-            for them.
+            Never send support a password, cookie, enrollment ticket, relay credential, browser
+            profile, raw page snapshot, authenticated header, payment, or identity document. Vera
+            support will not ask for them.
           </p>
         </section>
       </article>

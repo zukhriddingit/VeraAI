@@ -53,6 +53,89 @@ async function seedCleanupGraph(
     )
   `);
   await db.execute(sql`
+    insert into browser_nodes (
+      user_id, node_id, provider_id, node_name, status, last_heartbeat_at,
+      heartbeat_expires_at, contract_version, capabilities, updated_at
+    ) values (
+      ${USER_ID}::uuid, 'cleanup-browser-node', 'cleanup-provider', 'Cleanup browser node',
+      'online', '2026-08-31T11:50:00.000Z'::timestamptz,
+      '2026-08-31T12:10:00.000Z'::timestamptz, 1, '[]'::jsonb,
+      '2026-08-31T11:50:00.000Z'::timestamptz
+    )
+  `);
+  await db.execute(sql`
+    insert into browser_gateway_assignments (
+      id, user_id, node_id, maritime_agent_id, gateway_origin, checkpoint_origin,
+      secret_reference, relay_credential_digest, checkpoint_credential_digest,
+      status, created_at, activated_at, revoked_at
+    ) values
+      ('10000000-0000-4000-8000-000000000001'::uuid, ${USER_ID}::uuid,
+        'cleanup-browser-node', 'cleanup-agent-a', 'https://cleanup-a.verahousing.app',
+        'https://app.verahousing.app', 'CLEANUP_A', ${"1".repeat(64)}, ${"2".repeat(64)},
+        'revoked', '2026-08-01T10:00:00.000Z'::timestamptz,
+        '2026-08-01T10:01:00.000Z'::timestamptz, '2026-08-02T10:00:00.000Z'::timestamptz),
+      ('10000000-0000-4000-8000-000000000002'::uuid, ${USER_ID}::uuid,
+        'cleanup-browser-node', 'cleanup-agent-b', 'https://cleanup-b.verahousing.app',
+        'https://app.verahousing.app', 'CLEANUP_B', ${"3".repeat(64)}, ${"4".repeat(64)},
+        'revoked', '2026-08-02T10:00:00.000Z'::timestamptz,
+        '2026-08-02T10:01:00.000Z'::timestamptz, '2026-08-03T10:00:00.000Z'::timestamptz),
+      ('10000000-0000-4000-8000-000000000003'::uuid, ${USER_ID}::uuid,
+        'cleanup-browser-node', 'cleanup-agent-c', 'https://cleanup-c.verahousing.app',
+        'https://app.verahousing.app', 'CLEANUP_C', ${"5".repeat(64)}, ${"6".repeat(64)},
+        'active', '2026-08-30T10:00:00.000Z'::timestamptz,
+        '2026-08-30T10:01:00.000Z'::timestamptz, null)
+  `);
+  await db.execute(sql`
+    insert into browser_connector_devices (
+      id, assignment_id, user_id, installation_digest, extension_version,
+      protocol_version, status, created_at, connected_at
+    ) values
+      ('20000000-0000-4000-8000-000000000001'::uuid,
+        '10000000-0000-4000-8000-000000000001'::uuid, ${USER_ID}::uuid,
+        ${"7".repeat(64)}, '2.2.0', '1', 'active',
+        '2026-08-01T10:00:00.000Z'::timestamptz, '2026-08-01T10:01:00.000Z'::timestamptz),
+      ('20000000-0000-4000-8000-000000000002'::uuid,
+        '10000000-0000-4000-8000-000000000002'::uuid, ${USER_ID}::uuid,
+        ${"8".repeat(64)}, '2.2.0', '1', 'pending',
+        '2026-08-02T10:00:00.000Z'::timestamptz, null),
+      ('20000000-0000-4000-8000-000000000003'::uuid,
+        '10000000-0000-4000-8000-000000000003'::uuid, ${USER_ID}::uuid,
+        ${"9".repeat(64)}, '2.2.0', '1', 'pending',
+        '2026-08-30T10:00:00.000Z'::timestamptz, null)
+  `);
+  await db.execute(sql`
+    insert into browser_connector_enrollment_tickets (
+      id, assignment_id, user_id, device_id, installation_digest, ticket_digest,
+      extension_version, protocol_version, gateway_origin, idempotency_key, status,
+      issued_at, expires_at, consumed_at, terminal_at, terminal_reason
+    ) values
+      ('30000000-0000-4000-8000-000000000001'::uuid,
+        '10000000-0000-4000-8000-000000000001'::uuid, ${USER_ID}::uuid,
+        '20000000-0000-4000-8000-000000000001'::uuid, ${"7".repeat(64)}, ${"a".repeat(64)},
+        '2.2.0', '1', 'https://cleanup-a.verahousing.app', ${"b".repeat(64)}, 'issued',
+        '2026-08-31T10:00:00.000Z'::timestamptz, '2026-08-31T10:01:00.000Z'::timestamptz,
+        null, null, null),
+      ('30000000-0000-4000-8000-000000000002'::uuid,
+        '10000000-0000-4000-8000-000000000002'::uuid, ${USER_ID}::uuid,
+        '20000000-0000-4000-8000-000000000002'::uuid, ${"8".repeat(64)}, ${"c".repeat(64)},
+        '2.2.0', '1', 'https://cleanup-b.verahousing.app', ${"d".repeat(64)}, 'issued',
+        '2026-08-31T10:02:00.000Z'::timestamptz, '2026-08-31T10:03:00.000Z'::timestamptz,
+        null, null, null),
+      ('30000000-0000-4000-8000-000000000003'::uuid,
+        '10000000-0000-4000-8000-000000000001'::uuid, ${USER_ID}::uuid,
+        '20000000-0000-4000-8000-000000000001'::uuid, ${"7".repeat(64)}, ${"e".repeat(64)},
+        '2.2.0', '1', 'https://cleanup-a.verahousing.app', ${"f".repeat(64)}, 'consumed',
+        '2026-08-10T10:00:00.000Z'::timestamptz, '2026-08-10T10:01:00.000Z'::timestamptz,
+        '2026-08-10T10:00:30.000Z'::timestamptz,
+        '2026-08-10T10:00:30.000Z'::timestamptz, null),
+      ('30000000-0000-4000-8000-000000000004'::uuid,
+        '10000000-0000-4000-8000-000000000003'::uuid, ${USER_ID}::uuid,
+        '20000000-0000-4000-8000-000000000003'::uuid, ${"9".repeat(64)}, ${"0".repeat(64)},
+        '2.2.0', '1', 'https://cleanup-c.verahousing.app', ${"1".repeat(64)}, 'issued',
+        '2026-08-31T12:04:00.000Z'::timestamptz, '2026-08-31T12:05:00.000Z'::timestamptz,
+        null, null, null)
+  `);
+  await db.execute(sql`
     insert into source_jobs (
       user_id, id, correlation_id, connector_id, source, acquisition_mode,
       manifest_version, trigger, capability, operation, payload, payload_hash,
@@ -119,23 +202,28 @@ describe("PostgreSQL ephemeral cleanup", () => {
       await seedCleanupGraph(db);
       const cleanup = createPostgresEphemeralCleanupRepository(connection);
 
-      await expect(cleanup.cleanup({ now: NOW, batchSize: 1 })).resolves.toEqual({
+      await expect(
+        cleanup.cleanup({ now: NOW, batchSize: 1, enrollmentTicketLimit: 100 })
+      ).resolves.toEqual({
         gmailOauthStatesDeleted: 1,
         dispatchesExpired: 1,
         heartbeatsDeleted: 1,
-        scheduleRunsDeleted: 1
+        scheduleRunsDeleted: 1,
+        browserEnrollmentTicketsExpired: 2
       });
       await expect(cleanup.cleanup({ now: NOW, batchSize: 1 })).resolves.toEqual({
         gmailOauthStatesDeleted: 1,
         dispatchesExpired: 0,
         heartbeatsDeleted: 0,
-        scheduleRunsDeleted: 0
+        scheduleRunsDeleted: 0,
+        browserEnrollmentTicketsExpired: 0
       });
       await expect(cleanup.cleanup({ now: NOW, batchSize: 1 })).resolves.toEqual({
         gmailOauthStatesDeleted: 0,
         dispatchesExpired: 0,
         heartbeatsDeleted: 0,
-        scheduleRunsDeleted: 0
+        scheduleRunsDeleted: 0,
+        browserEnrollmentTicketsExpired: 0
       });
 
       const state = await db.execute<Record<string, number>>(sql`
@@ -148,6 +236,9 @@ describe("PostgreSQL ephemeral cleanup", () => {
           (select count(*)::int from maritime_dispatches where id = 'dispatch-old' and state = 'expired') as expired_dispatch,
           (select count(*)::int from service_heartbeats where id = 'heartbeat-recent') as recent_heartbeat,
           (select count(*)::int from production_schedule_runs where id = 'run-recent') as recent_run
+          ,(select count(*)::int from browser_connector_enrollment_tickets where status = 'expired' and terminal_reason = 'expired') as expired_enrollment_tickets
+          ,(select count(*)::int from browser_connector_enrollment_tickets where id = '30000000-0000-4000-8000-000000000003' and status = 'consumed') as consumed_enrollment_evidence
+          ,(select count(*)::int from browser_connector_enrollment_tickets where id = '30000000-0000-4000-8000-000000000004' and status = 'issued') as future_enrollment_ticket
       `);
       expect(state.rows[0]).toEqual({
         raw_listings: 1,
@@ -157,7 +248,10 @@ describe("PostgreSQL ephemeral cleanup", () => {
         future_dispatch: 1,
         expired_dispatch: 1,
         recent_heartbeat: 1,
-        recent_run: 1
+        recent_run: 1,
+        expired_enrollment_tickets: 2,
+        consumed_enrollment_evidence: 1,
+        future_enrollment_ticket: 1
       });
     });
   });

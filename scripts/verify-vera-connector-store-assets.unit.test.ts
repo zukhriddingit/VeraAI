@@ -5,7 +5,8 @@ import { findStoreAssetViolations } from "./verify-vera-connector-store-assets.t
 const listing = {
   name: "Vera Browser Connector BETA",
   summary: "Share one tab.",
-  detailedDescription: "THIS EXTENSION IS FOR BETA TESTING. Share one tab.",
+  detailedDescription:
+    "THIS EXTENSION IS FOR BETA TESTING. Connect this browser. Connecting does not share any tab.",
   category: "Productivity",
   homepageUrl: "https://verahousing.app",
   privacyUrl: "https://verahousing.app/privacy/browser-connector",
@@ -15,11 +16,15 @@ const listing = {
 const permissionText = ["debugger", "tabs", "tabGroups", "storage", "alarms"]
   .map((value) => `## ${value}`)
   .join("\n");
-const privacyText = "Chrome Web Store Limited Use requirements";
+const privacyText =
+  "Chrome Web Store Limited Use requirements SHA-256 digest expires within 60 seconds Connecting never shares a tab revocation clears the extension credential";
+const reviewerText = "Connect this browser and verify zero tabs are shared.";
 
 describe("Store source verifier", () => {
   it("accepts accurate private-beta metadata", () =>
-    expect(findStoreAssetViolations({ listing, permissionText, privacyText })).toEqual([]));
+    expect(
+      findStoreAssetViolations({ listing, permissionText, privacyText, reviewerText })
+    ).toEqual([]));
   it("rejects overclaims", () =>
     expect(
       findStoreAssetViolations({
@@ -29,7 +34,8 @@ describe("Store source verifier", () => {
             "THIS EXTENSION IS FOR BETA TESTING. Automatically contacts everyone."
         },
         permissionText,
-        privacyText
+        privacyText,
+        reviewerText
       })
     ).not.toEqual([]));
   it("rejects a public distribution", () =>
@@ -37,7 +43,17 @@ describe("Store source verifier", () => {
       findStoreAssetViolations({
         listing: { ...listing, distribution: { ...listing.distribution, visibility: "public" } },
         permissionText,
-        privacyText
+        privacyText,
+        reviewerText
       })
     ).toContain("Store distribution must remain private and deferred."));
+  it("rejects reviewer pairing instructions", () =>
+    expect(
+      findStoreAssetViolations({
+        listing,
+        permissionText,
+        privacyText,
+        reviewerText: "Enter the pairing value."
+      })
+    ).toContain("Reviewer flow must use authenticated one-click enrollment without secrets."));
 });

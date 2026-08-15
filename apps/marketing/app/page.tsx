@@ -256,18 +256,19 @@ export default function LandingPage() {
               Share one search tab. Revoke it whenever you want.
             </h2>
             <p className={styles.sectionBody}>
-              Approved testers can pair Vera&apos;s browser connector and explicitly share one
-              dedicated housing-search tab for bounded, read-only research.
+              Approved testers connect Vera&apos;s browser connector once for their Chrome profile,
+              then explicitly share one dedicated housing-search tab for bounded, read-only
+              research.
             </p>
             <ol className={styles.moveSteps}>
               <li>
-                <span>01</span>Pair through a one-time, tester-specific credential
+                <span>01</span>Sign in to Vera and choose Connect this browser
               </li>
               <li>
                 <span>02</span>Prepare and visibly share exactly one tab
               </li>
               <li>
-                <span>03</span>Unshare or unpair to stop future browser work
+                <span>03</span>Unshare immediately or revoke the saved connection
               </li>
             </ol>
             <p className={styles.connectorTruth}>

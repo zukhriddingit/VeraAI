@@ -72,8 +72,8 @@ export default function PrivacyPage() {
             request, by emailing{" "}
             <a href="mailto:support@verahousing.app">support@verahousing.app</a>. Self-service
             export and deletion remain unavailable until their production lifecycle and backup aging
-            are verified. You can revoke Google access in your Google Account and unshare or unpair
-            the browser connector at any time.
+            are verified. You can revoke Google access in your Google Account and unshare a tab or
+            revoke the saved browser connection at any time.
           </p>
         </section>
       </article>

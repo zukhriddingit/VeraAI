@@ -15,7 +15,7 @@ export default function BrowserConnectorPrivacyPage() {
         <a href="/privacy">General privacy</a>
       </nav>
       <article className={styles.article}>
-        <p className={styles.eyebrow}>Effective August 13, 2026</p>
+        <p className={styles.eyebrow}>Effective August 14, 2026</p>
         <h1>One tab. Explicitly shared.</h1>
         <p className={styles.lede}>
           Vera Housing operates Vera Browser Connector for approved private-beta testers. Questions,
@@ -25,9 +25,11 @@ export default function BrowserConnectorPrivacyPage() {
         <section>
           <h2>What the connector stores locally</h2>
           <p>
-            Chrome stores the paired relay endpoint, one scoped relay credential, and the visible
-            Vera tab-group color. Unpair removes the local relay credential and closes the
-            connection.
+            Chrome stores one random installation identifier, the connected relay endpoint, one
+            scoped relay credential, and the visible Vera tab-group color. Vera&apos;s page receives
+            only the installation digest. The raw identifier is transiently digested during the
+            bounded connection exchange and is not stored by Vera. Revoking browser access removes
+            the local relay credential and closes the connection.
           </p>
         </section>
         <section>
@@ -67,9 +69,10 @@ export default function BrowserConnectorPrivacyPage() {
         <section>
           <h2>Your controls</h2>
           <p>
-            Unsharing stops future tab access. You can unpair at any time, correct Vera account
-            data, request an export, or request deletion. Account deletion also revokes Vera&apos;s
-            server-side browser assignment after the self-service lifecycle is production-verified.
+            Connecting alone shares no tab. Unsharing stops future tab access. You can revoke the
+            saved browser connection at any time, correct Vera account data, request an export, or
+            request deletion. Account deletion also revokes Vera&apos;s server-side browser
+            assignment after the self-service lifecycle is production-verified.
           </p>
         </section>
       </article>
