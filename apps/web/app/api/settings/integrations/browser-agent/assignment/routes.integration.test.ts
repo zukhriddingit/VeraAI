@@ -53,11 +53,13 @@ function configureApplication(initial: BrowserGatewayAssignment | null) {
       }
     )
   };
+  const revokeEnrollmentsForUser = vi.fn(async () => (initial ? 1 : 0));
   const repositories = {
     browserNodes: { getById: vi.fn(async () => null) },
     activityEvents: { append }
   };
   mocks.getHostedApplication.mockReturnValue({
+    browserConnectorEnrollments: { revokeForUser: revokeEnrollmentsForUser },
     browserGatewayAssignments: assignments,
     browserGatewayRuntime: null,
     repositoryProvider: {}
@@ -68,7 +70,7 @@ function configureApplication(initial: BrowserGatewayAssignment | null) {
     repositoryProvider: {},
     demoMode: false
   });
-  return { append, assignments };
+  return { append, assignments, revokeEnrollmentsForUser };
 }
 
 function request(path: string, body?: unknown): Request {
@@ -128,12 +130,23 @@ describe("Browser Connector assignment routes", () => {
     expect(configured.assignments.revokeForUser).not.toHaveBeenCalledWith(
       expect.objectContaining({ userId: userB })
     );
+    expect(configured.revokeEnrollmentsForUser).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: userA })
+    );
+    expect(configured.revokeEnrollmentsForUser).not.toHaveBeenCalledWith(
+      expect.objectContaining({ userId: userB })
+    );
     expect(configured.append).toHaveBeenCalledTimes(1);
     expect(configured.append).toHaveBeenCalledWith(
       expect.objectContaining({
         action: "browser.assignment_revoked",
         actor: "user",
-        targetId: activeAssignment.id
+        targetId: activeAssignment.id,
+        metadata: expect.objectContaining({
+          serverAccessRevoked: true,
+          revokedDeviceCount: 1,
+          localExtensionClearRequested: true
+        })
       })
     );
   });
@@ -149,5 +162,6 @@ describe("Browser Connector assignment routes", () => {
     });
     expect((await revokeAssignment(crossOrigin)).status).toBe(403);
     expect(configured.assignments.revokeForUser).not.toHaveBeenCalled();
+    expect(configured.revokeEnrollmentsForUser).not.toHaveBeenCalled();
   });
 });

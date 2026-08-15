@@ -2,14 +2,23 @@
 
 import {
   BrowserAgentStatusResponseSchema,
+  BrowserExtensionReadinessMessageSchema,
   BrowserGatewayOnboardingStatusSchema,
   CreateCurrentTabCaptureResponseSchema,
   type BrowserAgentStatusResponse,
+  type BrowserExtensionReadinessMessage,
   type BrowserGatewayOnboardingStatus,
   type BrowserResearchSource
 } from "@vera/domain";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import {
+  BrowserEnrollmentClientError,
+  clearBrowserConnection,
+  connectBrowser,
+  connectionAction
+} from "./browser-enrollment-client.ts";
 
 const readinessLabels: Record<BrowserAgentStatusResponse["readiness"], string> = {
   not_configured: "Not configured",
@@ -47,18 +56,25 @@ async function requestHash(): Promise<string> {
 
 export function BrowserAgentPanel({
   initialStatus,
-  initialAssignmentStatus
+  initialAssignmentStatus,
+  connectorUrl
 }: {
   readonly initialStatus: BrowserAgentStatusResponse;
   readonly initialAssignmentStatus: BrowserGatewayOnboardingStatus | null;
+  readonly connectorUrl: string | null;
 }) {
   const [status, setStatus] = useState(initialStatus);
   const [assignmentStatus, setAssignmentStatus] = useState(initialAssignmentStatus);
   const [url, setUrl] = useState("");
   const [confirmations, setConfirmations] = useState([false, false, false, false]);
   const [pending, setPending] = useState(false);
+  const [connectionPending, setConnectionPending] = useState(false);
+  const [connectConfirmed, setConnectConfirmed] = useState(false);
+  const [extensionReadiness, setExtensionReadiness] =
+    useState<BrowserExtensionReadinessMessage | null>(null);
   const [revocationConfirmed, setRevocationConfirmed] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const extensionObservedAt = useRef<number | null>(null);
   const node = status.node;
   const allConfirmed = confirmations.every(Boolean);
   const canCapture =
@@ -67,6 +83,32 @@ export function BrowserAgentPanel({
     node?.selectedProfileId &&
     allConfirmed;
   const currentJobId = status.currentJob?.id ?? null;
+  const enrollmentAction = connectionAction({
+    extension: extensionReadiness,
+    assignment: assignmentStatus
+  });
+
+  useEffect(() => {
+    const receiveReadiness = (event: MessageEvent<unknown>) => {
+      if (event.source !== window || event.origin !== window.location.origin) return;
+      const parsed = BrowserExtensionReadinessMessageSchema.safeParse(event.data);
+      if (!parsed.success) return;
+      setExtensionReadiness(parsed.data);
+      extensionObservedAt.current = Date.now();
+    };
+    window.addEventListener("message", receiveReadiness);
+    const staleCheck = window.setInterval(() => {
+      const observedAt = extensionObservedAt.current;
+      if (observedAt !== null && Date.now() - observedAt > 3_500) {
+        extensionObservedAt.current = null;
+        setExtensionReadiness(null);
+      }
+    }, 1_000);
+    return () => {
+      window.removeEventListener("message", receiveReadiness);
+      window.clearInterval(staleCheck);
+    };
+  }, []);
 
   useEffect(() => {
     if (
@@ -171,13 +213,35 @@ export function BrowserAgentPanel({
       if (!response.ok || !parsed.success) throw new Error("Browser access was not revoked.");
       setAssignmentStatus(parsed.data);
       setRevocationConfirmed(false);
+      clearBrowserConnection();
       setMessage(
-        "Vera server access is revoked. Now open the extension and choose Unpair and revoke browser access."
+        "Vera server access is revoked. The local Browser Connector connection was cleared when available."
       );
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "Browser access was not revoked.");
     } finally {
       setPending(false);
+    }
+  }
+
+  async function connectThisBrowser(): Promise<void> {
+    if (!connectConfirmed || extensionReadiness?.version !== "2") return;
+    setConnectionPending(true);
+    setMessage(null);
+    try {
+      await connectBrowser(extensionReadiness);
+      setConnectConfirmed(false);
+      setMessage(
+        "Connected on this browser. No tab was shared; prepare one dedicated Vera Search tab when you are ready."
+      );
+    } catch (error: unknown) {
+      setMessage(
+        error instanceof BrowserEnrollmentClientError
+          ? error.message
+          : "This browser could not be connected."
+      );
+    } finally {
+      setConnectionPending(false);
     }
   }
 
@@ -206,6 +270,70 @@ export function BrowserAgentPanel({
         {assignmentStatus?.recoveryCode ? (
           <p>Recovery: {assignmentStatus.recoveryCode.replaceAll("_", " ")}</p>
         ) : null}
+        <div className="browser-enrollment-state" aria-live="polite">
+          {connectionPending ? (
+            <>
+              <strong>Connecting this browser…</strong>
+              <p>The one-time connection expires quickly and is never displayed or copied.</p>
+            </>
+          ) : enrollmentAction === "install" ? (
+            <>
+              <strong>Install Browser Connector</strong>
+              <p>Install or update version 2.2.0 in this Chrome profile, then return here.</p>
+              {connectorUrl ? (
+                <a className="primary-action" href={connectorUrl}>
+                  Install Browser Connector
+                </a>
+              ) : (
+                <button className="primary-button" type="button" disabled>
+                  Install Browser Connector
+                </button>
+              )}
+            </>
+          ) : enrollmentAction === "onboarding" ? (
+            <>
+              <strong>Waiting for concierge onboarding</strong>
+              <p>An isolated Gateway assignment must be active before this browser can connect.</p>
+              <button className="primary-button" type="button" disabled>
+                Waiting for concierge onboarding
+              </button>
+            </>
+          ) : enrollmentAction === "connect" ? (
+            <>
+              <strong>Connect this browser</strong>
+              <p>
+                The connection is remembered on this Chrome profile. Connecting does not share a tab
+                or start a search.
+              </p>
+              <label className="browser-confirmation browser-enrollment-confirmation">
+                <input
+                  type="checkbox"
+                  checked={connectConfirmed}
+                  disabled={connectionPending}
+                  onChange={(event) => setConnectConfirmed(event.target.checked)}
+                />
+                I understand the connector is read-only, sees only one explicitly shared tab, and
+                never contacts anyone or applies for housing.
+              </label>
+              <button
+                className="primary-button"
+                type="button"
+                disabled={!connectConfirmed || connectionPending}
+                onClick={() => void connectThisBrowser()}
+              >
+                Connect this browser
+              </button>
+            </>
+          ) : (
+            <>
+              <strong>Connected on this browser</strong>
+              <p>
+                Gateway: {extensionReadiness?.relayState ?? "checking"}. No tab is shared
+                automatically; tab access still requires your separate explicit action.
+              </p>
+            </>
+          )}
+        </div>
         {assignmentStatus &&
         assignmentStatus.status !== "waiting_for_onboarding" &&
         assignmentStatus.status !== "revoked" ? (
@@ -228,8 +356,8 @@ export function BrowserAgentPanel({
               Revoke Browser Connector access
             </button>
             <p>
-              After revoking here, open the extension and choose{" "}
-              <strong>Unpair and revoke browser access</strong> to close the local connection too.
+              Server enforcement does not depend on the extension receiving the best-effort local
+              clear message.
             </p>
           </div>
         ) : null}

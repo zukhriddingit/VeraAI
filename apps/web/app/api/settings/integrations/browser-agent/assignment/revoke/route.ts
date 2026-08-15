@@ -27,9 +27,15 @@ export async function POST(request: Request): Promise<Response> {
     RevokeBrowserGatewayAssignmentRequestSchema.parse(
       await readBoundedJson(request, { maxBytes: 1_024 })
     );
-    if (!application.browserGatewayAssignments) throw new Error("assignment repository missing");
+    if (!application.browserGatewayAssignments || !application.browserConnectorEnrollments) {
+      throw new Error("browser revocation repositories missing");
+    }
     const revokedAt = new Date().toISOString();
     const revoked = await application.browserGatewayAssignments.revokeForUser({
+      userId: session.userId,
+      revokedAt
+    });
+    const revokedDeviceCount = await application.browserConnectorEnrollments.revokeForUser({
       userId: session.userId,
       revokedAt
     });
@@ -51,7 +57,11 @@ export async function POST(request: Request): Promise<Response> {
           ),
           outcome: "succeeded",
           errorCategory: null,
-          metadata: { serverAccessRevoked: true, extensionUnpairStillRequired: true },
+          metadata: {
+            serverAccessRevoked: true,
+            revokedDeviceCount,
+            localExtensionClearRequested: true
+          },
           occurredAt: revokedAt
         })
       );
