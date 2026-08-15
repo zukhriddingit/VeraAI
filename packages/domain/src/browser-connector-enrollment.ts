@@ -9,23 +9,12 @@ export const BrowserConnectorInstallationIdSchema = z.string().regex(/^[a-f0-9]{
 export const BrowserConnectorInstallationDigestSchema = Sha256Schema;
 export const BrowserConnectorEnrollmentTicketSchema = z.string().regex(/^[A-Za-z0-9_-]{43}$/u);
 
-export const BrowserConnectorGatewayOriginSchema = z.url().superRefine((value, context) => {
-  const parsed = new URL(value);
-  if (
-    parsed.protocol !== "https:" ||
-    parsed.origin !== value ||
-    parsed.pathname !== "/" ||
-    parsed.search ||
-    parsed.hash ||
-    parsed.username ||
-    parsed.password
-  ) {
-    context.addIssue({
-      code: "custom",
-      message: "Browser Connector Gateway must be one exact HTTPS origin."
-    });
-  }
-});
+export const BrowserConnectorGatewayOriginSchema = z
+  .url()
+  .regex(
+    /^https:\/\/(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}(?::[1-9][0-9]{0,4})?$/u,
+    "Browser Connector Gateway must be one exact HTTPS origin."
+  );
 
 export const CreateBrowserConnectorEnrollmentRequestSchema = z
   .object({

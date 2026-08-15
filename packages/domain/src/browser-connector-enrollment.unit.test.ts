@@ -74,6 +74,20 @@ describe("browser connector enrollment contracts", () => {
         gatewayOrigin: "https://gateway-a.verahousing.app/path"
       }).success
     ).toBe(false);
+    for (const gatewayOrigin of [
+      "http://gateway-a.verahousing.app",
+      "https://gateway-a.verahousing.app?ticket=unsafe",
+      "https://user:password@gateway-a.verahousing.app"
+    ]) {
+      expect(
+        CreateBrowserConnectorEnrollmentResponseSchema.safeParse({
+          protocolVersion: "1",
+          ticket: "A".repeat(43),
+          expiresAt: "2026-08-14T12:01:00.000Z",
+          gatewayOrigin
+        }).success
+      ).toBe(false);
+    }
     expect(
       BrowserConnectorEnrollmentDecisionSchema.safeParse({
         allowed: false,
