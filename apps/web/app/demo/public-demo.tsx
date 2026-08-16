@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import type { PublicDemoListing } from "./public-demo-fixtures.ts";
 import styles from "./public-demo.module.css";
 
+const integer = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+
 interface PublicDemoProps {
   readonly listings: readonly PublicDemoListing[];
   readonly profile: {
@@ -50,7 +52,7 @@ export function PublicDemo({ listings, profile }: PublicDemoProps) {
         <div>
           <p className={styles.eyebrow}>SANITIZED SEARCH PROFILE</p>
           <h1 id="profile-title">
-            {profile.location} · up to ${profile.maximumRent.toLocaleString()}
+            {profile.location} · up to ${integer.format(profile.maximumRent)}
           </h1>
           <p>
             {profile.bedrooms} bedroom · {profile.moveIn} · {profile.mustHaves.join(" · ")}

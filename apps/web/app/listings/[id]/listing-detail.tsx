@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { useState } from "react";
 
+import { formatUtcDateTime } from "../../../lib/display-time.ts";
 import { ViewingPlanner } from "./viewing-planner.tsx";
 
 type DetailState =
@@ -33,12 +34,6 @@ const currency = new Intl.NumberFormat("en-US", {
   style: "currency",
   currency: "USD",
   maximumFractionDigits: 0
-});
-const dateTime = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
 });
 
 function money(value: number | null): string {
@@ -537,13 +532,11 @@ export function ListingDetail({
                 </p>
                 <small>
                   Observed{" "}
-                  {dateTime.format(
-                    new Date(source.snapshot?.observedAt ?? source.record.observedAt)
-                  )}
+                  {formatUtcDateTime(source.snapshot?.observedAt ?? source.record.observedAt)}
                 </small>
                 <small>
                   {source.snapshot?.details.sourceUpdatedAt
-                    ? `Source updated ${dateTime.format(new Date(source.snapshot.details.sourceUpdatedAt))}`
+                    ? `Source updated ${formatUtcDateTime(source.snapshot.details.sourceUpdatedAt)}`
                     : "Latest source update unknown"}
                 </small>
                 {original ? (
@@ -689,7 +682,7 @@ export function ListingDetail({
           detail.activity.slice(0, 10).map((event) => (
             <div className="activity-row" key={event.id}>
               <span>{event.action}</span>
-              <small>{dateTime.format(new Date(event.occurredAt))}</small>
+              <small>{formatUtcDateTime(event.occurredAt)}</small>
               <p>{event.detail ?? event.outcome}</p>
             </div>
           ))

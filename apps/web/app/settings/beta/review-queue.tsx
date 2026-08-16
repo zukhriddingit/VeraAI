@@ -3,6 +3,8 @@
 import type { BetaAccessRequest, BetaAccessReviewAction } from "@vera/domain";
 import { useState } from "react";
 
+import { formatUtcFullDateTime } from "../../../lib/display-time.ts";
+
 export function BetaReviewQueue(props: { readonly initialRequests: readonly BetaAccessRequest[] }) {
   const [requests, setRequests] = useState(props.initialRequests);
   const [pending, setPending] = useState<string | null>(null);
@@ -37,7 +39,7 @@ export function BetaReviewQueue(props: { readonly initialRequests: readonly Beta
         <article className="integration-card" key={request.id}>
           <p className="eyebrow">{request.status}</p>
           <h2>{request.normalizedEmail}</h2>
-          <p>Requested {new Date(request.requestedAt).toLocaleString()}</p>
+          <p>Requested {formatUtcFullDateTime(request.requestedAt)}</p>
           {request.status === "requested" ? (
             <div className="detail-actions">
               <button

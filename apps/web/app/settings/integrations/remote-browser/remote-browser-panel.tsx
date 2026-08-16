@@ -6,6 +6,8 @@ import {
 } from "@vera/domain";
 import { useState } from "react";
 
+import { formatUtcFullDateTime } from "../../../../lib/display-time.ts";
+
 const confirmationLabels = [
   "Exactly one intended tab is in the OpenClaw tab group.",
   "I approve one read-only snapshot of that shared tab.",
@@ -121,7 +123,7 @@ export function RemoteBrowserPanel({ available }: { readonly available: boolean 
             ))}
           </ul>
           <p>
-            Captured {new Date(result.snapshot.capturedAt).toLocaleString()} · content hash{" "}
+            Captured {formatUtcFullDateTime(result.snapshot.capturedAt)} · content hash{" "}
             {result.snapshot.contentSha256.slice(0, 12)}…
           </p>
         </article>

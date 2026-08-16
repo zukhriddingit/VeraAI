@@ -20,6 +20,7 @@ import {
   type ListingInboxQuery,
   type ListingInboxTab
 } from "../lib/listing-inbox";
+import { formatUtcDate } from "../lib/display-time";
 
 type ListingState =
   | { kind: "loading" }
@@ -61,7 +62,6 @@ const currency = new Intl.NumberFormat("en-US", {
   currency: "USD",
   maximumFractionDigits: 0
 });
-const date = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
 
 function formatMoney(cents: number): string {
   return currency.format(cents / 100);
@@ -273,15 +273,15 @@ function ListingCard({
           <span>
             Posted{" "}
             {listing.freshestSourcePostedAt
-              ? date.format(new Date(listing.freshestSourcePostedAt))
+              ? formatUtcDate(listing.freshestSourcePostedAt)
               : "unknown"}
           </span>
-          <span>Observed {date.format(new Date(listing.freshestObservedAt))}</span>
+          <span>Observed {formatUtcDate(listing.freshestObservedAt)}</span>
           {listing.liveEvidence ? (
             <span>
-              RentCast observed {date.format(new Date(listing.liveEvidence.observedAt))}
+              RentCast observed {formatUtcDate(listing.liveEvidence.observedAt)}
               {listing.liveEvidence.lastSeenAt
-                ? ` · last seen ${date.format(new Date(listing.liveEvidence.lastSeenAt))}`
+                ? ` · last seen ${formatUtcDate(listing.liveEvidence.lastSeenAt)}`
                 : ""}
             </span>
           ) : null}

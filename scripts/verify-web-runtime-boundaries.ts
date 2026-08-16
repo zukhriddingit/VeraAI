@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -23,6 +23,8 @@ export interface WebRuntimeBoundaryViolation {
   readonly specifier: string;
   readonly message: string;
 }
+
+const DATE_LOCALE_METHODS = new Set(["toLocaleString", "toLocaleDateString", "toLocaleTimeString"]);
 
 function forbidden(specifier: string): boolean {
   return (
@@ -130,15 +132,116 @@ export function findWebRuntimeBoundaryViolations(
   return violations;
 }
 
+function propertyName(
+  node: ts.ObjectLiteralExpression,
+  name: string
+): ts.ObjectLiteralElementLike | null {
+  for (const property of node.properties) {
+    if (
+      (ts.isPropertyAssignment(property) || ts.isShorthandPropertyAssignment(property)) &&
+      ((ts.isIdentifier(property.name) && property.name.text === name) ||
+        (ts.isStringLiteralLike(property.name) && property.name.text === name))
+    ) {
+      return property;
+    }
+  }
+  return null;
+}
+
+function intlDateTimeFormat(node: ts.NewExpression): boolean {
+  return (
+    ts.isPropertyAccessExpression(node.expression) &&
+    ts.isIdentifier(node.expression.expression) &&
+    node.expression.expression.text === "Intl" &&
+    node.expression.name.text === "DateTimeFormat"
+  );
+}
+
+export function findWebDateRenderingViolations(
+  files: ReadonlyMap<string, string>
+): readonly WebRuntimeBoundaryViolation[] {
+  const violations: WebRuntimeBoundaryViolation[] = [];
+
+  for (const [file, source] of files) {
+    const sourceFile = ts.createSourceFile(
+      file,
+      source,
+      ts.ScriptTarget.Latest,
+      true,
+      file.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS
+    );
+    const report = (node: ts.Node, specifier: string, message: string): void => {
+      violations.push({
+        file,
+        line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
+        specifier,
+        message
+      });
+    };
+    const visit = (node: ts.Node): void => {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression) &&
+        DATE_LOCALE_METHODS.has(node.expression.name.text)
+      ) {
+        report(
+          node,
+          node.expression.name.text,
+          "server-rendered app code must use a reviewed deterministic time formatter"
+        );
+      }
+      if (ts.isNewExpression(node) && intlDateTimeFormat(node)) {
+        const options = node.arguments?.[1];
+        if (
+          !options ||
+          !ts.isObjectLiteralExpression(options) ||
+          !propertyName(options, "timeZone")
+        ) {
+          report(
+            node,
+            "Intl.DateTimeFormat",
+            "server-rendered Intl.DateTimeFormat requires an explicit timeZone"
+          );
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+  }
+
+  return violations;
+}
+
 function guardedSources(rootDirectory: string): ReadonlyMap<string, string> {
   return new Map(
     GUARDED_FILES.map((file) => [file, readFileSync(resolve(rootDirectory, file), "utf8")])
   );
 }
 
+function appSources(rootDirectory: string): ReadonlyMap<string, string> {
+  const appDirectory = resolve(rootDirectory, "apps/web/app");
+  const files = new Map<string, string>();
+  const visit = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const absolute = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(absolute);
+      } else if (entry.isFile() && (entry.name.endsWith(".ts") || entry.name.endsWith(".tsx"))) {
+        const relative = absolute.slice(rootDirectory.length + 1);
+        files.set(relative, readFileSync(absolute, "utf8"));
+      }
+    }
+  };
+  visit(appDirectory);
+  return files;
+}
+
 function run(): void {
   const rootDirectory = resolve(import.meta.dirname, "..");
-  const violations = findWebRuntimeBoundaryViolations(guardedSources(rootDirectory));
+  const violations = [
+    ...findWebRuntimeBoundaryViolations(guardedSources(rootDirectory)),
+    ...findWebDateRenderingViolations(appSources(rootDirectory))
+  ];
   if (violations.length > 0) {
     for (const violation of violations) {
       process.stderr.write(

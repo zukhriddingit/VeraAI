@@ -19,6 +19,7 @@ export default defineConfig({
   reporter: process.env.CI ? "github" : "list",
   use: {
     baseURL,
+    timezoneId: "America/New_York",
     trace: "on-first-retry"
   },
   projects: [
@@ -37,6 +38,7 @@ export default defineConfig({
     env: {
       NEXT_TELEMETRY_DISABLED: "1",
       PORT: String(port),
+      TZ: "UTC",
       VERA_DEMO_SERVER_MODE: "production",
       VERA_DEMO_DATA_DIR: e2eDataDirectory,
       VERA_NEXT_DIST_DIR: ".next-e2e",
