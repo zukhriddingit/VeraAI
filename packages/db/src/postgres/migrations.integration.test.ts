@@ -181,6 +181,8 @@ describe("PostgreSQL migration readiness", () => {
     expect(migration).toContain("privacy_deletion_challenges_digest_check");
     expect(migration).toContain("interval '15 minutes'");
     expect(migration).toContain("privacy_deletion_receipts_status_check");
+    expect(migration).toContain("pg_trigger_depth() > 1");
+    expect(migration).toContain("TG_OP = 'DELETE'");
     expect(migration).not.toMatch(/email|provider_subject|access_token|refresh_token|credential/iu);
   });
 

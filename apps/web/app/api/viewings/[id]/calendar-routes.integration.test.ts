@@ -55,7 +55,8 @@ function registerFixture(
     ...overrides,
     gmailOAuth: overrides.gmailOAuth ?? null,
     browserGatewayAssignments: overrides.browserGatewayAssignments ?? null,
-    browserGatewayRuntime: overrides.browserGatewayRuntime ?? null
+    browserGatewayRuntime: overrides.browserGatewayRuntime ?? null,
+    privacyLifecycle: overrides.privacyLifecycle ?? null
   });
 }
 

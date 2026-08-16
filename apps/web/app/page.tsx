@@ -51,6 +51,7 @@ export default async function HomePage() {
             <Link href="/activity">Activity</Link>
             <Link href="/connectors">Source status</Link>
             <Link href="/settings/integrations">Settings</Link>
+            <Link href="/settings/privacy">Privacy</Link>
             <SignOutButton />
           </nav>
         </div>

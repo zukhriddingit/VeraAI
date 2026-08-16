@@ -12,6 +12,7 @@ import type { VeraAuth } from "./auth.ts";
 import type { CalendarApplicationDependencies } from "./calendar-application.ts";
 import type { GmailIntegrationOAuth } from "./gmail-integration-oauth.ts";
 import type { BrowserGatewayRuntimeResolver } from "./browser-gateway-runtime-resolver.ts";
+import type { PrivacyLifecycleService } from "./privacy-lifecycle-service.ts";
 
 export interface VeraApplication {
   readonly mode: "hosted" | "demo";
@@ -23,6 +24,7 @@ export interface VeraApplication {
   readonly browserConnectorEnrollments: BrowserConnectorEnrollmentRepository | null;
   readonly browserGatewayAssignments: BrowserGatewayAssignmentRepository | null;
   readonly browserGatewayRuntime: BrowserGatewayRuntimeResolver | null;
+  readonly privacyLifecycle: PrivacyLifecycleService | null;
   readonly maritimeOperations?: MaritimeOperationsRepository;
   readonly demoUserId: VeraUserId | null;
   readiness(): Promise<ReadinessReport>;

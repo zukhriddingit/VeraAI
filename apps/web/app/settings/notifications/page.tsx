@@ -1,11 +1,10 @@
-import Link from "next/link";
-
 import { NotificationPreferenceSchema } from "@vera/domain";
 
 import { getHostedApplication } from "../../../lib/server/application.ts";
 import { parseNotificationEnvironment } from "../../../lib/server/notification-config.ts";
 import { requireVeraPageSession } from "../../../lib/server/page-session.ts";
 import { NotificationSettings } from "./notification-settings.tsx";
+import { SettingsNav } from "../settings-nav.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -37,13 +36,7 @@ export default async function NotificationSettingsPage() {
 
   return (
     <main>
-      <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Listings</Link>
-        <Link href="/settings/integrations">Integrations</Link>
-        <Link href="/settings/notifications" aria-current="page">
-          Notifications
-        </Link>
-      </nav>
+      <SettingsNav current="notifications" />
       <header className="subpage-hero settings-hero">
         <p className="eyebrow">Settings · Notifications</p>
         <h1>Fast alerts, without private lock-screen details.</h1>

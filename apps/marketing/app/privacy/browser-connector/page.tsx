@@ -70,9 +70,12 @@ export default function BrowserConnectorPrivacyPage() {
           <h2>Your controls</h2>
           <p>
             Connecting alone shares no tab. Unsharing stops future tab access. You can revoke the
-            saved browser connection at any time, correct Vera account data, request an export, or
-            request deletion. Account deletion also revokes Vera&apos;s server-side browser
-            assignment after the self-service lifecycle is production-verified.
+            saved browser connection at any time. Signed-in testers can use{" "}
+            <strong>Settings → Privacy</strong> to <strong>Export</strong> their Vera data or{" "}
+            <strong>Delete</strong> the account through a two-step confirmation. Account deletion
+            revokes Vera&apos;s server-side Browser Connector assignment and asks the current
+            browser to clear its local connector credential on a best-effort basis. Managed backups
+            age out under the verified retention schedule rather than disappearing instantaneously.
           </p>
         </section>
       </article>

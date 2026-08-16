@@ -24,6 +24,21 @@ CREATE TABLE "privacy_deletion_receipts" (
 	CONSTRAINT "privacy_deletion_receipts_ordering_check" CHECK ("privacy_deletion_receipts"."backup_erase_after" >= "privacy_deletion_receipts"."completed_at" AND ("privacy_deletion_receipts"."legal_hold_until" IS NULL OR "privacy_deletion_receipts"."legal_hold_until" >= "privacy_deletion_receipts"."completed_at"))
 );
 --> statement-breakpoint
+CREATE OR REPLACE FUNCTION "vera_reject_mutation"() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+	IF TG_OP = 'DELETE'
+		AND pg_trigger_depth() > 1
+		AND EXISTS (
+			SELECT 1 FROM privacy_deletion_receipts
+			WHERE former_user_id = OLD.user_id
+		)
+	THEN
+		RETURN OLD;
+	END IF;
+	RAISE EXCEPTION '% is append-only', TG_TABLE_NAME USING ERRCODE = '55000';
+END;
+$$;--> statement-breakpoint
 ALTER TABLE "privacy_deletion_challenges" ADD CONSTRAINT "privacy_deletion_challenges_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE cascade ON UPDATE restrict;--> statement-breakpoint
 CREATE UNIQUE INDEX "privacy_deletion_challenges_digest_unique" ON "privacy_deletion_challenges" USING btree ("challenge_digest");--> statement-breakpoint
 CREATE INDEX "privacy_deletion_challenges_user_expiry_idx" ON "privacy_deletion_challenges" USING btree ("user_id","expires_at");--> statement-breakpoint
