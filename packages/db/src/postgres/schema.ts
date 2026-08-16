@@ -70,6 +70,66 @@ export const users = pgTable(
   (table) => [uniqueIndex("users_email_unique").on(sql`lower(${table.email})`)]
 );
 
+export const privacyDeletionChallenges = pgTable(
+  "privacy_deletion_challenges",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade", onUpdate: "restrict" }),
+    challengeDigest: text("challenge_digest").notNull(),
+    createdAt: instant("created_at").notNull(),
+    expiresAt: instant("expires_at").notNull(),
+    consumedAt: instant("consumed_at")
+  },
+  (table) => [
+    uniqueIndex("privacy_deletion_challenges_digest_unique").on(table.challengeDigest),
+    index("privacy_deletion_challenges_user_expiry_idx").on(table.userId, table.expiresAt),
+    check(
+      "privacy_deletion_challenges_digest_check",
+      sql`${table.challengeDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "privacy_deletion_challenges_lifetime_check",
+      sql`${table.expiresAt} > ${table.createdAt} AND ${table.expiresAt} <= ${table.createdAt} + interval '15 minutes'`
+    ),
+    check(
+      "privacy_deletion_challenges_consumed_check",
+      sql`${table.consumedAt} IS NULL OR (${table.consumedAt} >= ${table.createdAt} AND ${table.consumedAt} <= ${table.expiresAt})`
+    )
+  ]
+);
+
+export const privacyDeletionReceipts = pgTable(
+  "privacy_deletion_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    formerUserId: uuid("former_user_id").notNull(),
+    subjectDigest: text("subject_digest").notNull(),
+    providerRevocation: text("provider_revocation").notNull(),
+    browserRevocation: text("browser_revocation").notNull(),
+    completedAt: instant("completed_at").notNull(),
+    backupEraseAfter: instant("backup_erase_after").notNull(),
+    legalHoldUntil: instant("legal_hold_until")
+  },
+  (table) => [
+    uniqueIndex("privacy_deletion_receipts_former_user_unique").on(table.formerUserId),
+    uniqueIndex("privacy_deletion_receipts_subject_digest_unique").on(table.subjectDigest),
+    check(
+      "privacy_deletion_receipts_digest_check",
+      sql`${table.subjectDigest} ~ '^[a-f0-9]{64}$'`
+    ),
+    check(
+      "privacy_deletion_receipts_status_check",
+      sql`${table.providerRevocation} IN ('confirmed', 'unconfirmed', 'not_configured') AND ${table.browserRevocation} IN ('confirmed', 'unconfirmed', 'not_configured')`
+    ),
+    check(
+      "privacy_deletion_receipts_ordering_check",
+      sql`${table.backupEraseAfter} >= ${table.completedAt} AND (${table.legalHoldUntil} IS NULL OR ${table.legalHoldUntil} >= ${table.completedAt})`
+    )
+  ]
+);
+
 export const betaAccessRequests = pgTable(
   "beta_access_requests",
   {
@@ -3246,6 +3306,8 @@ export const schema = {
   notificationDeliveries,
   notificationDigestItems,
   notificationPreferences,
+  privacyDeletionChallenges,
+  privacyDeletionReceipts,
   productionScheduleRuns,
   productionSchedules,
   rawListings,

@@ -169,6 +169,21 @@ describe("PostgreSQL migration readiness", () => {
     );
   });
 
+  it("keeps the privacy lifecycle additive, portable, bounded, and non-identifying", () => {
+    const migration = readFileSync(
+      join(postgresMigrationsFolder, "0010_privacy_lifecycle.sql"),
+      "utf8"
+    );
+    expect(migration).not.toMatch(/\b(?:DROP\s+TABLE|DROP\s+COLUMN|TRUNCATE)\b/iu);
+    expect(migration).not.toContain('REFERENCES "public".');
+    expect(migration).toContain('CREATE TABLE "privacy_deletion_challenges"');
+    expect(migration).toContain('CREATE TABLE "privacy_deletion_receipts"');
+    expect(migration).toContain("privacy_deletion_challenges_digest_check");
+    expect(migration).toContain("interval '15 minutes'");
+    expect(migration).toContain("privacy_deletion_receipts_status_check");
+    expect(migration).not.toMatch(/email|provider_subject|access_token|refresh_token|credential/iu);
+  });
+
   it("reports ready only when the expected migration hash is present", async () => {
     await withPostgresTestDatabase(async ({ connection, schemaName }) => {
       await expect(
@@ -301,7 +316,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 10 }]);
+      expect(migrationCount.rows).toEqual([{ count: 11 }]);
     });
   });
 
@@ -362,7 +377,7 @@ describe("PostgreSQL migration readiness", () => {
       const migrationCount = await connection.pool.query<{ count: number }>(
         `select count(*)::int as count from "${schemaName}"."__drizzle_migrations"`
       );
-      expect(migrationCount.rows).toEqual([{ count: 10 }]);
+      expect(migrationCount.rows).toEqual([{ count: 11 }]);
     }, 4);
   });
 
