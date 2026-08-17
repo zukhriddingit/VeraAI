@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import type {
   AvailabilityRuleSet,
   AvailabilityRuleSnapshot,
@@ -10,6 +8,7 @@ import { getCalendarIntegrationStatus } from "../../../lib/calendar-service.ts";
 import { getHostedApplication } from "../../../lib/server/application.ts";
 import { requireVeraPageSession } from "../../../lib/server/page-session.ts";
 import { AvailabilityEditor } from "./availability-editor.tsx";
+import { SettingsNav } from "../settings-nav.tsx";
 
 export const dynamic = "force-dynamic";
 
@@ -74,13 +73,7 @@ export default async function AvailabilitySettingsPage() {
 
   return (
     <main>
-      <nav className="page-nav" aria-label="Vera navigation">
-        <Link href="/">Listings</Link>
-        <Link href="/settings/integrations">Integrations</Link>
-        <Link href="/settings/availability" aria-current="page">
-          Viewing availability
-        </Link>
-      </nav>
+      <SettingsNav current="availability" />
       <header className="subpage-hero settings-hero">
         <p className="eyebrow">Settings · Viewing availability</p>
         <h1>Make viewings fit your week.</h1>

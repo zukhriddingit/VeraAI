@@ -22,6 +22,8 @@ export * from "./postgres/gmail-repositories.ts";
 export * from "./postgres/maritime-repositories.ts";
 export * from "./postgres/notification-repositories.ts";
 export * from "./postgres/policy-repository.ts";
+export * from "./postgres/privacy-lifecycle-repository.ts";
+export * from "./postgres/privacy-owner-table-policy.ts";
 export * from "./postgres/repositories.ts";
 export * from "./postgres/seed.ts";
 export * from "./postgres/standard-repositories.ts";

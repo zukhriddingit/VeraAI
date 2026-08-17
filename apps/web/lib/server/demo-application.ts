@@ -22,6 +22,7 @@ export function createDemoApplication(connection: VeraDatabaseConnection): VeraA
     browserConnectorEnrollments: null,
     browserGatewayAssignments: null,
     browserGatewayRuntime: null,
+    privacyLifecycle: null,
     demoUserId: DEMO_USER_ID,
     readiness: async () =>
       ReadinessReportSchema.parse({

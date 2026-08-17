@@ -13,6 +13,7 @@ import {
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { formatUtcFullDateTime } from "../../../../lib/display-time.ts";
 import {
   BrowserEnrollmentClientError,
   clearBrowserConnection,
@@ -402,11 +403,11 @@ export function BrowserAgentPanel({
           <p>Capability: {node?.capabilityApprovalState ?? "not approved"}</p>
           <p>Profile: {node?.selectedProfileId ?? "not selected"}</p>
           <p>OpenClaw: {node?.reportedOpenClawVersion ?? "unknown"} (tested: 2026.6.33)</p>
-          <p>Last heartbeat: {node ? new Date(node.lastHeartbeatAt).toLocaleString() : "never"}</p>
+          <p>Last heartbeat: {node ? formatUtcFullDateTime(node.lastHeartbeatAt) : "never"}</p>
           <p>
             Last capture:{" "}
             {node?.lastSuccessfulCaptureAt
-              ? new Date(node.lastSuccessfulCaptureAt).toLocaleString()
+              ? formatUtcFullDateTime(node.lastSuccessfulCaptureAt)
               : "never"}
           </p>
         </article>
@@ -471,7 +472,7 @@ export function BrowserAgentPanel({
         <article className="integration-card browser-job-card">
           <p className="eyebrow">Latest capture job</p>
           <h3>{status.currentJob.status.replaceAll("_", " ")}</h3>
-          <p>Created {new Date(status.currentJob.createdAt).toLocaleString()}</p>
+          <p>Created {formatUtcFullDateTime(status.currentJob.createdAt)}</p>
           {status.lastSuccessfulCanonicalListingId ? (
             <Link href={`/listings/${status.lastSuccessfulCanonicalListingId}`}>
               Open imported listing

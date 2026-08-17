@@ -31,6 +31,7 @@ export * from "./maritime.ts";
 export * from "./notifications.ts";
 export * from "./operations-api.ts";
 export * from "./primitives.ts";
+export * from "./privacy-lifecycle.ts";
 export * from "./readiness.ts";
 export * from "./remote-extension-snapshot.ts";
 export * from "./search-intent.ts";

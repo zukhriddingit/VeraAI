@@ -3,6 +3,8 @@
 import type { OperationsSnapshot, SourceJobStatus } from "@vera/domain";
 import { useState } from "react";
 
+import { formatUtcFullDateTime } from "../../../lib/display-time.ts";
+
 interface ControllableJob {
   readonly id: string;
   readonly status: SourceJobStatus;
@@ -58,7 +60,7 @@ export function OperationsPanel(props: {
         <article className="integration-card">
           <p className="eyebrow">Vera worker</p>
           <h2>{props.snapshot.worker.status}</h2>
-          <p>Checked {new Date(props.snapshot.worker.checkedAt).toLocaleString()}</p>
+          <p>Checked {formatUtcFullDateTime(props.snapshot.worker.checkedAt)}</p>
         </article>
         <article className="integration-card">
           <p className="eyebrow">Maritime</p>
@@ -100,8 +102,7 @@ export function OperationsPanel(props: {
           props.snapshot.schedules.map((schedule) => (
             <p key={`${schedule.kind}:${schedule.nextRunAt}`}>
               <strong>{schedule.kind}</strong> — {schedule.state}; next{" "}
-              {new Date(schedule.nextRunAt).toLocaleString()}; last{" "}
-              {schedule.lastOutcome ?? "never"}
+              {formatUtcFullDateTime(schedule.nextRunAt)}; last {schedule.lastOutcome ?? "never"}
             </p>
           ))
         )}

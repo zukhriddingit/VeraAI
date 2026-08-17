@@ -22,6 +22,7 @@ function register(status: "ready" | "not_ready"): void {
     browserConnectorEnrollments: null,
     browserGatewayAssignments: null,
     browserGatewayRuntime: null,
+    privacyLifecycle: null,
     demoUserId: null,
     readiness: vi.fn(async (): Promise<ReadinessReport> => ({
       service: "vera-web",

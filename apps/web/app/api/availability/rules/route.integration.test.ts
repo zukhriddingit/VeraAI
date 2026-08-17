@@ -74,6 +74,7 @@ function registerFixture(fixture: MemoryFixture, sessionUserId: VeraUserId | nul
     browserConnectorEnrollments: null,
     browserGatewayAssignments: null,
     browserGatewayRuntime: null,
+    privacyLifecycle: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

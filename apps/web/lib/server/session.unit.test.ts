@@ -25,6 +25,7 @@ function application(session: unknown): VeraApplication {
     browserConnectorEnrollments: null,
     browserGatewayAssignments: null,
     browserGatewayRuntime: null,
+    privacyLifecycle: null,
     demoUserId: null,
     readiness: vi.fn(),
     close: vi.fn()

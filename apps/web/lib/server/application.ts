@@ -4,6 +4,7 @@ import {
   createPostgresBrowserConnectorEnrollmentRepository,
   createPostgresBrowserGatewayAssignmentRepository,
   createPostgresMaritimeOperationsRepository,
+  createPostgresPrivacyLifecycleRepository,
   createPostgresRepositoryProvider,
   openPostgresConnection,
   parsePostgresConfig,
@@ -23,6 +24,8 @@ import {
   type GoogleIntegrationEnvironment
 } from "./integration-config.ts";
 import { parseHostedRuntimePolicy } from "./hosted-runtime-policy.ts";
+import { parsePrivacyEnvironment } from "./privacy-config.ts";
+import { createPrivacyLifecycleService } from "./privacy-lifecycle-service.ts";
 import {
   getRegisteredApplication,
   registerApplication,
@@ -90,6 +93,7 @@ export function createPostgresApplication(
   const postgres = parsePostgresConfig(environment);
   parseIdentityAuthEnvironment(environment);
   const runtimePolicy = parseHostedRuntimePolicy(environment);
+  const privacyEnvironment = parsePrivacyEnvironment(environment);
   const googleIntegration = runtimePolicy.integrationsDisabled
     ? null
     : parseGoogleIntegrationEnvironment(environment);
@@ -113,6 +117,13 @@ export function createPostgresApplication(
       configuration: googleIntegration,
       repositoryProvider
     });
+    const privacyLifecycle = createPrivacyLifecycleService({
+      repository: createPostgresPrivacyLifecycleRepository(connection),
+      browserGatewayAssignments,
+      browserConnectorEnrollments,
+      googleOAuth: googleBindings.calendar.oauth,
+      configuration: privacyEnvironment
+    });
 
     return {
       mode: "hosted",
@@ -124,6 +135,7 @@ export function createPostgresApplication(
       browserConnectorEnrollments,
       browserGatewayAssignments,
       browserGatewayRuntime,
+      privacyLifecycle,
       maritimeOperations: createPostgresMaritimeOperationsRepository(connection.db),
       demoUserId: null,
       readiness: () => checkPostgresReadiness(connection, { service: "vera-web" }),

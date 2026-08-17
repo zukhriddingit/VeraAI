@@ -9,6 +9,7 @@ import {
 } from "@vera/domain";
 import { useState } from "react";
 
+import { formatUtcFullDateTime } from "../../../lib/display-time.ts";
 import {
   interpretGoogleDisconnectResponse,
   presentGoogleIntegrationAccount
@@ -172,7 +173,7 @@ export function IntegrationCards({ initialStatus }: IntegrationCardsProps) {
               {definition.status.lastSuccessfulUseAt === null ? null : (
                 <p className="integration-last-used">
                   Last successful use:{" "}
-                  {new Date(definition.status.lastSuccessfulUseAt).toLocaleString()}
+                  {formatUtcFullDateTime(definition.status.lastSuccessfulUseAt)}
                 </p>
               )}
               {label === null ? null : (

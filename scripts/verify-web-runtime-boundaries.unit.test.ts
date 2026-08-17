@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { findWebRuntimeBoundaryViolations } from "./verify-web-runtime-boundaries.ts";
+import {
+  findWebDateRenderingViolations,
+  findWebRuntimeBoundaryViolations
+} from "./verify-web-runtime-boundaries.ts";
 
 const applicationFile = "apps/web/lib/server/application.ts";
 const runtimeFile = "apps/web/lib/server/google-integration-runtime.ts";
@@ -104,6 +107,52 @@ describe("web runtime boundary verifier", () => {
       expect.objectContaining({
         specifier: "./google-integration-oauth.ts",
         message: "Google runtime dynamic imports are allowed only in the reviewed lazy loader"
+      })
+    ]);
+  });
+});
+
+describe("web date rendering boundary verifier", () => {
+  it("accepts shared formatters, explicit timezones, and number localization", () => {
+    expect(
+      findWebDateRenderingViolations(
+        new Map([
+          [
+            "apps/web/app/card.tsx",
+            `
+              import { formatUtcDateTime } from "../../lib/display-time.ts";
+              const observed = formatUtcDateTime(value);
+              const local = new Intl.DateTimeFormat("en-US", {
+                month: "short",
+                timeZone: window.timeZone
+              }).format(new Date(value));
+              const rent = new Intl.NumberFormat("en-US").format(maximumRent);
+            `
+          ]
+        ])
+      )
+    ).toEqual([]);
+  });
+
+  it("rejects Date locale methods and Intl date formatters without a timezone", () => {
+    const violations = findWebDateRenderingViolations(
+      new Map([
+        ["apps/web/app/card.tsx", "new Date(value).toLocaleString()"],
+        [
+          "apps/web/app/card-2.tsx",
+          `new Intl.DateTimeFormat("en-US", { month: "short" }).format(new Date(value))`
+        ]
+      ])
+    );
+
+    expect(violations).toEqual([
+      expect.objectContaining({
+        file: "apps/web/app/card.tsx",
+        message: expect.stringContaining("deterministic time formatter")
+      }),
+      expect.objectContaining({
+        file: "apps/web/app/card-2.tsx",
+        message: expect.stringContaining("explicit timeZone")
       })
     ]);
   });

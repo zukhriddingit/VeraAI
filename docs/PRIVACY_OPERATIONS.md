@@ -1,7 +1,7 @@
 # Privacy operations
 
 Status: founder-release runbook
-Reviewed: 2026-07-25
+Reviewed: 2026-08-16
 
 This document describes the data Vera actually handles. Founder core has no browser Gateway. The
 separate browser connectivity spike uses one founder account, one dedicated per-user
@@ -27,6 +27,7 @@ It has no local OpenClaw installation, node, CLI, daemon, Companion, or Vera age
 | Notification subscription and delivery | User browser and Vera worker | Browser/Vera to Web Push provider | PostgreSQL plus provider transit | Endpoint and key material are encrypted in PostgreSQL. Lock-screen text is generic by default; delivery is idempotent and tenant-owned. |
 | Application logs and metrics | Web, worker, PostgreSQL client, adapters | Runtime to configured logging/monitoring service | Hosted logging/monitoring service | Recursive sanitizer removes secret keys, contacts, bearer values, query strings, and bounded nested content. Metrics use a closed label vocabulary and never user, listing, source, URL, or error-text labels. |
 | Backups | Managed PostgreSQL | Managed provider snapshot/export path | Managed backup service or encrypted operator storage | Treat as private production data even when application credentials are encrypted. Never place dumps in Git, tickets, chat, or ordinary artifact storage. |
+| Privacy deletion receipts | Authenticated account deletion | Application to PostgreSQL | `privacy_deletion_receipts` plus a separately protected operator ledger | Contains an opaque former-user UUID, an HMAC subject digest, revocation states, and retention dates. It never contains email, provider subject, token, credential, URL, or deleted record content. Private receipt ledgers use mode `0600`, remain gitignored, and are never printed. |
 
 The internet-reachable OpenClaw Gateway is a transit boundary, not a credential vault. Its hosted
 log, diagnostic, proxy, and service-retention behavior must be verified against the dedicated
@@ -45,41 +46,85 @@ Vera distinguishes durable evidence from disposable control state:
 - Expired issued Browser Connector tickets are moved to terminal `expired` state in bounded batches;
   consumed ticket evidence is retained without the raw ticket.
 - Expired notification leases are reclaimable; a crashed worker cannot strand a delivery indefinitely.
+- Account-deletion challenges expire within 15 minutes, are stored only as SHA-256 digests, and are single-use.
+- Privacy deletion receipts survive owner deletion. They are retained so a restored backup can be checked before traffic and do not authorize direct mutation of append-only evidence.
 - Cleanup uses one bounded PostgreSQL transaction and `FOR UPDATE SKIP LOCKED`; it never deletes raw listings, source records, provenance, canonical listings, extractions, approvals, source jobs/attempts, or activity events.
 
 Founder-release targets are 14 days for sanitized application logs and 30 daily managed database backups. These are operator targets, not application-enforced guarantees. The configured Maritime/log provider retention and managed PostgreSQL backup retention must be inspected and recorded during live staging. A longer provider setting is a release finding, not permission to describe the shorter target as active.
 
-## Founder data export
+## Authenticated owner export
 
-There is no self-service export endpoint in this founder release. An operator export is allowed only for the exact authenticated founder UUID:
+Signed-in hosted users export their own data from **Settings → Privacy**. The authenticated
+`GET /api/settings/privacy/export` route derives the owner only from the server session and runs a
+repeatable-read owner-scoped export. It returns one bounded NDJSON attachment with a leading
+versioned manifest, per-table counts and SHA-256 hashes, `no-store`, and `nosniff`.
 
-1. Verify the requester and record a sanitized change reference, exact owner UUID, environment, and time. Do not use display email as the ownership key.
-2. Pause the user's production schedules and browser controls so the export has a stable cutoff. Do not disable or delete another tenant's records.
-3. Export tenant-owned records through reviewed, owner-predicated repository queries or a reviewed transaction. Include schema/version, UTC cutoff, safe record counts, and hashes in a manifest.
-4. Exclude session secrets, OAuth ciphertext, Web Push key material, database credentials, dispatch nonces, gateway credentials, provider response bodies, logs, and internal security controls. Include human-readable Google connection metadata without usable tokens.
-5. Encrypt the export outside the repository, deliver it through an approved channel, verify receipt, and delete the operator copy under the recorded retention window.
-6. Resume only the controls the user explicitly wants resumed.
+The export includes reviewed user/listing/search/decision/activity records and safe projections of
+integration and browser state. It excludes passwords, sessions, OAuth ciphertext, Web Push key
+material, database and Gateway credentials, provider subjects, relay/checkpoint material, and
+internal security controls. Unknown listing facts remain unknown. Do not run a broad database dump
+as a user export and never accept an owner ID from the request.
 
-Do not run a broad database dump as a user export. Do not expose another user's data to prove completeness.
+## Authenticated deletion, disconnect, and revocation
 
-## Founder deletion, disconnect, and revocation
+Account deletion is a two-step, owner-derived operation:
 
-There is no self-service account-deletion endpoint. A privacy deletion is a separately approved maintenance operation, not a normal repository mutation and not an excuse to weaken append-only enforcement.
+1. The signed-in user starts deletion in **Settings → Privacy**.
+   `POST /api/settings/privacy/deletion-request` requires the exact configured origin and a bounded,
+   strict body. Vera returns one raw 256-bit challenge only to that browser; PostgreSQL stores its
+   digest and 15-minute expiry. The raw value stays only in React state and never enters a URL,
+   storage, analytics, logs, or an activity event.
+2. The user types `DELETE MY VERA ACCOUNT` exactly.
+   `DELETE /api/settings/privacy/account` authenticates again, checks the same origin before parsing
+   at most 1,024 bytes, derives the owner from the session, and atomically consumes the one-time
+   challenge.
+3. Vera revokes the user's Browser Gateway assignment and Browser Connector enrollments before
+   owner deletion. The page asks the current extension to clear its local relay credential on a
+   best-effort basis; if the extension is unreachable, server revocation still prevents future work
+   and local removal remains a manual user action.
+4. Vera attempts Google provider revocation and always removes its local encrypted Google
+   credential. A provider `unconfirmed` result is recorded in the deletion receipt and the owner
+   deletion continues; any other pre-delete failure stops before the owner transaction.
+5. In one PostgreSQL transaction, Vera locks the consumed challenge and owner, inserts or validates
+   the durable receipt, deletes matching non-owner identity rows, deletes the user through the
+   reviewed foreign-key graph, and verifies every registered `user_id` table has zero rows.
+6. The receipt-gated append-only exception applies only to nested `DELETE` triggers during that
+   foreign-key cascade (`pg_trigger_depth() > 1`). Updates and direct deletes remain rejected even
+   when a receipt exists. Another owner remains untouched.
+7. After commit, Better Auth expires the development `vera.*` or production `__Secure-vera.*`
+   session cookies. The response contains only `status` and an opaque receipt ID.
 
-1. Verify the exact founder UUID twice and obtain a fresh, explicit approval naming the production environment and deletion scope.
-2. Enable global/per-user kill switches, stop user schedules, cancel safe queued work by policy,
-   revoke the dedicated browser API key, Browser Connector devices, and outstanding enrollment
-   tickets, clear the local extension relay credential through the authenticated Vera page, and stop
-   the user's dedicated Gateway. Removing the consent tab and browser-profile deletion remain
-   user-controlled local actions.
-3. For Google, acquire the same database-backed integration refresh lease used by refresh. Attempt provider revocation first, then delete Vera's encrypted refresh-token material regardless of provider response. Record only the safe outcome and manual Google-account recovery link if revocation is unconfirmed.
-4. Remove Web Push subscriptions and revoke provider-side notification credentials where supported.
-5. Produce a pre-delete manifest containing only owner-scoped counts and hashes. A second operator or delayed re-verification must confirm the UUID and scope before execution.
-6. Run a reviewed, owner-predicated privacy-deletion transaction that follows the actual foreign-key graph. Preserve only data that law or an approved security incident hold requires, document the reason and duration, and never anonymize by inventing replacement facts.
-7. Verify all tenant tables return zero for the owner, active sessions fail, no schedule or job can run, credentials cannot decrypt, and no provider grant remains usable. Record safe counts and correlation IDs, never deleted content.
-8. Expire primary managed data immediately. Backup copies age out under the verified backup schedule and must not be restored into active service without reapplying the deletion before traffic is enabled.
+Managed backups do not disappear instantaneously. `backup_erase_after` uses the verified provider
+retention interval, and any legal/security hold requires an explicit future date. Keep an encrypted,
+mode-`0600` JSON-array ledger of strict deletion receipts outside Git and ordinary release
+artifacts. It may be populated only through a reviewed operator projection of
+`privacy_deletion_receipts`; do not add email, provider subject, connection strings, deleted rows,
+or other identity-bearing fields.
 
-The absence of self-service export/deletion is accepted only for the single-founder release. It blocks a multi-user beta until the workflow and backup-erasure behavior are implemented and rehearsed.
+## Restore-before-traffic enforcement
+
+After restoring any backup and before starting web or worker traffic, load `DATABASE_URL` through
+the protected environment and run:
+
+```sh
+pnpm privacy:reapply-deletions --confirm <exact-database-name> --receipt-file <private-mode-0600-json-file>
+```
+
+The CLI refuses database URLs in arguments, requires `--confirm` to equal the database name in the
+environment URL, rejects symlinks/non-regular files and any mode other than `0600`, validates strict
+receipts, rejects duplicate receipt/owner IDs and extra identity-bearing fields, sorts receipts
+deterministically, and uses one reviewed transaction per receipt. It stops after the first failure,
+returns nonzero, and prints only:
+
+```json
+{"checked":2,"absent":1,"reapplied":1,"failed":0}
+```
+
+Do not enable traffic unless `failed` is zero and every expected receipt was checked. Store only
+that count object and the receipt-file content hash in `release-evidence/private/`; never store or
+print a receipt, subject digest, database URL, user identity, or deleted content. A restored owner
+is removed again through the same receipt-gated cascade. An already-absent owner is counted without
+mutation.
 
 ## Provider outage behavior
 

@@ -1,11 +1,6 @@
 import type { ActivityCollectionResponse } from "@vera/domain";
 
-const date = new Intl.DateTimeFormat("en-US", {
-  month: "short",
-  day: "numeric",
-  hour: "numeric",
-  minute: "2-digit"
-});
+import { formatUtcDateTime } from "../../lib/display-time.ts";
 
 export function ActivityTimeline({ activity }: { activity: ActivityCollectionResponse }) {
   return (
@@ -33,7 +28,7 @@ export function ActivityTimeline({ activity }: { activity: ActivityCollectionRes
                 </span>
                 <h3>{event.action}</h3>
               </div>
-              <time dateTime={event.occurredAt}>{date.format(new Date(event.occurredAt))}</time>
+              <time dateTime={event.occurredAt}>{formatUtcDateTime(event.occurredAt)}</time>
               <p>
                 {event.detail ?? `${event.targetType.replaceAll("_", " ")} · ${event.targetId}`}
               </p>

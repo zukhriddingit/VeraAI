@@ -62,18 +62,27 @@ export default function PrivacyPage() {
             gateway, email and calendar integration, and operational monitoring. Access is bounded
             by product policy, audit records, and tenant-scoped repositories. Data is retained only
             as needed to run the beta, protect its integrity, meet legal obligations, and honor
-            deletion requests.
+            deletion requests. When an account is deleted, live account data is removed and managed
+            backups age out under Vera&apos;s verified retention schedule rather than disappearing
+            instantaneously.
           </p>
         </section>
         <section>
           <h2>Your choices</h2>
           <p>
-            You may ask to access, correct, export, or delete your Vera data, or withdraw a beta
-            request, by emailing{" "}
-            <a href="mailto:support@verahousing.app">support@verahousing.app</a>. Self-service
-            export and deletion remain unavailable until their production lifecycle and backup aging
-            are verified. You can revoke Google access in your Google Account and unshare a tab or
-            revoke the saved browser connection at any time.
+            Signed-in testers can open <strong>Settings → Privacy</strong> to{" "}
+            <strong>Export</strong> a portable copy or <strong>Delete</strong> their Vera account
+            through a two-step confirmation. Deletion removes live account, listing, and activity
+            data; removes Vera&apos;s stored Google credential after attempting provider revocation;
+            revokes server-side Browser Connector access; and asks the current browser to clear its
+            saved connector credential on a best-effort basis. If Google cannot confirm provider
+            revocation, you can also remove Vera in your Google Account. Unsharing a tab always
+            stops future tab access.
+          </p>
+          <p>
+            If self-service controls are unavailable or you need help correcting data or withdrawing
+            a beta request, email{" "}
+            <a href="mailto:support@verahousing.app">support@verahousing.app</a>.
           </p>
         </section>
       </article>

@@ -41,3 +41,20 @@ test("marketing mobile header remains deliberate", async ({ page }) => {
   await expect(page.getByRole("link", { name: "Product", exact: true })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Find a great home faster." })).toBeVisible();
 });
+
+test("privacy notices describe self-service controls and bounded browser revocation", async ({
+  page
+}) => {
+  await page.goto("/privacy");
+  await expect(page.getByRole("heading", { name: "Your choices" })).toBeVisible();
+  await expect(page.getByText("Settings → Privacy")).toBeVisible();
+  await expect(page.getByText("support@verahousing.app")).toHaveAttribute(
+    "href",
+    "mailto:support@verahousing.app"
+  );
+
+  await page.goto("/privacy/browser-connector");
+  await expect(page.getByText(/server-side Browser Connector assignment/)).toBeVisible();
+  await expect(page.getByText(/Managed backups age out/)).toBeVisible();
+  await expect(page.getByText(/Limited Use requirements/)).toBeVisible();
+});
