@@ -73,9 +73,11 @@ export default function PrivacyPage() {
             Signed-in testers can open <strong>Settings → Privacy</strong> to{" "}
             <strong>Export</strong> a portable copy or <strong>Delete</strong> their Vera account
             through a two-step confirmation. Deletion removes live account, listing, and activity
-            data; revokes Vera&apos;s Google and server-side Browser Connector access; and asks the
-            current browser to clear its saved connector credential on a best-effort basis. You can
-            also revoke Google access in your Google Account and unshare a tab at any time.
+            data; removes Vera&apos;s stored Google credential after attempting provider revocation;
+            revokes server-side Browser Connector access; and asks the current browser to clear its
+            saved connector credential on a best-effort basis. If Google cannot confirm provider
+            revocation, you can also remove Vera in your Google Account. Unsharing a tab always
+            stops future tab access.
           </p>
           <p>
             If self-service controls are unavailable or you need help correcting data or withdrawing

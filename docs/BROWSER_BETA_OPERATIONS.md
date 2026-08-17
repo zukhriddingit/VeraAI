@@ -1,6 +1,6 @@
 # Browser Connector private-beta operations
 
-Status: implementation ready; activation blocked until the private Chrome Web Store item and the authenticated privacy lifecycle are approved. This runbook never enables a tester automatically.
+Status: implementation ready; activation blocked until the private Chrome Web Store item and the authenticated privacy lifecycle pass live rehearsal. This runbook never enables a tester automatically.
 
 Vera uses one isolated browser deployment per approved tester. Each assignment has one Vera user, one approved node/profile, one Maritime agent, one Gateway/checkpoint container set, one relay credential, one checkpoint credential, and one plan-signing key. PostgreSQL stores routing identity, enrollment-device state, an opaque secret reference, and SHA-256 digests only. It never stores raw enrollment tickets, relay, checkpoint, Maritime, bootstrap-seed, or signing values.
 
@@ -28,7 +28,7 @@ Stop before provisioning unless all are true:
 - `/api/ready` is ready and the PostgreSQL migration is current;
 - the founder is an active beta member and exact browser-beta UUID;
 - the Chrome Web Store item is privately published to the intended tester;
-- privacy/support pages are live and the authenticated export/deletion lifecycle is approved and rehearsed;
+- privacy/support pages are live and authenticated export/deletion plus offline restore reapplication are deployed and live rehearsed;
 - the browser kill switch works and there are zero active browser runs;
 - the existing database is backed up and current listing counts are recorded without selecting private content;
 - the exact recurring DigitalOcean cost for the tester's dedicated Droplet and Regional Load Balancer has separate human approval.
@@ -125,7 +125,15 @@ audit history. Re-enabling browser work requires new credentials and a fresh acc
 
 ## Wave 1
 
-Do not provision nonfounder testers until privacy and Store gates are complete. Provision one
+Do not provision nonfounder testers until the Store gate and SEC-013 live rehearsal are complete.
+The rehearsal uses a disposable invited owner, never the founder: export its data, delete it through
+the authenticated two-step UI, prove another owner is unchanged, prove its sessions/browser access
+are revoked, restore an isolated pre-deletion backup with traffic disabled, and run
+`pnpm privacy:reapply-deletions` with the protected receipt ledger. Require `failed: 0`, the restored
+owner absent, and only count/hash evidence under `release-evidence/private/` before changing any
+nonfounder gate.
+
+Provision one
 isolated deployment at a time, never sharing a Droplet, load balancer, container set, Maritime agent,
 or credential set. After each tester, prove exact-owner routing, wrong-owner `run_not_active`,
 connection-with-zero-shared-tabs, unshare stop, server revocation plus local credential clearing, zero

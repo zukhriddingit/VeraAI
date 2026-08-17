@@ -115,10 +115,7 @@ export const privacyDeletionReceipts = pgTable(
   (table) => [
     uniqueIndex("privacy_deletion_receipts_former_user_unique").on(table.formerUserId),
     uniqueIndex("privacy_deletion_receipts_subject_digest_unique").on(table.subjectDigest),
-    check(
-      "privacy_deletion_receipts_digest_check",
-      sql`${table.subjectDigest} ~ '^[a-f0-9]{64}$'`
-    ),
+    check("privacy_deletion_receipts_digest_check", sql`${table.subjectDigest} ~ '^[a-f0-9]{64}$'`),
     check(
       "privacy_deletion_receipts_status_check",
       sql`${table.providerRevocation} IN ('confirmed', 'unconfirmed', 'not_configured') AND ${table.browserRevocation} IN ('confirmed', 'unconfirmed', 'not_configured')`

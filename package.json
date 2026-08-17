@@ -15,6 +15,7 @@
     "postgres:backup-rehearsal": "tsx scripts/postgres-backup-rehearsal.ts --confirm vera_test",
     "postgres:production-transfer": "tsx scripts/production-postgres-transfer.ts",
     "postgres:production-manifest": "tsx scripts/production-data-manifest.ts",
+    "privacy:reapply-deletions": "tsx scripts/reapply-privacy-deletions.ts",
     "verify:calendar-boundaries": "tsx scripts/verify-calendar-boundaries.ts",
     "verify:db-boundaries": "tsx scripts/verify-database-boundaries.ts",
     "verify:browser-boundaries": "tsx scripts/verify-browser-boundaries.ts",

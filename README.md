@@ -86,6 +86,7 @@ Use separate Google Web Application clients for Vera identity and integration ac
 | `pnpm test:e2e`                   | Run the deterministic Playwright flow                                          |
 | `pnpm build`                      | Build the Next.js web app and Node worker                                      |
 | `pnpm listing-integrity:repair`   | Preview/apply/verify an exact append-only private corpus repair                |
+| `pnpm privacy:reapply-deletions`  | Reapply strict deletion receipts to an operator-confirmed restored database    |
 
 ## Persistence boundaries
 
@@ -94,6 +95,9 @@ Use separate Google Web Application clients for Vera identity and integration ac
 - Application services receive repositories already bound to the authenticated session user; route bodies and query parameters cannot select an owner.
 - Worker claim methods are the only cross-user interface. They return the owning user with one leased job, then processing narrows to that user's repositories.
 - Raw listings, activity events, job attempts, decision histories, and other evidentiary rows are append-only where required.
+- Authenticated users can export or delete only their own account under **Settings → Privacy**.
+  Deletion uses a one-time challenge and a receipt-gated owner cascade; restored databases remain
+  offline until the protected receipt ledger is reapplied.
 - `@vera/db/demo` is the explicit deterministic SQLite adapter. It has one fixed synthetic owner and no hosted identity or integration-credential tables.
 
 See [OpenClaw founder setup](docs/OPENCLAW_FOUNDER_SETUP.md), [Google integration setup](docs/GOOGLE_INTEGRATION_SETUP.md), [PostgreSQL operations](docs/POSTGRES_OPERATIONS.md), [architecture](docs/ARCHITECTURE.md), [data model](docs/DATA_MODEL.md), and [security](docs/SECURITY.md).
@@ -133,8 +137,8 @@ Postgres database. The desired state is machine-checked by `pnpm verify:heroku-p
 - web: exactly one `Dockerfile.web` process;
 - deterministic worker: exactly one repository-root `Dockerfile` process, released with web from the
   same reviewed commit;
-- persistence: Heroku Postgres Standard-0 or higher in the same region, with controlled migrations,
-  continuous protection, and portable logical backups;
+- persistence: Heroku Postgres Essential-0 in the same region, with controlled migrations, managed
+  backups, and portable logical backups;
 - approved browser work: Heroku worker → Maritime orchestration → unchanged signed DigitalOcean
   OpenClaw Gateway → exactly one explicitly shared local tab.
 

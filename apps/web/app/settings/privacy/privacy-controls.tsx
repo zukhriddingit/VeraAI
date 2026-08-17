@@ -127,9 +127,10 @@ export function PrivacyControls() {
         <p className="eyebrow">Permanent account deletion</p>
         <h2 id="privacy-delete-heading">Delete your Vera account</h2>
         <p>
-          Vera removes your account, listing and activity data, revokes Google access, and revokes
-          server-side Browser Connector access. Managed backups age out under Vera&apos;s verified
-          retention schedule rather than disappearing instantaneously.
+          Vera removes your account, listing and activity data, removes its stored Google credential
+          after attempting provider revocation, and revokes server-side Browser Connector access.
+          Managed backups age out under Vera&apos;s verified retention schedule rather than
+          disappearing instantaneously.
         </p>
         <p className="privacy-local-note">
           Vera also asks this browser to clear its saved connector credential. That local step is

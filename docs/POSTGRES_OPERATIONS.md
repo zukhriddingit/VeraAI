@@ -91,8 +91,10 @@ pnpm postgres:production-manifest compare --database-url-file "$VERA_GREEN_DATAB
 
 Any mismatch stops promotion. Run migrations and the hosted seed through a process-local
 `DATABASE_URL` loaded from the private file without printing it; run the seed twice and require the
-second result to report `inserted: 0`. Validate candidate web readiness, worker health/readiness, and
-one deterministic no-side-effect job against green, then capture a Heroku logical backup.
+second result to report `inserted: 0`. Before any candidate process starts, run the privacy receipt
+reapplication procedure below against green and require `failed: 0`. Validate candidate web
+readiness, worker health/readiness, and one deterministic no-side-effect job against green, then
+capture a Heroku logical backup.
 
 Keep maintenance mode enabled and the worker scaled to zero during promotion. Promote the provider
 attachment rather than reconstructing its URL, then release both already-pushed images together:
@@ -118,12 +120,21 @@ permanent.
 
 ## Release migrations
 
-The founder release applies four additive migrations after the baseline:
+The founder release applies ten additive migrations after the baseline:
 
 - `0001_calendar_availability.sql` creates availability rules/checks, Calendar OAuth state/holds, and viewing selection/supersession fields;
 - `0002_openclaw_current_tab.sql` creates tenant browser controls and immutable capture acceptance;
 - `0003_maritime_execution_plane.sql` creates dispatch attempts, production schedules/runs, deployment/heartbeat projections, Gmail alert state, encrypted Web Push state, and notification delivery state. It upgrades the expected OpenClaw version without deleting a node or browser record.
 - `0004_founder_security_hardening.sql` adds tenant-owned Google refresh leases, refuses ambiguous duplicate global schedules or malformed encrypted Web Push material, then enforces null-source schedule uniqueness and exact AES-GCM envelope bounds.
+- `0005_listing_enrichment.sql` adds durable discovery/detail enrichment, observed media, costs,
+  policies, availability, and completeness state without rewriting source evidence;
+- `0006_listing_integrity_repair.sql` adds append-only repair dispositions and reconciliation state;
+- `0007_private_beta_access.sql` adds invited beta request/membership state;
+- `0008_browser_gateway_assignments.sql` adds tenant-owned isolated Gateway routing;
+- `0009_perpetual_metal_master.sql` adds bounded Browser Connector devices and one-time enrollment
+  tickets;
+- `0010_privacy_lifecycle.sql` adds one-time deletion challenges, durable receipts, and the narrow
+  receipt-gated nested-cascade exception while preserving direct append-only mutation denial.
 
 They do not reset or rewrite listings, source evidence, scores, jobs, identity, Calendar history, or demo fixtures.
 
@@ -166,6 +177,24 @@ row sample, credentials, or raw provider logs. The rollback image gate passes on
 was tested against the migrated schema and its compatibility evidence hash is recorded; otherwise use
 the managed restore path rather than claiming image rollback is available.
 
+## Privacy deletion reapplication after restore
+
+Every managed or logical restore remains offline until all known deletion receipts are reapplied.
+Maintain the strict JSON-array receipt ledger in encrypted operator storage, copy it to a private
+regular file with mode `0600`, and verify its approved content hash. Load the restored database URL
+into `DATABASE_URL` without printing it, then run:
+
+```sh
+pnpm privacy:reapply-deletions --confirm <exact-restored-database-name> --receipt-file <private-mode-0600-receipt-file>
+```
+
+The command accepts no database URL argument. The confirmation must exactly equal the database name
+from `DATABASE_URL`. It rejects malformed, duplicate, or identity-extended receipts; processes one
+transaction per receipt; stops on the first failure; and writes counts only. Require `failed: 0`,
+verify the checked count equals the approved ledger count, store only the count object plus ledger
+hash under `release-evidence/private/`, unset `DATABASE_URL`, and remove the temporary receipt copy.
+Do not start web/worker processes or promote the database before this passes.
+
 ## Rollback
 
 The founder release does not generate automatic down migrations. Choose one of these reviewed paths:
@@ -189,7 +218,11 @@ Use separate credentials even for the one-region, one-web, one-worker founder to
 - the runtime role may connect and perform only the required table/sequence DML; it must not own the database or schema, be a superuser, bypass row-level security, create extensions, create/drop/alter objects, or grant roles;
 - managed-provider administrative credentials remain operator-only and never enter application environment variables.
 
-Append-only triggers protect raw and audit evidence from normal application mutation, but an owner or superuser can remove or bypass those controls. Record the actual role names, grants, provider audit setting, and credential locations during staging without copying secrets into this repository.
+Append-only triggers protect raw and audit evidence from normal application mutation. Migration
+`0010` permits a delete only inside a nested owner foreign-key cascade when a matching durable
+privacy receipt already exists; updates and direct deletes remain rejected. A database owner or
+superuser can still remove or bypass those controls. Record the actual role names, grants, provider
+audit setting, and credential locations during staging without copying secrets into this repository.
 
 ## Cleanup and retention
 
