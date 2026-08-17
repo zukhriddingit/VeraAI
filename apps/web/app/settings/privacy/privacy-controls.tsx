@@ -8,6 +8,7 @@ import {
   PrivacyDeletionResponseSchema
 } from "@vera/domain";
 
+import { formatUtcDateTime } from "../../../lib/display-time.ts";
 import { clearBrowserConnection } from "../integrations/browser-agent/browser-enrollment-client.ts";
 import { privacyControlsView, type PrivacyControlsPhase } from "./privacy-controls-view.ts";
 
@@ -156,10 +157,7 @@ export function PrivacyControls() {
             <p>
               Type <strong>{PRIVACY_DELETION_CONFIRMATION}</strong> exactly. This one-time
               confirmation expires in 15 minutes
-              {challengeExpiresAt
-                ? ` (at ${new Date(challengeExpiresAt).toLocaleTimeString()})`
-                : ""}
-              .
+              {challengeExpiresAt ? ` (at ${formatUtcDateTime(challengeExpiresAt)})` : ""}.
             </p>
             <label className="settings-field" htmlFor="privacy-delete-confirmation">
               Confirmation phrase
