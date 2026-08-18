@@ -64,6 +64,7 @@ export const RENTAL_RESEARCH_ACTIONS = {
 const ZILLOW_OPERATION = "zillow.rental_research.v1";
 const DISCOVERY_DETAIL_PAGES = 0;
 const ZILLOW_MAX_RESULTS = 5;
+const ZILLOW_DISCOVERY_DETAIL_PAGES = 1;
 
 export class RentalResearchServiceError extends Error {
   constructor(
@@ -193,7 +194,7 @@ function zillowInput(profile: SearchProfile, jobId: string) {
       ...(propertyType === undefined ? {} : { rentalPropertyType: propertyType })
     },
     maxResults: ZILLOW_MAX_RESULTS,
-    maxDetailPages: DISCOVERY_DETAIL_PAGES,
+    maxDetailPages: ZILLOW_DISCOVERY_DETAIL_PAGES,
     startingTabReference: {
       kind: "single_shared_tab" as const,
       value: ZILLOW_SINGLE_SHARED_TAB_CONSENT_REFERENCE
@@ -222,7 +223,7 @@ function zillowJob(
       maxDurationMilliseconds: 90_000,
       maxConcurrency: 1 as const
     },
-    maxDetailPages: DISCOVERY_DETAIL_PAGES,
+    maxDetailPages: ZILLOW_DISCOVERY_DETAIL_PAGES,
     maxResultPageExpansions: 2 as const
   };
   const payloadHash = hash(payload);
@@ -467,7 +468,7 @@ async function runZillowSource(
           profileId: profile.id,
           source: "zillow",
           maxResults: ZILLOW_MAX_RESULTS,
-          maxDetailPages: DISCOVERY_DETAIL_PAGES
+          maxDetailPages: ZILLOW_DISCOVERY_DETAIL_PAGES
         },
         occurredAt: createdAt,
         targetType: "source_job",

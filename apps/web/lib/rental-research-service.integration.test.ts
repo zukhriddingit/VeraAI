@@ -178,7 +178,7 @@ describe("founder Zillow rental research service", () => {
     });
     const status = await runRentalResearch(request, deps);
 
-    expect(observedInput).toMatchObject({ maxResults: 5, maxDetailPages: 0 });
+    expect(observedInput).toMatchObject({ maxResults: 5, maxDetailPages: 1 });
 
     expect(status).toMatchObject({
       searchRunId: "run-zillow-1",
