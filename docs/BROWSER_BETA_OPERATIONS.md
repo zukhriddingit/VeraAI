@@ -102,8 +102,10 @@ terminal output, logs, evidence, Git, the Vera page, or the clipboard.
 
 12. Set the exact founder UUID in `VERA_BROWSER_BETA_USER_IDS`, set
     `VERA_BROWSER_ASSIGNMENT_ROUTING_ENABLED=1` and `VERA_BROWSER_ENROLLMENT_ENABLED=1`, keep the hash
-    version at `sha256.v1`, and remove the legacy global
-    founder/Gateway/checkpoint/local-bridge selectors from the active release.
+    version at `sha256.v1`, set `VERA_WORKER_BROWSER_DISABLED=1` so the normalization worker remains
+    unable to execute browser work while the web process uses the assignment-routed client, and
+    remove the legacy global founder/Gateway/checkpoint/local-bridge selectors from the active
+    release.
 13. Run `pnpm verify:browser-assignments`, restart the paired web/worker release, verify `/api/ready`, then clear `VERA_BROWSER_DISABLED` only for the acceptance window.
 
 ## Required founder acceptance

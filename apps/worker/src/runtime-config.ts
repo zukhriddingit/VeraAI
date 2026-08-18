@@ -27,9 +27,10 @@ function optional(environment: Readonly<Record<string, string | undefined>>, nam
 
 function disabledByDefault(
   environment: Readonly<Record<string, string | undefined>>,
-  name: string
+  name: string,
+  defaultDisabled = true
 ): boolean {
-  const raw = optional(environment, name)?.toLowerCase() ?? "1";
+  const raw = optional(environment, name)?.toLowerCase() ?? (defaultDisabled ? "1" : "0");
   if (!DISABLED_FLAGS.has(raw)) throw new Error(`${name} must be one of 1, true, 0, or false.`);
   return raw === "1" || raw === "true";
 }
@@ -75,7 +76,15 @@ export function parseWorkerRuntimeConfig(
   }
   const maritimeEnvironment = maritimeEnvironmentRaw as WorkerRuntimeConfig["maritimeEnvironment"];
 
-  const browserDisabled = disabledByDefault(environment, "VERA_BROWSER_DISABLED");
+  const globalBrowserDisabled = disabledByDefault(environment, "VERA_BROWSER_DISABLED");
+  const workerBrowserDisabled = disabledByDefault(
+    environment,
+    "VERA_WORKER_BROWSER_DISABLED",
+    false
+  );
+  // The global kill switch always wins. The worker-only flag lets the hosted web
+  // process be enabled while this worker remains fail-closed for browser work.
+  const browserDisabled = globalBrowserDisabled || workerBrowserDisabled;
   const gmailAlertsDisabled = disabledByDefault(environment, "VERA_GMAIL_ALERTS_DISABLED");
   const integrationsDisabled = disabledByDefault(environment, "VERA_INTEGRATIONS_DISABLED");
   const notificationsDisabled = disabledByDefault(environment, "VERA_NOTIFICATIONS_DISABLED");

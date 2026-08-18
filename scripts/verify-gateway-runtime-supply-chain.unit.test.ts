@@ -127,24 +127,28 @@ describe("Gateway runtime supply-chain verifier", () => {
       }
     ],
     [
-      "missing system sbin normalization",
-      (input: ReturnType<typeof fixture>) => {
-        input.dockerfile = input.dockerfile.replace("fs.rmSync('/sbin',{force:true}); ", "");
-      }
-    ],
-    [
-      "missing system administration directory creation",
-      (input: ReturnType<typeof fixture>) => {
-        input.dockerfile = input.dockerfile.replace("fs.mkdirSync('/usr/sbin',{mode:0o755}); ", "");
-      }
-    ],
-    [
-      "wrong system sbin target",
+      "missing provider init directory normalization",
       (input: ReturnType<typeof fixture>) => {
         input.dockerfile = input.dockerfile.replace(
-          "fs.symlinkSync('usr/sbin','/sbin'); ",
-          "fs.symlinkSync('usr/bin','/sbin'); "
+          "fs.rmSync(directory,{recursive:true,force:true}); ",
+          ""
         );
+      }
+    ],
+    [
+      "missing provider init directory creation",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile = input.dockerfile.replace(
+          "fs.mkdirSync(directory,{recursive:true,mode:0o755}); ",
+          ""
+        );
+      }
+    ],
+    [
+      "provider init symlink",
+      (input: ReturnType<typeof fixture>) => {
+        input.dockerfile +=
+          '\nRUN ["/usr/bin/node", "-e", "fs.symlinkSync(\'usr/sbin\',\'/sbin\'); " ]\n';
       }
     ],
     [

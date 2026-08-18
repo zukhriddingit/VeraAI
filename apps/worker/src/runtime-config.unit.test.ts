@@ -18,6 +18,7 @@ describe("worker runtime configuration", () => {
 
   it.each([
     ["VERA_BROWSER_DISABLED", "maybe"],
+    ["VERA_WORKER_BROWSER_DISABLED", "maybe"],
     ["VERA_GMAIL_ALERTS_DISABLED", "yes"],
     ["VERA_INTEGRATIONS_DISABLED", "enabled"],
     ["VERA_NOTIFICATIONS_DISABLED", "no"]
@@ -87,6 +88,39 @@ describe("worker runtime configuration", () => {
         "run-once"
       ).browserDisabled
     ).toBe(false);
+  });
+
+  it("allows the web browser gate to be open while the worker remains explicitly denied", () => {
+    expect(
+      parseWorkerRuntimeConfig(
+        {
+          VERA_BROWSER_DISABLED: "0",
+          VERA_WORKER_BROWSER_DISABLED: "1",
+          VERA_MARITIME_WORKER_AGENT_ID: "worker",
+          MARITIME_API_KEY: "synthetic-scoped-key"
+        },
+        "serve"
+      )
+    ).toMatchObject({
+      browserDisabled: true,
+      maritimeWorkerAgentId: "worker",
+      maritimeGatewayAgentId: null,
+      openClawGatewayUrl: null
+    });
+  });
+
+  it("keeps the global browser kill switch authoritative over the worker override", () => {
+    expect(() =>
+      parseWorkerRuntimeConfig(
+        {
+          VERA_BROWSER_DISABLED: "1",
+          VERA_WORKER_BROWSER_DISABLED: "0",
+          OPENCLAW_GATEWAY_URL: "ws://127.0.0.1:18789",
+          OPENCLAW_GATEWAY_TOKEN: "synthetic-token-value"
+        },
+        "run-once"
+      )
+    ).toThrow(/gateway configuration must be absent/u);
   });
 
   it("requires the complete control-plane tuple before hosted serve opens resources", () => {

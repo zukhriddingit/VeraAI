@@ -31,8 +31,12 @@ function validLayout() {
       entries: []
     },
     sbin: {
-      isSymbolicLink: true,
-      target: "usr/sbin"
+      isDirectory: true,
+      isSymbolicLink: false,
+      uid: 0,
+      gid: 0,
+      mode: 0o755,
+      entries: []
     },
     usrBinEntries: ["node"],
     bannedPathsPresent: [],
@@ -47,7 +51,7 @@ function validBootstrap() {
     uid: 0,
     gid: 0,
     mode: 0o500,
-    helperPath: "/usr/sbin/maritime-init",
+    helperPath: "/sbin/maritime-init",
     bootPath: "/sbin/maritime-init",
     bootPathResolved: true,
     removed: true,
@@ -135,15 +139,39 @@ describe("Gateway image-layout verifier", () => {
       }
     ],
     [
-      "real sbin directory",
+      "missing sbin directory",
       (input: ReturnType<typeof validLayout>) => {
-        input.sbin.isSymbolicLink = false;
+        input.sbin.isDirectory = false;
       }
     ],
     [
-      "wrong sbin target",
+      "symbolic-link sbin directory",
       (input: ReturnType<typeof validLayout>) => {
-        input.sbin.target = "usr/bin";
+        input.sbin.isSymbolicLink = true;
+      }
+    ],
+    [
+      "non-root sbin directory owner",
+      (input: ReturnType<typeof validLayout>) => {
+        input.sbin.uid = 1000;
+      }
+    ],
+    [
+      "non-root sbin directory group",
+      (input: ReturnType<typeof validLayout>) => {
+        input.sbin.gid = 1000;
+      }
+    ],
+    [
+      "writable sbin directory mode",
+      (input: ReturnType<typeof validLayout>) => {
+        input.sbin.mode = 0o777;
+      }
+    ],
+    [
+      "nonempty sbin directory",
+      (input: ReturnType<typeof validLayout>) => {
+        input.sbin.entries.push("maritime-init");
       }
     ],
     [
@@ -228,7 +256,7 @@ describe("Gateway image-layout verifier", () => {
     [
       "helper created outside system administration directory",
       (input: ReturnType<typeof validBootstrap>) => {
-        input.helperPath = "/usr/local/bin/maritime-init";
+        input.helperPath = "/usr/sbin/maritime-init";
       }
     ],
     [
