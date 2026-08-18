@@ -151,6 +151,15 @@ real empty root-owned `/usr/sbin` with `/sbin -> usr/sbin`, embedded no helper, 
 current release identity below. The current index passes exact-digest signing and attestation; the
 child still requires the no-rebuild direct-child workflow before deployment.
 
+The 2026-08-18 production probe pulled the later signed Gateway digest
+`sha256:467cf214919d9487a95bb3d478bcbdf7e55b7a43137588f07b4bbe1f60befe98`
+successfully, but Maritime again stopped before Vera's entrypoint with
+`Requested init /sbin/maritime-init failed (error -2)`. The current provider path therefore does
+not establish bootstrap through the relative `/sbin -> usr/sbin` boundary. The next candidate uses
+separate empty root-owned mode-`0755` `/sbin` and `/usr/sbin` directories, keeps both outside
+`PATH`, embeds no provider helper, and remains non-deployable until the same signed image passes
+live bootstrap and WSS acceptance.
+
 ## R3 release-index and runtime-child pull procedure
 
 R3 treats the signed release index identity and selected runtime child identity as different

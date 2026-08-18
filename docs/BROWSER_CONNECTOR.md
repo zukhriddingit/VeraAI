@@ -80,6 +80,15 @@ provenance, and SPDX SBOM verification. `remote-extension-image.json` records th
 separately and keeps `deployableBeforeLiveProxyAcceptance: false`. The child must receive its own
 verified signature and attestations before the one disposable Maritime acceptance.
 
+A later 2026-08-18 probe against signed Gateway digest
+`sha256:467cf214919d9487a95bb3d478bcbdf7e55b7a43137588f07b4bbe1f60befe98`
+proved that the image pulls and unpacks, but Maritime still fails before Vera's entrypoint at
+`/sbin/maritime-init` when `/sbin` is a relative symlink. The bounded compatibility candidate uses
+an empty real `/sbin` directory in addition to the existing empty real `/usr/sbin`; neither is in
+the application `PATH`, and neither contains a provider helper in the immutable image. It remains
+founder-only and non-deployable until signed-image bootstrap, exact-route WSS, one-tab consent,
+revocation, and forbidden-action acceptance all pass.
+
 The repaired container exposes an exact-path filter on public port `18789`. The general OpenClaw
 Gateway binds only to loopback port `18790`; the filter forwards raw upgrade bytes only for exact
 `/browser/extension` requests and rejects query-bearing or unrelated paths before OpenClaw.

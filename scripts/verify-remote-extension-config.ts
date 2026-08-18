@@ -280,18 +280,19 @@ export function findRemoteExtensionConfigViolations(input: {
   }
   if (
     [
-      "fs.rmSync('/sbin',{force:true}); ",
-      "fs.rmSync('/usr/sbin',{force:true}); ",
-      "fs.mkdirSync('/usr/sbin',{mode:0o755}); ",
-      "fs.chownSync('/usr/sbin',0,0); ",
-      "fs.chmodSync('/usr/sbin',0o755); ",
-      "fs.symlinkSync('usr/sbin','/sbin'); "
+      "for (const directory of ['/sbin','/usr/sbin']) { ",
+      "fs.rmSync(directory,{recursive:true,force:true}); ",
+      "fs.mkdirSync(directory,{recursive:true,mode:0o755}); ",
+      "fs.chownSync(directory,0,0); ",
+      "fs.chmodSync(directory,0o755); ",
+      "} "
     ].some((operation) => !dockerfile.includes(operation)) ||
     /(?:COPY|ADD)[^\n]*(?:\/sbin|\/usr\/sbin)/iu.test(dockerfile) ||
-    dockerfile.includes("maritime-init")
+    dockerfile.includes("maritime-init") ||
+    dockerfile.includes("fs.symlinkSync")
   ) {
     violations.push(
-      "Hardened Gateway image must preserve Maritime's empty provider-init filesystem boundary."
+      "Hardened Gateway image must preserve real empty root-owned /sbin and /usr/sbin provider-init filesystem boundaries without a symlink."
     );
   }
   if (

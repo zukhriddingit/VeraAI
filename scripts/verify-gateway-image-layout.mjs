@@ -55,8 +55,12 @@ process.stdout.write(JSON.stringify({
     entries: fs.readdirSync("/usr/sbin").sort()
   },
   sbin: {
+    isDirectory: sbinStat.isDirectory(),
     isSymbolicLink: sbinStat.isSymbolicLink(),
-    target: sbinStat.isSymbolicLink() ? fs.readlinkSync("/sbin") : null
+    uid: sbinStat.uid,
+    gid: sbinStat.gid,
+    mode: sbinStat.mode & 0o777,
+    entries: fs.readdirSync("/sbin").sort()
   },
   usrBinEntries: fs.readdirSync("/usr/bin").sort(),
   bannedPathsPresent: bannedPaths.filter((path) => fs.existsSync(path))
@@ -65,10 +69,10 @@ process.stdout.write(JSON.stringify({
 
 const BOOTSTRAP_SIMULATION_SOURCE = String.raw`
 const fs = require("node:fs");
-const directory = "/usr/sbin";
+const directory = "/sbin";
 const filename = ${JSON.stringify(EXPECTED_PROBE_NAME)};
 const path = directory + "/" + filename;
-const bootPath = "/sbin/" + filename;
+const bootPath = path;
 let descriptor;
 let created = false;
 let metadata = null;
@@ -145,8 +149,17 @@ export function findGatewayImageLayoutViolations(observation) {
   if (!sameArray(observation?.systemSbin?.entries, [])) {
     violations.push("/usr/sbin must be empty in the immutable image.");
   }
-  if (observation?.sbin?.isSymbolicLink !== true || observation?.sbin?.target !== "usr/sbin") {
-    violations.push("/sbin must be the relative symlink usr/sbin.");
+  if (observation?.sbin?.isDirectory !== true || observation?.sbin?.isSymbolicLink !== false) {
+    violations.push("/sbin must be a real directory.");
+  }
+  if (observation?.sbin?.uid !== 0 || observation?.sbin?.gid !== 0) {
+    violations.push("/sbin must be owned by root:root.");
+  }
+  if (observation?.sbin?.mode !== 0o755) {
+    violations.push("/sbin must have mode 0755.");
+  }
+  if (!sameArray(observation?.sbin?.entries, [])) {
+    violations.push("/sbin must be empty in the immutable image.");
   }
   if (observation?.uid !== 1000 || observation?.gid !== 1000) {
     violations.push("Gateway runtime must use UID/GID 1000:1000.");
@@ -178,7 +191,7 @@ export function findBootstrapSimulationViolations(observation) {
     violations.push("Simulated provider bootstrap helper metadata is outside the test contract.");
   }
   if (
-    observation?.helperPath !== "/usr/sbin/maritime-init" ||
+    observation?.helperPath !== "/sbin/maritime-init" ||
     observation?.bootPath !== "/sbin/maritime-init" ||
     observation?.bootPathResolved !== true
   ) {
