@@ -1536,6 +1536,9 @@ function sourceStatus(
   }
 
   const provider = events.findLast((item) => item.action === "live_provider_query_completed");
+  const agentUnavailable = events.findLast(
+    (item) => item.action === "maritime_agent_analysis_unavailable"
+  );
   const failure = events.findLast(
     (item) => item.action === "live_search_failed" && item.metadata.provider === "rentcast"
   );
@@ -1543,7 +1546,10 @@ function sourceStatus(
   if (failure?.metadata.resultState === "source_not_approved") state = "source_not_approved";
   else if (failure) state = imports.length > 0 ? "partial" : "failed";
   else if (job?.status === "completed") {
-    state = terminalNormalizationFailures.length > 0 ? "partial" : "completed";
+    state =
+      terminalNormalizationFailures.length > 0 || agentUnavailable !== undefined
+        ? "partial"
+        : "completed";
   } else if (job !== null) state = "searching";
   return {
     source,
@@ -1559,7 +1565,9 @@ function sourceStatus(
           ? "RentCast is not approved for this account."
           : failure
             ? "RentCast stopped safely; other source results were preserved."
-            : null
+            : agentUnavailable
+              ? "RentCast imported validated provider results; OpenClaw advisory analysis was unavailable."
+              : null
   };
 }
 

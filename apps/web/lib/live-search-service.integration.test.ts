@@ -68,7 +68,7 @@ afterEach(() => {
 });
 
 function dependencies(
-  options: { providerGate?: Promise<void> } = {}
+  options: { providerGate?: Promise<void>; maritimeResponse?: string } = {}
 ): LiveSearchServiceDependencies {
   const repositories = provider.forUser(DEMO_USER_ID);
   const rentCastFetch = vi.fn<typeof fetch>(async () => {
@@ -79,21 +79,23 @@ function dependencies(
     const body = JSON.parse(String(init?.body)) as { conversation_id: string };
     return new Response(
       JSON.stringify({
-        response: JSON.stringify({
-          schemaVersion: "1",
-          searchRunId: body.conversation_id,
-          recommendations: [
-            {
-              providerListingId: "rc-live-1",
-              recommended: true,
-              confidence: 0.8,
-              summary: "Matches the explicit budget and bedroom criteria.",
-              strengths: ["Within the maximum stated rent."],
-              watchouts: ["Pet policy is unknown."],
-              missingFacts: ["Required recurring fees."]
-            }
-          ]
-        })
+        response:
+          options.maritimeResponse ??
+          JSON.stringify({
+            schemaVersion: "1",
+            searchRunId: body.conversation_id,
+            recommendations: [
+              {
+                providerListingId: "rc-live-1",
+                recommended: true,
+                confidence: 0.8,
+                summary: "Matches the explicit budget and bedroom criteria.",
+                strengths: ["Within the maximum stated rent."],
+                watchouts: ["Pet policy is unknown."],
+                missingFacts: ["Required recurring fees."]
+              }
+            ]
+          })
       }),
       { status: 200 }
     );
@@ -156,6 +158,53 @@ describe("live search application service", () => {
     const second = await runLiveSearch(request, deps);
     expect(second).toMatchObject({ importedCount: 0, rejectedCount: 0 });
     expect(await deps.repositories.rawListings.count()).toBe(13);
+  });
+
+  it("preserves provider evidence when advisory agent output is invalid", async () => {
+    const deps = dependencies({ maritimeResponse: "not-json" });
+
+    const result = await runLiveSearch(request, deps);
+
+    expect(result).toMatchObject({
+      state: "importing",
+      retrievedCount: 1,
+      importedCount: 1,
+      rejectedCount: 0,
+      agentLatencyMilliseconds: null
+    });
+    const events = (await deps.repositories.activityEvents.list()).filter(
+      (event) => event.correlationId === result.searchRunId
+    );
+    expect(events.map((event) => event.action)).toEqual([
+      "live_search_requested",
+      "live_provider_query_started",
+      "live_provider_query_completed",
+      "maritime_agent_analysis_started",
+      "maritime_agent_analysis_unavailable",
+      "live_listing_imported"
+    ]);
+    expect(
+      events.find((event) => event.action === "maritime_agent_analysis_unavailable")
+    ).toMatchObject({
+      outcome: "failed",
+      metadata: {
+        resultState: "agent_invalid_response",
+        continuedWithProviderEvidence: true
+      }
+    });
+    expect(events.some((event) => event.action === "live_search_failed")).toBe(false);
+    const imported = events.find((event) => event.action === "live_listing_imported")!;
+    expect(await deps.repositories.rawListings.getById(imported.targetId)).toMatchObject({
+      source: "rentcast",
+      sourceListingId: "rc-live-1",
+      rawJson: {
+        liveEvidence: { agentAnalysis: null }
+      }
+    });
+    expect(await deps.repositories.sourceJobs.getById(result.searchRunId)).toMatchObject({
+      status: "completed",
+      result: { status: "completed", recordCount: 1, error: null }
+    });
   });
 
   it("queues decision reconciliation when an idempotent rerun is already normalized", async () => {

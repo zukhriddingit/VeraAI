@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { MaritimeOpenClawClient, RentCastConnector } from "@vera/connectors";
 import {
   DEMO_SEARCH_PROFILE,
   DEMO_USER_ID,
@@ -40,6 +41,7 @@ const profile = {
   id: "profile-zillow-boston",
   name: "Boston Zillow research",
   locationText: "Boston, MA",
+  radiusKilometers: null,
   minimumBedrooms: 2,
   minimumBathrooms: 1,
   targetMonthlyTotalCents: 300_000,
@@ -47,6 +49,21 @@ const profile = {
 };
 const observedAt = "2026-07-30T12:00:00.000Z";
 const sourceUrl = "https://www.zillow.com/homedetails/12-Beacon-St-Boston-MA-02108/123456_zpid/";
+const rentCastResponse = [
+  {
+    id: "rc-partial-1",
+    formattedAddress: "20 Beacon St, Boston, MA 02108",
+    propertyType: "Apartment",
+    bedrooms: 2,
+    bathrooms: 1,
+    squareFootage: 900,
+    status: "Active",
+    price: 2_800,
+    listedDate: "2026-07-29T10:00:00.000Z",
+    lastSeenDate: "2026-07-30T10:00:00.000Z",
+    daysOnMarket: 1
+  }
+];
 
 function output(overrides: Partial<ZillowRentalResearchOutput> = {}): ZillowRentalResearchOutput {
   return {
@@ -170,6 +187,52 @@ const excludedAdditionalSources = [
 const excludedConfiguredSources = excludedAdditionalSources.slice(2);
 
 describe("founder Zillow rental research service", () => {
+  it("marks RentCast partial while preserving imports when advisory analysis is unavailable", async () => {
+    const base = dependencies(async () => output());
+    const deps: RentalResearchDependencies = {
+      ...base,
+      liveSearch: {
+        ...base.liveSearch,
+        rentCast: new RentCastConnector({
+          apiKey: "rentcast-test-key",
+          fetch: async () => new Response(JSON.stringify(rentCastResponse), { status: 200 }),
+          now: () => new Date("2026-07-30T12:00:00.000Z")
+        }),
+        maritime: new MaritimeOpenClawClient({
+          apiKey: "maritime-test-key",
+          agentId: "agent-test",
+          fetch: async () =>
+            new Response(JSON.stringify({ response: "not-json" }), { status: 200 }),
+          now: () => new Date("2026-07-30T12:00:01.000Z")
+        })
+      }
+    };
+
+    const status = await runRentalResearch(
+      {
+        veraRunId: "run-rentcast-advisory-unavailable",
+        searchProfileId: profile.id,
+        selectedSources: ["rentcast"],
+        confirmedExternalUsage: true
+      },
+      deps
+    );
+
+    const runEvents = (await deps.repositories.activityEvents.list()).filter(
+      (event) => event.correlationId === "run-rentcast-advisory-unavailable"
+    );
+    expect(status.sources[0], JSON.stringify(runEvents, null, 2)).toMatchObject({
+      source: "rentcast",
+      state: "partial",
+      retrievedCount: 1,
+      importedCount: 1,
+      rejectedCount: 0,
+      message:
+        "RentCast imported validated provider results; OpenClaw advisory analysis was unavailable."
+    });
+    expect(runEvents.some((event) => event.action === "live_search_failed")).toBe(false);
+  });
+
   it("imports observed Zillow evidence into the normal RawListing and normalization queue", async () => {
     let observedInput: Parameters<RentalResearchDependencies["zillow"]["run"]>[0] | null = null;
     const deps = dependencies(async (input) => {

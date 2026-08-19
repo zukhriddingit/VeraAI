@@ -39,6 +39,7 @@ export const LIVE_SEARCH_ACTIONS = {
   providerCompleted: "live_provider_query_completed",
   agentStarted: "maritime_agent_analysis_started",
   agentCompleted: "maritime_agent_analysis_completed",
+  agentUnavailable: "maritime_agent_analysis_unavailable",
   imported: "live_listing_imported",
   completed: "live_search_completed",
   failed: "live_search_failed"
@@ -450,7 +451,8 @@ export async function runLiveSearch(
     return completeNoResults(dependencies, job, provider, providerEventId);
   }
 
-  let agent: MaritimeOpenClawAnalysisResult;
+  let agent: MaritimeOpenClawAnalysisResult | null = null;
+  let agentFailure: ReturnType<typeof mapFailure> | null = null;
   let agentEventId = providerEventId;
   try {
     const agentStarted = makeEvent(dependencies, {
@@ -497,11 +499,34 @@ export async function runLiveSearch(
     agentEventId = agentCompleted.id;
     await dependencies.repositories.activityEvents.append(agentCompleted);
   } catch (error: unknown) {
-    return failRun(dependencies, job, mapFailure(error), agentEventId);
+    if (!(error instanceof MaritimeOpenClawError)) {
+      return failRun(dependencies, job, mapFailure(error), agentEventId);
+    }
+    agentFailure = mapFailure(error);
+    const agentUnavailable = makeEvent(dependencies, {
+      action: LIVE_SEARCH_ACTIONS.agentUnavailable,
+      runId,
+      causationId: agentEventId,
+      actor: "connector",
+      outcome: "failed",
+      errorCategory: agentFailure.category,
+      payloadHash: provider.queryHash,
+      metadata: {
+        profileId: profile.id,
+        agent: "OpenClaw on Maritime",
+        promptVersion: DEFAULT_LIVE_AGENT_PROMPT_VERSION,
+        resultState: agentFailure.state,
+        retryable: agentFailure.retryable,
+        continuedWithProviderEvidence: true
+      },
+      occurredAt: isoNow(dependencies)
+    });
+    agentEventId = agentUnavailable.id;
+    await dependencies.repositories.activityEvents.append(agentUnavailable);
   }
 
   const byProviderId = new Map(
-    agent.analysis.recommendations.map((recommendation) => [
+    (agent?.analysis.recommendations ?? []).map((recommendation) => [
       recommendation.providerListingId,
       recommendation
     ])
@@ -635,7 +660,8 @@ export async function runLiveSearch(
       idempotencyKey: job.idempotencyKey,
       resultHash: safeHash({
         queryHash: provider.queryHash,
-        analysis: agent.analysis,
+        analysis: agent?.analysis ?? null,
+        advisoryFailure: agentFailure?.state ?? null,
         importedCount,
         rejectedCount
       }),
@@ -690,11 +716,11 @@ export async function runLiveSearch(
     importedCount,
     rejectedCount,
     retrievalLatencyMilliseconds: provider.latencyMilliseconds,
-    agentLatencyMilliseconds: agent.latencyMilliseconds,
+    agentLatencyMilliseconds: agent?.latencyMilliseconds ?? null,
     totalLatencyMilliseconds: Math.max(0, Date.parse(importedAt) - Date.parse(requestedAt)),
     completedAt,
     queryHash: provider.queryHash,
-    promptVersion: agent.promptVersion,
+    promptVersion: agent?.promptVersion ?? DEFAULT_LIVE_AGENT_PROMPT_VERSION,
     agentSchemaVersion: "1"
   });
 }
