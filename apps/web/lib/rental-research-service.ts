@@ -2,6 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import {
   getBrowserSourceAdapter,
+  LoopbackBrowserResearchClient,
+  LoopbackZillowResearchClient,
   MaritimeBrowserResearchClient,
   MaritimeBrowserResearchError,
   MaritimeZillowResearchClient,
@@ -65,6 +67,12 @@ const ZILLOW_OPERATION = "zillow.rental_research.v1";
 const DISCOVERY_DETAIL_PAGES = 0;
 const ZILLOW_MAX_RESULTS = 5;
 const ZILLOW_DISCOVERY_DETAIL_PAGES = 1;
+
+export function assignedBrowserResearchPlanSigningKey(
+  runtime: BrowserGatewayRuntime | null
+): string {
+  return runtime?.browserResearchLoopback?.planSigningKey ?? runtime?.planSigningKey ?? "";
+}
 
 export class RentalResearchServiceError extends Error {
   constructor(
@@ -1753,6 +1761,14 @@ export function createRentalResearchDependencies(
   const assignmentAuthorized = authorizedRuntime !== null;
   const browserDisabled = parseHostedRuntimePolicy(environment).browserDisabled;
   const liveEnvironment = parseLiveSearchEnvironment(environment);
+  const loopbackOptions = authorizedRuntime?.browserResearchLoopback
+    ? {
+        url: authorizedRuntime.browserResearchLoopback.url,
+        token: authorizedRuntime.browserResearchLoopback.token,
+        timeoutMilliseconds: Number(environment.VERA_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000),
+        maxResponseBytes: Number(environment.VERA_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 750_000)
+      }
+    : null;
   return {
     userId,
     repositories,
@@ -1765,16 +1781,18 @@ export function createRentalResearchDependencies(
               throw new MaritimeZillowResearchError("gateway_unavailable", true);
             }
           }
-        : new MaritimeZillowResearchClient({
-            apiKey: authorizedRuntime.maritimeApiKey,
-            agentId: authorizedRuntime.assignment.maritimeAgentId,
-            timeoutMilliseconds: Number(
-              environment.VERA_ZILLOW_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000
-            ),
-            maxResponseBytes: Number(
-              environment.VERA_ZILLOW_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 500_000
-            )
-          }),
+        : loopbackOptions
+          ? new LoopbackZillowResearchClient(loopbackOptions)
+          : new MaritimeZillowResearchClient({
+              apiKey: authorizedRuntime.maritimeApiKey,
+              agentId: authorizedRuntime.assignment.maritimeAgentId,
+              timeoutMilliseconds: Number(
+                environment.VERA_ZILLOW_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000
+              ),
+              maxResponseBytes: Number(
+                environment.VERA_ZILLOW_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 500_000
+              )
+            }),
     zillowEnvironment: {
       sourceEnabled: enabledSources.has("zillow"),
       browserDisabled,
@@ -1787,18 +1805,20 @@ export function createRentalResearchDependencies(
               throw new MaritimeBrowserResearchError("gateway_unavailable", true);
             }
           }
-        : new MaritimeBrowserResearchClient({
-            apiKey: authorizedRuntime.maritimeApiKey,
-            agentId: authorizedRuntime.assignment.maritimeAgentId,
-            timeoutMilliseconds: Number(environment.VERA_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000),
-            maxResponseBytes: Number(
-              environment.VERA_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 750_000
-            )
-          }),
+        : loopbackOptions
+          ? new LoopbackBrowserResearchClient(loopbackOptions)
+          : new MaritimeBrowserResearchClient({
+              apiKey: authorizedRuntime.maritimeApiKey,
+              agentId: authorizedRuntime.assignment.maritimeAgentId,
+              timeoutMilliseconds: Number(environment.VERA_BROWSER_RESEARCH_TIMEOUT_MS ?? 100_000),
+              maxResponseBytes: Number(
+                environment.VERA_BROWSER_RESEARCH_MAX_RESPONSE_BYTES ?? 750_000
+              )
+            }),
     browserResearchEnvironment: {
       assignmentAuthorized,
       browserDisabled,
-      planSigningKey: authorizedRuntime?.planSigningKey ?? "",
+      planSigningKey: assignedBrowserResearchPlanSigningKey(authorizedRuntime),
       enabledSources
     },
     rentcastAuthorized: liveEnvironment.enabled && liveEnvironment.founderUserIds.has(userId),

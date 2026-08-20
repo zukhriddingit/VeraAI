@@ -56,6 +56,19 @@ VERA_BROWSER_ASSIGNMENT_TESTER_A_202608_MARITIME_API_KEY
 VERA_BROWSER_ASSIGNMENT_TESTER_A_202608_PLAN_SIGNING_KEY
 ```
 
+When an approved assignment temporarily reaches its dedicated Gateway through a local private
+bridge instead of Maritime, configure all three assignment-scoped values below or none of them:
+
+```text
+VERA_BROWSER_ASSIGNMENT_TESTER_A_202608_BROWSER_RESEARCH_LOOPBACK_URL
+VERA_BROWSER_ASSIGNMENT_TESTER_A_202608_BROWSER_RESEARCH_LOOPBACK_TOKEN
+VERA_BROWSER_ASSIGNMENT_TESTER_A_202608_BROWSER_RESEARCH_LOOPBACK_PLAN_SIGNING_KEY
+```
+
+The loopback signing key is the private bridge's inbound plan-signing key, which may differ from
+the Gateway/checkpoint signing key. Incomplete loopback material fails closed. Never use the legacy
+global local-bridge selectors for an assignment-routed release.
+
 The assigned Gateway/checkpoint deployment receives its own raw relay, checkpoint, bootstrap seed,
 and scoped Maritime values. The raw checkpoint value exists only in the assigned sidecar/secret
 store; PostgreSQL receives its SHA-256 digest. The extension receives the relay credential only after
