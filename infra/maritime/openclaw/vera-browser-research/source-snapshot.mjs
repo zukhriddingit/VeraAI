@@ -7,7 +7,7 @@ const PHONE_NUMBER = /(?:\+?1[ .-]?)?\(?\d{3}\)?[ .-]?\d{3}[ .-]?\d{4}\b/u;
 const BLOCKERS = [
   [
     "two_factor_required",
-    /\b(?:duo|two[- ]factor|2fa|two[- ]step|verification code|security code|approve your login)\b/iu
+    /\b(?:duo\s+(?:mobile|security|push|authentication|verification|prompt|passcode)|(?:open|launch|check|approve|use)\s+(?:the\s+)?duo(?:\s+mobile)?|two[- ]factor|2fa|two[- ]step|verification code|security code|approve your login)\b/iu
   ],
   ["captcha_required", /\b(?:captcha|verify you are human|press and hold|human verification)\b/iu],
   ["checkpoint_required", /\b(?:checkpoint|confirm your identity|security check)\b/iu],

@@ -170,6 +170,55 @@ describe("bounded source snapshots", () => {
     expect(JSON.stringify(cards)).not.toMatch(/857|555-0100/iu);
   });
 
+  it("does not mistake an observed Apartments.com property named DUO for two-factor auth", () => {
+    const name = "DUO, Chelsea, MA";
+    const document = parseSourceSnapshot(
+      {
+        ok: true,
+        format: "ai",
+        targetId: "shared-tab-1",
+        url: "https://www.apartments.com/boston-ma/",
+        refs: { e1: { role: "link", name } },
+        snapshot: [
+          `- link "${name}" [ref=e1]`,
+          "  - image: Building Photo - DUO",
+          "  - generic: $2,700+, 1 Bed",
+          "",
+          "Links:",
+          `1. ${name} -> https://www.apartments.com/duo-chelsea-ma/abcd123/`
+        ].join("\n")
+      },
+      "apartments_com"
+    );
+
+    expect(
+      extractSourceCards(document, { source: "apartments_com", maxResults: 10 }, observedAt)[0]
+    ).toMatchObject({
+      propertyName: "DUO",
+      rentUsd: 2_700,
+      bedrooms: 1
+    });
+  });
+
+  it.each(["Duo Security", "Duo Mobile", "Duo Push", "Approve your login"])(
+    "still stops for contextual two-factor prompt %s",
+    (prompt) => {
+      expect(() =>
+        parseSourceSnapshot(
+          {
+            ok: true,
+            format: "ai",
+            targetId: "shared-tab-1",
+            url: "https://www.apartments.com/boston-ma/",
+            refs: {},
+            snapshot: `- heading: ${prompt}`
+          },
+          "apartments_com"
+        )
+      ).toThrow("two_factor_required");
+    }
+  );
+
   it("canonicalizes an observed Marketplace item URL without tracking data", () => {
     const name = "2 Beds 1 Bath - Apartment, $1,995, Allston, MA, listing 123456789";
     const document = parseSourceSnapshot(
