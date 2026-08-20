@@ -369,6 +369,14 @@ async function navigate(url, action, state, dependencies) {
     throw new VeraBrowserResearchError("unobserved_navigation_target");
   }
   const tab = await prepare(action, state, dependencies, url);
+  if (
+    action === "navigate_same_source" &&
+    (state.plan.mode ?? "discovery") === "discovery" &&
+    tab.url === url
+  ) {
+    record(state, action, dependencies, url);
+    return;
+  }
   const payload = await browserPost(
     "/navigate",
     { targetId: tab.targetId, url },
