@@ -22,6 +22,7 @@ import {
 const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18792";
 const BROWSER_PROFILE = "chrome";
 const REQUEST_TIMEOUT_MS = 15_000;
+const BROWSER_READ_RETRY_DELAYS_MS = Object.freeze([750, 1_500, 3_000]);
 const TABS_MAX_BYTES = 64 * 1024;
 const SNAPSHOT_MAX_BYTES = 512 * 1024;
 const ACTION_MAX_BYTES = 64 * 1024;
@@ -114,20 +115,40 @@ async function browserGet(path, maximum, state, dependencies) {
   }
   const token = process.env.OPENCLAW_GATEWAY_TOKEN?.trim();
   if (!token) throw new VeraBrowserResearchError("browser_control_auth_missing");
-  let response;
-  try {
-    response = await dependencies.fetch(new URL(path, BROWSER_CONTROL_ORIGIN), {
-      method: "GET",
-      redirect: "error",
-      headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(timeout(state, dependencies))
-    });
-  } catch {
-    throw new VeraBrowserResearchError("browser_offline", { manualAction: "browser_offline" });
+  for (let attempt = 0; attempt <= BROWSER_READ_RETRY_DELAYS_MS.length; attempt += 1) {
+    let response = null;
+    let transientFailure = false;
+    try {
+      response = await dependencies.fetch(new URL(path, BROWSER_CONTROL_ORIGIN), {
+        method: "GET",
+        redirect: "error",
+        headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(timeout(state, dependencies))
+      });
+      if (response.ok) return readBoundedJson(response, maximum);
+      transientFailure = response.status >= 500;
+      try {
+        await response.body?.cancel();
+      } catch {
+        // The response is already unusable. Preserve the bounded retry decision.
+      }
+    } catch {
+      transientFailure = true;
+    }
+    if (!transientFailure || attempt === BROWSER_READ_RETRY_DELAYS_MS.length) {
+      throw new VeraBrowserResearchError("browser_offline", {
+        manualAction: "browser_offline"
+      });
+    }
+    const delay = BROWSER_READ_RETRY_DELAYS_MS[attempt];
+    const remaining =
+      state.plan.maxDurationMilliseconds - (dependencies.monotonicNow() - state.startedMonotonic);
+    if (!Number.isFinite(remaining) || remaining <= delay) {
+      throw new VeraBrowserResearchError("run_limit_exceeded");
+    }
+    await dependencies.wait(delay);
   }
-  if (!response.ok)
-    throw new VeraBrowserResearchError("browser_offline", { manualAction: "browser_offline" });
-  return readBoundedJson(response, maximum);
+  throw new VeraBrowserResearchError("browser_offline", { manualAction: "browser_offline" });
 }
 
 async function browserPost(path, body, maximum, state, dependencies) {

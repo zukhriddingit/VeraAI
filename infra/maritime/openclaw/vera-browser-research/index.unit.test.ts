@@ -346,12 +346,16 @@ describe("vera_browser_research_v1 local adapter replay", () => {
   it("applies reviewed filters and extracts one real-shaped card without a forbidden action", async () => {
     let currentUrl = "https://www.zillow.com/homes/for_rent/";
     let mode: "base" | "price" | "beds" = "base";
+    let transientTabFailures = 0;
+    const waits: number[] = [];
     const browserBodies: unknown[] = [];
     let monotonic = 1_000;
     const result = await researchRentals(signedPlan(), {
       now: () => new Date(),
       monotonicNow: () => (monotonic += 10),
-      wait: async () => {},
+      wait: async (milliseconds: number) => {
+        waits.push(milliseconds);
+      },
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(input instanceof Request ? input.url : input.toString());
         if (url.hostname === "vera-checkpoint.example.test") {
@@ -362,6 +366,10 @@ describe("vera_browser_research_v1 local adapter replay", () => {
           });
         }
         if (url.pathname === "/tabs") {
+          if (currentUrl.includes("apartments.com") && transientTabFailures < 2) {
+            transientTabFailures += 1;
+            return Response.json({ code: "relay_reconnecting" }, { status: 503 });
+          }
           return Response.json({
             tabs: [
               {
@@ -421,6 +429,63 @@ describe("vera_browser_research_v1 local adapter replay", () => {
         return kind === undefined || ["click", "type", "scrollIntoView"].includes(kind);
       })
     ).toBe(true);
+    expect(transientTabFailures).toBe(2);
+    expect(waits).toEqual(expect.arrayContaining([750, 1_500]));
+  });
+
+  it("bounds browser-read reconnect retries without repeating the navigation action", async () => {
+    let currentUrl = "https://www.zillow.com/homes/for_rent/";
+    let tabReads = 0;
+    let navigateCalls = 0;
+    const waits: number[] = [];
+    let monotonic = 1_500;
+    const result = await researchRentals(signedPlan(), {
+      now: () => new Date(),
+      monotonicNow: () => (monotonic += 10),
+      wait: async (milliseconds: number) => {
+        waits.push(milliseconds);
+      },
+      fetch: async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(input instanceof Request ? input.url : input.toString());
+        if (url.hostname === "vera-checkpoint.example.test") {
+          return Response.json({
+            allowed: true,
+            reason: "allowed",
+            checkedAt: new Date().toISOString()
+          });
+        }
+        if (url.pathname === "/tabs") {
+          tabReads += 1;
+          if (tabReads > 1) {
+            return Response.json({ code: "relay_reconnecting" }, { status: 503 });
+          }
+          return Response.json({
+            tabs: [{ targetId: "shared-target-1", tabId: "stable-tab-1", url: currentUrl }]
+          });
+        }
+        if (url.pathname === "/navigate") {
+          navigateCalls += 1;
+          const body = JSON.parse(String(init?.body)) as { url?: string };
+          if (body.url) currentUrl = body.url;
+          return Response.json({ ok: true, targetId: "shared-target-1", url: currentUrl });
+        }
+        throw new Error(`Unexpected browser request: ${url.pathname}`);
+      }
+    });
+
+    expect(result).toMatchObject({
+      state: "manual_action_required",
+      pageState: "ready",
+      manualAction: "browser_offline",
+      resultCardsObserved: 0,
+      detailPagesOpened: 0
+    });
+    expect(tabReads).toBe(5);
+    expect(navigateCalls).toBe(1);
+    expect(waits).toEqual([1_500, 750, 1_500, 3_000]);
+    expect(
+      result.safeActionTrail.filter((entry) => entry.action === "navigate_same_source")
+    ).toEqual([expect.objectContaining({ action: "navigate_same_source", result: "completed" })]);
   });
 
   it("uses the live Facebook rentals route and extracts an observed card without forbidden actions", async () => {
