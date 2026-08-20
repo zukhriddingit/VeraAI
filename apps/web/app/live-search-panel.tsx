@@ -21,6 +21,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ListingDashboard } from "./listing-dashboard";
+import { browserReadinessObservationIsFresh } from "./browser-readiness-preflight";
 import {
   rentalResearchRecoveryLabel,
   rentalResearchRecoveryReady,
@@ -91,6 +92,8 @@ const browserSources = new Set<RentalResearchSource>([
 ]);
 
 const CUSTOM_SOURCE_STORAGE_KEY = "vera.custom-housing-source.v1";
+const BROWSER_PREFLIGHT_TIMEOUT_MS = 2_500;
+const BROWSER_PREFLIGHT_POLL_MS = 100;
 
 const selectableSources = [
   "rentcast",
@@ -156,6 +159,7 @@ export function LiveSearchPanel({
   const [browserReadiness, setBrowserReadiness] = useState<BrowserExtensionReadinessMessage | null>(
     null
   );
+  const [browserPreflightRunning, setBrowserPreflightRunning] = useState(false);
   const [customSourceName, setCustomSourceName] = useState("");
   const [customStartingUrl, setCustomStartingUrl] = useState("");
   const [customAllowedDomain, setCustomAllowedDomain] = useState("");
@@ -166,6 +170,7 @@ export function LiveSearchPanel({
     useState<SelectedHousingSourceConfiguration | null>(null);
   const [customSourceError, setCustomSourceError] = useState<string | null>(null);
   const browserReadinessObservedAt = useRef<number | null>(null);
+  const browserReadinessRef = useRef<BrowserExtensionReadinessMessage | null>(null);
 
   const selectedProfile = profiles.find((profile) => profile.id === profileId) ?? null;
   const phase = status?.phase ?? localPhase;
@@ -247,6 +252,7 @@ export function LiveSearchPanel({
       if (event.source !== window || event.origin !== window.location.origin) return;
       const parsed = BrowserExtensionReadinessMessageSchema.safeParse(event.data);
       if (!parsed.success) return;
+      browserReadinessRef.current = parsed.data;
       setBrowserReadiness(parsed.data);
       browserReadinessObservedAt.current = Date.now();
     };
@@ -255,6 +261,7 @@ export function LiveSearchPanel({
       const observedAt = browserReadinessObservedAt.current;
       if (observedAt !== null && Date.now() - observedAt > 3_500) {
         browserReadinessObservedAt.current = null;
+        browserReadinessRef.current = null;
         setBrowserReadiness(null);
       }
     }, 1_000);
@@ -272,6 +279,23 @@ export function LiveSearchPanel({
         : [...current, source]
     );
     setConfirmed(false);
+  }
+
+  async function waitForFreshBrowserReadiness(): Promise<boolean> {
+    const startedAt = Date.now();
+    const deadline = startedAt + BROWSER_PREFLIGHT_TIMEOUT_MS;
+    while (Date.now() < deadline) {
+      await new Promise<void>((resolve) => window.setTimeout(resolve, BROWSER_PREFLIGHT_POLL_MS));
+      const observedAt = browserReadinessObservedAt.current;
+      if (observedAt !== null && observedAt > startedAt) {
+        return browserReadinessObservationIsFresh(
+          browserReadinessRef.current,
+          observedAt,
+          startedAt
+        );
+      }
+    }
+    return false;
   }
 
   function saveCustomSource() {
@@ -349,6 +373,18 @@ export function LiveSearchPanel({
     if (sources.some((source) => browserSources.has(source)) && !browserReady) {
       setError("Prepare one Browser ready Vera Search tab before running browser sources.");
       return;
+    }
+    if (sources.some((source) => browserSources.has(source))) {
+      setBrowserPreflightRunning(true);
+      const freshBrowserReady = await waitForFreshBrowserReadiness();
+      setBrowserPreflightRunning(false);
+      if (!freshBrowserReady) {
+        setConfirmed(false);
+        setError(
+          "The shared tab is no longer Browser ready. Prepare one Vera Search tab and try again."
+        );
+        return;
+      }
     }
     const nextRunId = crypto.randomUUID();
     if (retryOfSearchRunId === null) {
@@ -448,7 +484,7 @@ export function LiveSearchPanel({
                   <input
                     type="checkbox"
                     checked={selected}
-                    disabled={running || unavailable}
+                    disabled={running || browserPreflightRunning || unavailable}
                     onChange={() => toggleSource(source)}
                   />
                   <span>
@@ -485,7 +521,7 @@ export function LiveSearchPanel({
                 <input
                   type="text"
                   value={customSourceName}
-                  disabled={running}
+                  disabled={running || browserPreflightRunning}
                   maxLength={160}
                   onChange={(event) => setCustomSourceName(event.target.value)}
                 />
@@ -495,7 +531,7 @@ export function LiveSearchPanel({
                 <input
                   type="url"
                   value={customStartingUrl}
-                  disabled={running}
+                  disabled={running || browserPreflightRunning}
                   placeholder="https://housing.example.edu/search"
                   onChange={(event) => setCustomStartingUrl(event.target.value)}
                 />
@@ -505,7 +541,7 @@ export function LiveSearchPanel({
                 <input
                   type="text"
                   value={customAllowedDomain}
-                  disabled={running}
+                  disabled={running || browserPreflightRunning}
                   placeholder="housing.example.edu"
                   onChange={(event) => setCustomAllowedDomain(event.target.value)}
                 />
@@ -514,7 +550,7 @@ export function LiveSearchPanel({
                 <span>Login required</span>
                 <select
                   value={customLoginRequired}
-                  disabled={running}
+                  disabled={running || browserPreflightRunning}
                   onChange={(event) =>
                     setCustomLoginRequired(event.target.value as HousingSourceLoginRequirement)
                   }
@@ -528,7 +564,7 @@ export function LiveSearchPanel({
                 <input
                   type="checkbox"
                   checked={customDefaultInclude}
-                  disabled={running}
+                  disabled={running || browserPreflightRunning}
                   onChange={(event) => setCustomDefaultInclude(event.target.checked)}
                 />
                 <span>Include by default</span>
@@ -536,7 +572,7 @@ export function LiveSearchPanel({
               <button
                 className="secondary-button"
                 type="button"
-                disabled={running}
+                disabled={running || browserPreflightRunning}
                 onClick={saveCustomSource}
               >
                 Save housing source
@@ -556,7 +592,7 @@ export function LiveSearchPanel({
               <button
                 className="secondary-button"
                 type="button"
-                disabled={running || !browserReady}
+                disabled={running || browserPreflightRunning || !browserReady}
                 onClick={() => void run(["custom_website"], status?.searchRunId ?? null, true)}
               >
                 Capture current listing page
@@ -577,6 +613,7 @@ export function LiveSearchPanel({
               checked={confirmed}
               disabled={
                 running ||
+                browserPreflightRunning ||
                 selectedProfile === null ||
                 selectedSources.length === 0 ||
                 (browserSourceSelected && !browserReady)
@@ -595,6 +632,7 @@ export function LiveSearchPanel({
             type="button"
             disabled={
               running ||
+              browserPreflightRunning ||
               !confirmed ||
               selectedProfile === null ||
               selectedSources.length === 0 ||
@@ -602,7 +640,11 @@ export function LiveSearchPanel({
             }
             onClick={() => void run()}
           >
-            {running && phase ? phaseLabels[phase] : "Search selected sources"}
+            {browserPreflightRunning
+              ? "Verifying shared tab"
+              : running && phase
+                ? phaseLabels[phase]
+                : "Search selected sources"}
           </button>
           {running ? (
             <button className="secondary-button" type="button" onClick={() => void stop()}>

@@ -68,6 +68,11 @@ export interface BrowserGatewayRuntime {
   readonly assignment: z.infer<typeof BrowserGatewayAssignmentSchema>;
   readonly maritimeApiKey: string;
   readonly planSigningKey: string;
+  readonly browserResearchLoopback?: {
+    readonly url: string;
+    readonly token: string;
+    readonly planSigningKey: string;
+  };
   readonly enabledSources: ReadonlySet<z.infer<typeof BrowserResearchSourceSchema>>;
 }
 

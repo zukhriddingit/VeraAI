@@ -30,7 +30,7 @@ describe("Gateway runtime supply-chain verifier", () => {
       "mutable Chainguard base",
       (input: ReturnType<typeof fixture>) => {
         input.dockerfile = input.dockerfile.replace(
-          "cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22",
+          "cgr.dev/chainguard/node@sha256:abd1ea54ba68e3b2526c26ad5ef615823121a99010b595f1b4ebab77d47d061d",
           "cgr.dev/chainguard/node:latest"
         );
       }
