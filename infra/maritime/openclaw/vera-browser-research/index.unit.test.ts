@@ -366,7 +366,7 @@ describe("vera_browser_research_v1 local adapter replay", () => {
           });
         }
         if (url.pathname === "/tabs") {
-          if (currentUrl.includes("apartments.com") && transientTabFailures < 2) {
+          if (currentUrl.includes("apartments.com") && transientTabFailures < 4) {
             transientTabFailures += 1;
             return Response.json({ code: "relay_reconnecting" }, { status: 503 });
           }
@@ -429,8 +429,8 @@ describe("vera_browser_research_v1 local adapter replay", () => {
         return kind === undefined || ["click", "type", "scrollIntoView"].includes(kind);
       })
     ).toBe(true);
-    expect(transientTabFailures).toBe(2);
-    expect(waits).toEqual(expect.arrayContaining([750, 1_500]));
+    expect(transientTabFailures).toBe(4);
+    expect(waits).toEqual(expect.arrayContaining([750, 1_500, 3_000, 6_000]));
   });
 
   it("bounds browser-read reconnect retries without repeating the navigation action", async () => {
@@ -480,9 +480,9 @@ describe("vera_browser_research_v1 local adapter replay", () => {
       resultCardsObserved: 0,
       detailPagesOpened: 0
     });
-    expect(tabReads).toBe(5);
+    expect(tabReads).toBe(6);
     expect(navigateCalls).toBe(1);
-    expect(waits).toEqual([1_500, 750, 1_500, 3_000]);
+    expect(waits).toEqual([1_500, 750, 1_500, 3_000, 6_000]);
     expect(
       result.safeActionTrail.filter((entry) => entry.action === "navigate_same_source")
     ).toEqual([expect.objectContaining({ action: "navigate_same_source", result: "completed" })]);

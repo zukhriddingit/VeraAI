@@ -22,7 +22,7 @@ import {
 const BROWSER_CONTROL_ORIGIN = "http://127.0.0.1:18792";
 const BROWSER_PROFILE = "chrome";
 const REQUEST_TIMEOUT_MS = 15_000;
-const BROWSER_READ_RETRY_DELAYS_MS = Object.freeze([750, 1_500, 3_000]);
+const BROWSER_READ_RETRY_DELAYS_MS = Object.freeze([750, 1_500, 3_000, 6_000]);
 const TABS_MAX_BYTES = 64 * 1024;
 const SNAPSHOT_MAX_BYTES = 512 * 1024;
 const ACTION_MAX_BYTES = 64 * 1024;
