@@ -136,12 +136,12 @@ describe("Gateway runtime dependency sanitizer", () => {
     ]);
   });
 
-  it("rejects the stale runtime base containing npm-12 12.0.2-r1", () => {
+  it("rejects a stale runtime base", () => {
     expect(lock.finalRuntime).toMatchObject({
       imageIndex:
-        "cgr.dev/chainguard/node@sha256:d8d2883b26d4fde4e524d0068cd78abbb23c7c2113a22e67a02cc73a9182552d",
+        "cgr.dev/chainguard/node@sha256:3a3fbc052438535cca1ac0eed75c2dabf04a7ce7de749667cd265f98dbf9c771",
       linuxAmd64Image:
-        "cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22",
+        "cgr.dev/chainguard/node@sha256:abd1ea54ba68e3b2526c26ad5ef615823121a99010b595f1b4ebab77d47d061d",
       observedNodeVersion: "26.7.0"
     });
     expect(

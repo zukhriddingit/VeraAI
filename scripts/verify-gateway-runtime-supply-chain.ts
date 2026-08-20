@@ -9,7 +9,7 @@ import { findRuntimeLockViolations } from "../infra/maritime/openclaw/sanitize-r
 const OPENCLAW_IMAGE =
   "ghcr.io/openclaw/openclaw@sha256:6a31d44b2944e7adcd2b582bf6fb463111264ebca97a0201795b799135bd102c";
 const RUNTIME_IMAGE =
-  "cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22";
+  "cgr.dev/chainguard/node@sha256:abd1ea54ba68e3b2526c26ad5ef615823121a99010b595f1b4ebab77d47d061d";
 const FINAL_STAGE = `FROM ${RUNTIME_IMAGE} AS final`;
 const FIXED_ENTRYPOINT =
   'ENTRYPOINT ["/usr/bin/node", "/opt/vera/bin/remote-extension-supervisor.mjs"]';
@@ -177,7 +177,7 @@ export function findGatewayRuntimeSupplyChainViolations(input: {
     manifest.image !== null ||
     manifest.replacesReleaseIndex !==
       "ghcr.io/zukhriddingit/vera-openclaw-gateway@sha256:be4145e41c8ff28152d1442e987503e0b3afef7dfa3a358e4651c1ddaae5982a" ||
-    manifest.reasonCode !== "base_package_cve_2026_69152_69192" ||
+    manifest.reasonCode !== "base_package_cve_2026_38753_38754" ||
     manifest.releaseProfile !== "founder_browser_experimental" ||
     manifest.synthetic !== false ||
     manifest.deployableBeforeLiveProxyAcceptance !== false

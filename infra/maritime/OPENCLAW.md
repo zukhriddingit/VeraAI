@@ -55,7 +55,7 @@ package instances, each from a fixed npm tarball with a locked SHA-512 integrity
 The repaired `/app` tree is transplanted into the immutable `linux/amd64` Chainguard Node runtime:
 
 ```text
-cgr.dev/chainguard/node@sha256:942c2eee772885f64808bf0fed5e5f842eafe4d6fe7f602b7dba0f26b6eb1b22
+cgr.dev/chainguard/node@sha256:abd1ea54ba68e3b2526c26ad5ef615823121a99010b595f1b4ebab77d47d061d
 ```
 
 `remote-extension-candidate.json` records this security replacement as pending without
