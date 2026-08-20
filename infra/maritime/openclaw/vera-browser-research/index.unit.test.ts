@@ -348,6 +348,7 @@ describe("vera_browser_research_v1 local adapter replay", () => {
     let mode: "base" | "price" | "beds" = "base";
     let transientTabFailures = 0;
     const waits: number[] = [];
+    const readTimeouts: number[] = [];
     const browserBodies: unknown[] = [];
     let monotonic = 1_000;
     const result = await researchRentals(signedPlan(), {
@@ -355,6 +356,10 @@ describe("vera_browser_research_v1 local adapter replay", () => {
       monotonicNow: () => (monotonic += 10),
       wait: async (milliseconds: number) => {
         waits.push(milliseconds);
+      },
+      timeoutSignal: (milliseconds: number) => {
+        readTimeouts.push(milliseconds);
+        return new AbortController().signal;
       },
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(input instanceof Request ? input.url : input.toString());
@@ -431,6 +436,8 @@ describe("vera_browser_research_v1 local adapter replay", () => {
     ).toBe(true);
     expect(transientTabFailures).toBe(4);
     expect(waits).toEqual(expect.arrayContaining([750, 1_500, 3_000, 6_000]));
+    expect(readTimeouts.length).toBeGreaterThan(4);
+    expect(readTimeouts.every((milliseconds) => milliseconds === 4_000)).toBe(true);
   });
 
   it("bounds browser-read reconnect retries without repeating the navigation action", async () => {
