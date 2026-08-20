@@ -343,13 +343,15 @@ describe("vera_browser_research_v1 local adapter replay", () => {
     expect(JSON.stringify(browserBodies)).not.toMatch(/contact|apply|tour|message|email|phone/iu);
   });
 
-  it("applies reviewed filters and extracts one real-shaped card without a forbidden action", async () => {
-    let currentUrl = "https://www.zillow.com/homes/for_rent/";
+  it("reuses the exact reviewed result URL and extracts one real-shaped card without a forbidden action", async () => {
+    const resultPageUrl = "https://www.apartments.com/boston-ma/";
+    let currentUrl = resultPageUrl;
     let mode: "base" | "price" | "beds" = "base";
     let transientTabFailures = 0;
     const waits: number[] = [];
     const readTimeouts: number[] = [];
     const browserBodies: unknown[] = [];
+    const checkpointActions: string[] = [];
     let monotonic = 1_000;
     const result = await researchRentals(signedPlan(), {
       now: () => new Date(),
@@ -364,6 +366,7 @@ describe("vera_browser_research_v1 local adapter replay", () => {
       fetch: async (input: string | URL | Request, init?: RequestInit) => {
         const url = new URL(input instanceof Request ? input.url : input.toString());
         if (url.hostname === "vera-checkpoint.example.test") {
+          checkpointActions.push((JSON.parse(String(init?.body)) as { action: string }).action);
           return Response.json({
             allowed: true,
             reason: "allowed",
@@ -420,6 +423,11 @@ describe("vera_browser_research_v1 local adapter replay", () => {
     expect(JSON.stringify(browserBodies)).not.toMatch(
       /contact|apply|tour|message|email|phone|payment|upload|download/iu
     );
+    expect(browserBodies[0]).toMatchObject({ kind: "click", ref: "e1" });
+    expect(
+      browserBodies.filter((body) => (body as { url?: string }).url === resultPageUrl)
+    ).toHaveLength(1);
+    expect(checkpointActions.slice(0, 2)).toEqual(["inspect_shared_tabs", "navigate_same_source"]);
     expect(browserBodies).toContainEqual(
       expect.objectContaining({ kind: "scrollIntoView", ref: "e8" })
     );
