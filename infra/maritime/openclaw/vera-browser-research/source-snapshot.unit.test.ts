@@ -219,6 +219,40 @@ describe("bounded source snapshots", () => {
     }
   );
 
+  it.each([
+    "parking",
+    "balcony",
+    "pet-friendly",
+    "utilities-included",
+    "furnished",
+    "short-term",
+    "cheap",
+    "luxury"
+  ])("does not treat the Apartments.com %s filter route as a listing", (feature) => {
+    const name = `${feature} apartments from $2,500`;
+    const document = parseSourceSnapshot(
+      {
+        ok: true,
+        format: "ai",
+        targetId: "shared-tab-1",
+        url: "https://www.apartments.com/boston-ma/",
+        refs: { e1: { role: "link", name } },
+        snapshot: [
+          `- link "${name}" [ref=e1]`,
+          "  - generic: $2,500, 1 Bed",
+          "",
+          "Links:",
+          `1. ${name} -> https://www.apartments.com/boston-ma/${feature}/`
+        ].join("\n")
+      },
+      "apartments_com"
+    );
+
+    expect(
+      extractSourceCards(document, { source: "apartments_com", maxResults: 10 }, observedAt)
+    ).toEqual([]);
+  });
+
   it("canonicalizes an observed Marketplace item URL without tracking data", () => {
     const name = "2 Beds 1 Bath - Apartment, $1,995, Allston, MA, listing 123456789";
     const document = parseSourceSnapshot(

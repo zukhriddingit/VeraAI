@@ -9,6 +9,17 @@ export const SINGLE_SHARED_TAB_CONSENT_REFERENCE = "explicitly_shared_zillow_ren
 export const BOSTON_CRAIGSLIST_STARTING_URL =
   "https://www.craigslist.org/search/area/boston?cat=apa";
 
+const APARTMENTS_RESULT_FEATURE_ROUTES = new Set([
+  "parking",
+  "balcony",
+  "pet-friendly",
+  "utilities-included",
+  "furnished",
+  "short-term",
+  "cheap",
+  "luxury"
+]);
+
 export const SOURCE_POLICY = Object.freeze({
   zillow: Object.freeze({
     hostnames: Object.freeze(["www.zillow.com"]),
@@ -399,7 +410,13 @@ export function validateObservedUrl(rawUrl, source, kind = "either", sourceConfi
   }
   let actualKind = "result";
   if (source === "apartments_com") {
-    actualKind = /^\/[a-z0-9-]+\/[a-z0-9]{7}\/$/u.test(url.pathname) ? "detail" : "result";
+    const lastSegment = url.pathname.split("/").filter(Boolean).at(-1)?.toLowerCase();
+    actualKind =
+      lastSegment !== undefined && APARTMENTS_RESULT_FEATURE_ROUTES.has(lastSegment)
+        ? "result"
+        : /^\/[a-z0-9-]+\/[a-z0-9]{7}\/$/u.test(url.pathname)
+          ? "detail"
+          : "result";
   } else if (source === "facebook_marketplace") {
     actualKind = /^\/marketplace\/item\/[0-9]+\/$/u.test(url.pathname) ? "detail" : "result";
   } else if (source === "zillow") {
